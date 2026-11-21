@@ -1,16 +1,4 @@
-/**
- * shared-boundaries.test.ts — Wave 1R acceptance: the seams every Workflow run shares.
- *
- * One validated request base (every route under it, every unusable base refused before any
- * request), one effective credential (the Bearer bytes and the redaction needle are one value, on
- * every published surface), stream event admission before any state change, and a monitor and stop
- * arbiter owned by the session claim rather than the tool call. Every test enters at a
- * caller-visible seam — the registered `Workflow` tool, the `/agents` command's real menu
- * components, or a session listener — against the real loopback endpoint (or `fakeWorkflowFetch`
- * where a fake clock must own time), so a pass means the request reached the endpoint and the
- * endpoint's answer reached the surfaces a user reads. Nothing from `src/` is imported or mocked.
- */
-
+/** Wave 1R acceptance through Pi's registered tools, renderers and lifecycle events over real HTTP. */
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentToolResult, AgentToolUpdateCallback, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -22,29 +10,26 @@ import {
   type MockExtensionAPI,
   type RegisteredTool,
 } from "../fixtures.js";
-import { asCommandContext, asUiCustom } from "../pi-boundaries.js";
 import { defaultTheme, defaultUi } from "../mock-utils.js";
+import { asCommandContext, asTui, asUiCustom } from "../pi-boundaries.js";
 import {
+  AUTH_ECHO,
   beforeEnd,
-  createRequests,
+  clockedLoopback,
   declaredOutputRead,
-  DEFAULT_RESULT,
-  DEFAULT_STREAM,
   deferred,
   DISPATCH,
   endpoint,
-  FAKED_URL,
-  fakeWorkflowFetch,
-  jsonResponse,
+  errorBody,
   lifecycle,
+  progressFrame,
   readRequests,
-  readState,
   recordedResponse,
-  REMOTE_ID,
   RECONNECT,
-  stopAck,
+  stateReply,
   stopRequests,
   streamRequests,
+  TERMINAL,
   textFrame,
   workspace,
   write,
@@ -54,27 +39,34 @@ import {
   type Workspace,
 } from "./fixtures.js";
 
-let ws: Workspace;
-let api: MockExtensionAPI | undefined;
-let ctx: ExtensionContext | undefined;
-let endpoints: TestEndpoint[];
+const TARGET = "release-gateway";
+const KEY = "fixture-api-token";
+const ARGS = { workflow: "audit", prompt: "Review changes" };
+const ANSWER = "The declared output";
+const OUTAGE = { status: 503, body: errorBody("Temporarily unavailable") };
 
-type WorkflowResult = AgentToolResult<Record<string, unknown>>;
-type WorkflowUpdate = AgentToolUpdateCallback<Record<string, unknown>>;
+type Result = AgentToolResult<Record<string, unknown>>;
+type Update = AgentToolUpdateCallback<Record<string, unknown>>;
+type Exchanges = ReturnType<typeof clockedLoopback>;
 
 interface ExecutableTool extends RegisteredTool {
   execute(
-    toolCallId: string,
-    params: Record<string, unknown>,
+    id: string,
+    args: Record<string, unknown>,
     signal: AbortSignal | undefined,
-    onUpdate: WorkflowUpdate | undefined,
-    context: ExtensionContext,
-  ): Promise<WorkflowResult>;
+    update: Update | undefined,
+    ctx: ExtensionContext,
+  ): Promise<Result>;
 }
+
+let ws: Workspace;
+let api: MockExtensionAPI | undefined;
+let ctx: ExtensionContext | undefined;
+let remotes: TestEndpoint[];
 
 beforeEach(() => {
   ws = workspace();
-  endpoints = [];
+  remotes = [];
   vi.resetModules();
   vi.doMock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
     ...(await importOriginal<typeof import("@earendil-works/pi-coding-agent")>()),
@@ -83,865 +75,990 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  const shutdown = api?.listeners.find((listener) => listener.event === "session_shutdown");
-  if (shutdown && ctx) await shutdown.handler({ type: "session_shutdown", reason: "quit" }, ctx);
-  for (const server of endpoints) await server.close();
-  vi.useRealTimers();
+  await shutdown();
+  for (const remote of remotes) await remote.close();
   vi.unstubAllGlobals();
-  api = undefined;
-  ctx = undefined;
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.doUnmock("@earendil-works/pi-coding-agent");
+  api = undefined;
   rmSync(ws.root, { recursive: true, force: true });
 });
 
-async function start(trusted = true, warnings?: string[]): Promise<MockExtensionAPI> {
+async function start(notices: string[] = [], ui: Partial<ExtensionContext["ui"]> = {}): Promise<MockExtensionAPI> {
   api = createMockExtensionAPI();
-  if (warnings) {
-    vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => warnings.push(args.map(String).join(" ")));
-  }
-  ctx = fakeCtx({
-    cwd: ws.project,
-    isProjectTrusted: () => trusted,
-    ...(warnings && {
-      ui: {
-        ...defaultUi,
-        notify: (message, type) => {
-          if (type === "warning") warnings.push(message);
-        },
-      },
-    }),
-  });
+  ctx = fakeCtx({ cwd: ws.project, ui: { ...defaultUi, notify: (message) => notices.push(message), ...ui } });
   await loadExtension(api.api);
-  const startListener = api.listeners.find((listener) => listener.event === "session_start");
-  expect(startListener, "the extension must handle session start").toBeDefined();
-  await startListener!.handler({ type: "session_start", reason: "startup" }, ctx);
+  const handler = api.listeners.find((listener) => listener.event === "session_start")?.handler;
+  expect(handler, "Pi must be able to start the extension").toBeTypeOf("function");
+  await handler!({ type: "session_start", reason: "startup" }, ctx);
   return api;
 }
 
-function executable(capture: MockExtensionAPI, name = "Workflow"): ExecutableTool {
-  const tool = capture.tools.filter((candidate) => candidate.name === name).at(-1) as ExecutableTool | undefined;
-  expect(tool, `the ${name} tool must be registered`).toBeDefined();
-  expect(tool?.execute, `the ${name} tool must be executable`).toBeTypeOf("function");
-  return tool!;
+async function shutdown(): Promise<void> {
+  if (!api || !ctx) return;
+  const handler = api.listeners.find((listener) => listener.event === "session_shutdown")?.handler;
+  expect(handler, "Pi must be able to end the session").toBeTypeOf("function");
+  await handler!({ type: "session_shutdown", reason: "quit" }, ctx);
+  ctx = undefined;
 }
 
 async function server(options?: EndpointOptions): Promise<TestEndpoint> {
-  const instance = await endpoint(options);
-  endpoints.push(instance);
-  return instance;
+  const remote = await endpoint(options);
+  remotes.push(remote);
+  return remote;
 }
 
-function text(result: WorkflowResult): string {
-  return result.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
-}
-
-function run(
-  tool: ExecutableTool,
-  params: Record<string, unknown> = { workflow: "audit", prompt: "Review changes" },
-  signal?: AbortSignal,
-  onUpdate?: WorkflowUpdate,
-): Promise<WorkflowResult> {
-  return tool.execute("workflow-call", params, signal, onUpdate, ctx!);
-}
-
-async function outcome(
-  tool: ExecutableTool,
-  params?: Record<string, unknown>,
-  signal?: AbortSignal,
-  onUpdate?: WorkflowUpdate,
-) {
-  try {
-    const result = await run(tool, params, signal, onUpdate);
-    return { text: text(result), isError: result.isError ?? false };
-  } catch (error) {
-    if (!(error instanceof Error)) throw error;
-    return { text: error.message, isError: true };
-  }
-}
-
-/** Advance the fake clock in steps: each step yields, so the loop's own stream and read promises settle between timers. */
-async function pump(steps: number, msEach: number): Promise<void> {
-  for (let index = 0; index < steps; index += 1) await vi.advanceTimersByTimeAsync(msEach);
-}
-
-/** The config that sends every run to one named endpoint, with the key exactly as configured. */
-function writeConfig(url: string, apiKey?: string): void {
+function install(url: string, apiKey?: unknown, definition = workflow()): void {
+  write(join(ws.agentDir, "workflows", "audit.yaml"), definition);
   write(
     join(ws.agentDir, "subagents-lite.json"),
     JSON.stringify({
-      workflows: {
-        endpoints: { local: { url, ...(apiKey !== undefined ? { apiKey } : {}) } },
-        defaultEndpoint: "local",
-      },
+      workflows: { endpoints: { [TARGET]: { url, apiKey } }, defaultEndpoint: TARGET },
     }),
   );
 }
 
-/** The default workflow file on disk, plus the config that sends a run to this exact base (and key). */
-function install(url: string, apiKey?: string): void {
-  write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-  writeConfig(url, apiKey);
+function overrideProjectUrl(url: string): void {
+  write(
+    join(ws.project, ".pi", "subagents-lite.json"),
+    JSON.stringify({
+      workflows: { endpoints: { [TARGET]: { url } } },
+    }),
+  );
 }
 
-function createRequest(remote: TestEndpoint) {
-  const [request] = createRequests(remote);
-  expect(request, "the endpoint must receive the selected workflow").toBeDefined();
-  return request!;
+function tool(capture: MockExtensionAPI, name = "Workflow"): ExecutableTool {
+  const registered = capture.tools.filter((tool) => tool.name === name).at(-1) as ExecutableTool | undefined;
+  expect(registered?.execute, `Pi must be able to call ${name}`).toBeTypeOf("function");
+  return registered!;
 }
 
-/** Run the extension's session shutdown against the current context. */
-async function shutdownSession(capture: MockExtensionAPI): Promise<void> {
-  const shutdown = capture.listeners.find((listener) => listener.event === "session_shutdown");
-  expect(shutdown, "the extension must handle session shutdown").toBeDefined();
-  await shutdown!.handler({ type: "session_shutdown", reason: "quit" }, ctx);
-  ctx = undefined;
+function run(capture: MockExtensionAPI, signal?: AbortSignal, onUpdate?: Update): Promise<Result> {
+  return tool(capture).execute("workflow-call", ARGS, signal, onUpdate, ctx!);
 }
 
-/** Every line the extension writes to the console while the test runs. */
-function captureConsole(): string[] {
-  const lines: string[] = [];
-  const record = (...args: unknown[]) => {
-    lines.push(args.map(String).join(" "));
-  };
-  for (const level of ["log", "info", "debug", "warn", "error"] as const) {
-    vi.spyOn(console, level).mockImplementation(record);
+function text(result: Result): string {
+  return result.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
+}
+
+async function report(pending: Promise<Result>) {
+  try {
+    const result = await pending;
+    return { isError: result.isError ?? false, text: text(result) };
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    return { isError: true, text: error.message };
   }
-  return lines;
 }
 
-/** A menu component as the tests drive it: real pi-tui components, rendered to text. */
+async function status(capture: MockExtensionAPI): Promise<string> {
+  return text(await tool(capture, "AgentStatus").execute("status-call", {}, undefined, undefined, ctx!));
+}
+
+function runId(listing: string): string {
+  const id = listing.match(/\b[0-9a-f]{8}\b/)?.[0];
+  expect(id, "AgentStatus must list the run by its short id").toBeTypeOf("string");
+  return id!;
+}
+
+async function stop(capture: MockExtensionAPI, id: string): Promise<string> {
+  return text(await tool(capture, "StopAgent").execute("stop-call", { agent_id: id }, undefined, undefined, ctx!));
+}
+
+function rows(component: unknown): string[] {
+  if (
+    typeof component !== "object" ||
+    component === null ||
+    !("render" in component) ||
+    typeof component.render !== "function"
+  )
+    return [];
+  const lines: unknown = component.render(240);
+  if (!Array.isArray(lines)) return [];
+  return lines.filter((line): line is string => typeof line === "string").map((line) => line.trim());
+}
+
+/** Drive the real Workflow row, including its registered completion invalidation. */
+function resultRow(capture: MockExtensionAPI) {
+  const registered = tool(capture);
+  const state = {};
+  const repaints: string[] = [];
+  const invalidated = deferred<string>();
+  let snapshot: Result;
+  function render(): string {
+    const component = registered.renderResult?.(snapshot, { expanded: true }, defaultTheme, {
+      args: ARGS,
+      state,
+      expanded: true,
+      isPartial: false,
+      toolCallId: "workflow-call",
+      invalidate: () => {
+        const display = render();
+        repaints.push(display);
+        invalidated.resolve(display);
+      },
+      cwd: ws.project,
+      executionStarted: true,
+      argsComplete: true,
+      showImages: false,
+      isError: snapshot.isError ?? false,
+    });
+    return rows(component).join("\n");
+  }
+  return {
+    repaints,
+    invalidated: invalidated.promise,
+    paint(result: Result) {
+      snapshot = result;
+      return render();
+    },
+  };
+}
+
 interface MenuComponent {
-  render(width: number): unknown;
-  handleInput?(data: string): void;
+  handleInput(data: string): void;
 }
 
-/**
- * Open the `/agents` command's running-agents list through the real menu components. `ui.custom`
- * is captured, so navigation is real key input on real components: Enter on the main menu opens
- * Running agents (its first entry).
- */
-async function openRunningAgents(capture: MockExtensionAPI): Promise<MenuComponent> {
-  const command = capture.commands.find((entry) => entry.name === "agents");
-  expect(command, "the extension must register the agents menu command").toBeDefined();
-  const menus: MenuComponent[] = [];
+async function runningMenu(capture: MockExtensionAPI): Promise<string> {
+  const command = capture.commands.find(({ name }) => name === "agents");
+  expect(command, "Pi must expose the agents menu").toBeDefined();
+  const main = deferred<MenuComponent>();
+  const running = deferred<MenuComponent>();
+  let first = true;
   const menuCtx = fakeCtx({
     cwd: ws.project,
     ui: {
       ...defaultUi,
       custom: asUiCustom(
         async (factory: unknown) =>
-          new Promise<undefined>((resolve) => {
-            const build = factory as (
-              tui: unknown,
-              theme: unknown,
-              kb: unknown,
-              done: (value: undefined) => void,
-            ) => unknown;
-            menus.push(build({ terminal: { rows: 24 } }, defaultTheme, {}, resolve) as MenuComponent);
+          new Promise<undefined>((done) => {
+            const build = factory as (tui: unknown, theme: unknown, kb: unknown, close: typeof done) => MenuComponent;
+            const menu = build({ terminal: { rows: 24 } }, defaultTheme, {}, done);
+            (first ? main : running).resolve(menu);
+            first = false;
           }),
       ),
     },
   });
-  const open = command!.handler("", asCommandContext(menuCtx));
-  void open.catch(() => {});
-
-  await vi.waitFor(() => expect(menus, "the agents command must open its main menu").toHaveLength(1));
-  menus[0].handleInput?.("\r");
-  await vi.waitFor(() =>
-    expect(menus, "the main menu's first entry must open the running-agents list").toHaveLength(2),
-  );
-  expect(rendered(menus[1])).toContain("Running Agents");
-  return menus[1];
+  const closing = command!.handler("", asCommandContext(menuCtx));
+  void closing.catch(() => {});
+  (await main.promise).handleInput("\r");
+  const menu = await running.promise;
+  const screen = rows(menu).join("\n");
+  menu.handleInput("\x1b");
+  (await main.promise).handleInput("\x1b");
+  expect(screen).toContain("Running Agents");
+  return screen;
 }
 
-/** The component's rows, without the trailing padding pi-tui pads every rendered line out to. */
-function renderedRows(component: unknown): string[] {
-  if (typeof component !== "object" || component === null || !("render" in component)) return [];
-  if (typeof component.render !== "function") return [];
-  const lines: unknown = component.render(240);
-  return Array.isArray(lines)
-    ? lines.filter((line): line is string => typeof line === "string").map((line) => line.trimEnd())
-    : [];
-}
-
-function rendered(component: unknown): string {
-  return renderedRows(component).join("\n");
-}
-
-/**
- * The live view of a run, painted the way the tool call paints it. Every snapshot of one run shares
- * `args` and one render state, and the same state serves a later repaint: the row's invalidation
- * re-renders through it, which is how progress observed after the call returned gets checked.
- */
-function liveViews(tool: ExecutableTool, args: Record<string, unknown>) {
-  const views: string[] = [];
-  const state: Record<string, unknown> = {};
-  return {
-    views,
-    state,
-    paint(update: WorkflowResult): string {
-      const view = resultView(tool, update, args, { state });
-      views.push(view);
-      return view;
+/** Install the same widget factory Pi receives when the running Workflow registers. */
+async function startWithWidget() {
+  type Factory = NonNullable<Parameters<ExtensionContext["ui"]["setWidget"]>[1]>;
+  let widget: ReturnType<Factory> | undefined;
+  const tui = asTui({ terminal: { columns: 240, rows: 24 }, requestRender: () => {} });
+  const theme = { ...defaultTheme };
+  const capture = await start([], {
+    setWidget: (_key: string, content: string[] | Factory | undefined) => {
+      widget = typeof content === "function" ? content(tui, Object.assign({}, defaultUi.theme, theme)) : undefined;
     },
-  };
+  });
+  const turn = capture.listeners.find((entry) => entry.event === "turn_start");
+  expect(turn, "Pi must be able to attach the widget on its first turn").toBeDefined();
+  await turn!.handler({ type: "turn_start" }, ctx);
+  return { capture, widgetText: () => rows(widget).join("\n") };
 }
 
-function resultView(
-  tool: ExecutableTool,
-  result: WorkflowResult,
-  args: Record<string, unknown>,
-  { state = {} }: { state?: Record<string, unknown> } = {},
-): string {
-  const options = { expanded: true, isPartial: true };
-  const context = {
-    args,
-    toolCallId: "workflow-call",
-    state,
-    invalidate: () => {},
-    cwd: ws.project,
-    executionStarted: true,
-    argsComplete: true,
-    isPartial: true,
-    expanded: true,
-    showImages: false,
-    isError: false,
-  };
-  return rendered(tool.renderResult?.(result, options, defaultTheme, context));
+function consoleLines(): string[] {
+  const lines: string[] = [];
+  for (const level of ["log", "info", "debug", "warn", "error"] as const) {
+    vi.spyOn(console, level).mockImplementation((...values: unknown[]) => lines.push(values.map(String).join(" ")));
+  }
+  return lines;
 }
 
-/** Wait for a rendered snapshot satisfying `seen`, and return it; fails by name if the run ends first. */
-async function viewMatching(
-  views: string[],
-  seen: (view: string) => boolean,
-  what: string,
-  ended: Promise<unknown>,
-): Promise<string> {
-  if (!views.some(seen)) {
-    try {
-      await beforeEnd(
-        vi.waitFor(() => expect(views.some(seen), `no view matched: ${what}`).toBe(true), { interval: 1 }),
-        ended,
-        `a view where ${what}`,
-      );
-    } catch (error) {
-      // The run can end in the same tick the view was recorded, and the recorded views are
-      // history: only a view that never rendered is a failure.
-      if (!views.some(seen)) throw error;
+function wire(remote: TestEndpoint): string[] {
+  return remote.requests.map(({ method, path }) => `${method} ${path}`);
+}
+
+function runPath(remote: TestEndpoint): string {
+  return `${remote.prefix}/api/workflows/${remote.run}`;
+}
+
+/** Call only after draining the response on the current virtual tick. */
+async function returnedNow(pending: Promise<Result>, reason: string): Promise<Result> {
+  const result = await Promise.race([pending, Promise.resolve(undefined)]);
+  expect(result, reason).toBeDefined();
+  return result!;
+}
+
+async function consumed(exchanges: Exchanges, remote: TestEndpoint, index: number): Promise<void> {
+  await remote.requestAt(index);
+  await exchanges[index].bodyRead;
+  await vi.advanceTimersByTimeAsync(0);
+}
+
+async function readReply(exchanges: Exchanges, remote: TestEndpoint, ordinal: number): Promise<void> {
+  for (let index = 0; ; index++) {
+    const request = await remote.requestAt(index);
+    if (request.method === "GET" && request.path === runPath(remote) && --ordinal === 0) {
+      await consumed(exchanges, remote, index);
+      return;
     }
   }
-  return views.find(seen)!;
 }
 
-/** A named event the server never declared: an `Object.prototype` member whose data names a node. */
-function prototypeFrame(name: string): string {
-  return `event: ${name}\ndata: {"node_id":"rogue","marker":"${name}"}\n\n`;
+function publishes(surface: string, output: string | RegExp, key: string, label: string): void {
+  // Assert the exact redaction, without dumping the echoed credential into a failed assertion.
+  const matches = typeof output === "string" ? surface.includes(output) : output.test(surface);
+  expect.soft(matches, `${label} must show ${String(output)}`).toBe(true);
+  expect.soft(surface.includes(key), `${label} must not publish the credential`).toBe(false);
 }
 
-/** The run id AgentStatus prints — the handle the main agent passes to StopAgent. */
-function listedRunId(status: WorkflowResult): string {
-  const id = text(status).match(/\b[0-9a-f]{8}\b/)?.[0];
-  expect(id, "AgentStatus must list the workflow run by id").toBeDefined();
-  return id!;
+function authenticates(remote: TestEndpoint, key: string): void {
+  expect.soft(remote.requests.length, "a real HTTP request must have authenticated").toBeGreaterThan(0);
+  expect
+    .soft(
+      remote.requests.every(({ authorization }) => authorization === `Bearer ${key}`),
+      "every route must send exactly the effective Bearer value",
+    )
+    .toBe(true);
 }
 
 describe("workflow request base", () => {
-  it("routes every request under the endpoint's path prefix", async () => {
-    // The reconnect frame ends the first connection by the server's own rules; the running read
-    // reopens the stream. A trailing slash on the configured base is normalized away, never the prefix.
+  it("routes all four operations under a trusted project's endpoint prefix", async () => {
+    const fallback = await server();
     const remote = await server({
-      prefix: "/graph",
+      prefix: "/gateway/workflows-v1",
       holdStream: true,
-      streams: [DISPATCH + RECONNECT, DISPATCH],
+      streams: [DISPATCH, DISPATCH],
       reads: [recordedResponse("read-running")],
     });
-    install(`${remote.url}/graph/`);
+    install(fallback.url);
+    overrideProjectUrl(`${remote.url}${remote.prefix}/`);
     const capture = await start();
-    const abort = new AbortController();
-    const pending = outcome(executable(capture), undefined, abort.signal);
-    await beforeEnd(remote.streamOpened, pending, "the first stream connection");
-    await vi.waitFor(() => expect(streamRequests(remote)).toHaveLength(2), { timeout: 3_000 });
+    const esc = new AbortController();
+    const pending = run(capture, esc.signal);
+    await beforeEnd(remote.streamOpened, pending, "the first prefixed stream opened");
+    remote.sendStream(RECONNECT);
+    await beforeEnd(remote.requestAt(3), pending, "the running read reopened the prefixed stream");
 
-    abort.abort();
-    await remote.stopReceived;
+    esc.abort();
+
+    expect(text(await pending)).toMatch(/\bstopped\b/i);
+    const path = runPath(remote);
+    expect(wire(remote)).toEqual([
+      `POST ${remote.prefix}/api/workflows`,
+      `GET ${path}/stream`,
+      `GET ${path}`,
+      `GET ${path}/stream`,
+      `POST ${path}/stop`,
+    ]);
+    expect(fallback.requests).toEqual([]);
+  });
+
+  it("routes an at-sign inside the prefix as ordinary path data", async () => {
+    const remote = await server({ prefix: "/team@release/v1" });
+    install(`${remote.url}${remote.prefix}`);
+
+    expect(text(await run(await start()))).toBe(ANSWER);
+
+    expect(wire(remote)).toEqual([
+      `POST ${remote.prefix}/api/workflows`,
+      `GET ${runPath(remote)}/stream`,
+      `GET ${runPath(remote)}`,
+    ]);
+  });
+
+  const authorityCases = [
+    ...["/", "//", "///"].flatMap((slashes) =>
+      [
+        ["no controls", ""],
+        ["TAB", "\t"],
+        ["CR", "\r"],
+        ["LF", "\n"],
+      ].map(([label, control]) => ({
+        label: `empty userinfo after ${slashes.length} slash(es), ${label}`,
+        url: (host: string) => `http:${slashes.slice(0, -1)}${control}/@${host}/graph`,
+      })),
+    ),
+    { label: "empty userinfo after four slashes", url: (host: string) => `http:////@${host}/graph` },
+    { label: "userinfo after a backslash", url: (host: string) => `http:/\\@${host}/graph` },
+    {
+      label: "userinfo with leading spaces and a capitalized scheme",
+      url: (host: string) => `  HTTP://@${host}/graph`,
+    },
+    { label: "nonempty userinfo", url: (host: string) => `http://fixture-user:fixture-password@${host}/graph` },
+  ].map((test) => ({ ...test, reason: /user.?info|embedded credential/i }));
+
+  it.for([
+    { label: "a bare query delimiter", url: (host: string) => `http://${host}/graph?`, reason: /query/i },
+    { label: "a bare fragment delimiter", url: (host: string) => `http://${host}/graph#`, reason: /fragment/i },
+    { label: "a non-HTTP scheme", url: (host: string) => `ftp://${host}/graph`, reason: /scheme|protocol|https?/i },
+    ...authorityCases,
+    {
+      label: "an unparseable URL carrying userinfo",
+      url: (host: string) => `http://fixture-user:fixture-password@<${host}>/graph`,
+      reason: /invalid|parse|usable/i,
+    },
+  ])("refuses $label without publishing a URL value", async ({ url, reason }) => {
+    const remote = await server({ prefix: "/graph" });
+    const host = new URL(remote.url).host;
+    install(url(host), KEY);
+    const logs = consoleLines();
+
+    const refusal = await report(run(await start()));
+
+    expect.soft(remote.requests.length, "the endpoint must receive no requests").toBe(0);
+    expect.soft(refusal.isError).toBe(true);
+    expect
+      .soft(
+        refusal.text.includes(`workflows.endpoints[${TARGET}].url`),
+        "the refusal must name the endpoint's .url setting",
+      )
+      .toBe(true);
+    expect.soft(reason.test(refusal.text), `the refusal must explain the ${String(reason)} problem`).toBe(true);
+    const published = `${refusal.text}\n${logs.join("\n")}`;
+    expect
+      .soft(
+        [host, "/graph", "fixture-user", "fixture-password"].some((part) => published.includes(part)),
+        "the refusal and diagnostics must not quote any part of the rejected URL",
+      )
+      .toBe(false);
+  });
+
+  it("refuses an explicit null endpoint selection before contacting the default", async () => {
+    const remote = await server();
+    install(remote.url, undefined, `${workflow()}endpoint: null\n`);
+
+    const refusal = await report(run(await start()));
+
+    expect(remote.requests).toHaveLength(0);
+    expect(refusal.isError).toBe(true);
+    expect(refusal.text).toMatch(
+      /(?:workflow file|audit\.yaml).*\bendpoint\b|\bendpoint\b.*(?:workflow file|audit\.yaml|\bnull\b)/i,
+    );
+  });
+});
+
+describe("workflow credentials", () => {
+  it.for([
+    { label: "an unpadded key", padding: "" },
+    { label: "a space-padded key", padding: " " },
+    { label: "a tab-padded key", padding: "\t" },
+  ])("uses one effective credential with $label", async ({ padding }) => {
+    const remote = await server({
+      echoAuth: true,
+      holdStream: true,
+      streams: [DISPATCH + textFrame(`Progress received ${AUTH_ECHO}`)],
+      reads: [stateReply({ result: { audit: { authorization: AUTH_ECHO } } })],
+    });
+    install(remote.url, `${padding}${KEY}${padding}`);
+    const capture = await start();
+    const row = resultRow(capture);
+    const live = deferred<{ display: string; update: Result }>();
+
+    const pending = run(capture, undefined, (update) => {
+      const display = row.paint(update);
+      if (display.includes("Progress received")) live.resolve({ display, update });
+    });
+    await beforeEnd(live.promise, pending, "the authorization echoed in streamed progress");
+    const { display, update } = await live.promise;
+    remote.releaseStream();
     const result = await pending;
 
-    expect(result.text).toMatch(/stopp|abort|interrupt|cancel/i);
-    // All four routes, in the order the run used them, each under the prefix: a join that re-roots
-    // at the host (`new URL(absolutePath, base)`) drops the prefix and fails here.
-    expect(remote.requests.map((request) => `${request.method} ${request.path}`)).toEqual([
-      `POST ${remote.prefix}/api/workflows`,
-      `GET ${remote.prefix}/api/workflows/${REMOTE_ID}/stream`,
-      `GET ${remote.prefix}/api/workflows/${REMOTE_ID}`,
-      `GET ${remote.prefix}/api/workflows/${REMOTE_ID}/stream`,
-      `POST ${remote.prefix}/api/workflows/${REMOTE_ID}/stop`,
-    ]);
+    authenticates(remote, KEY);
+    publishes(display, "Progress received Bearer [redacted]", KEY, "rendered progress");
+    publishes(JSON.stringify(update), "Progress received Bearer [redacted]", KEY, "Pi's partial result");
+    const redactedJson = /"authorization"\s*:\s*"Bearer \[redacted\]"/;
+    publishes(text(result), redactedJson, KEY, "the inline JSON result");
+    publishes(row.repaints.join("\n"), redactedJson, KEY, "the record's result on repaint");
+    expect(result.isError ?? false).toBe(false);
   });
 
-  it("still routes when the path prefix carries an at-sign", async () => {
-    const remote = await server({ prefix: "/te@st" });
-    install(`${remote.url}/te@st`);
+  it("inherits the effective global credential through a project URL override", async () => {
+    const fallback = await server();
+    const remote = await server({ echoAuth: true, reads: [stateReply({ result: `Received ${AUTH_ECHO}` })] });
+    install(fallback.url, `\t${KEY} `);
+    overrideProjectUrl(remote.url);
 
-    const result = await run(executable(await start()));
+    const result = await run(await start());
 
-    expect(text(result)).toContain("The declared output");
-    expect(remote.requests.map((request) => request.path)).toEqual([
-      `/te@st/api/workflows`,
-      `/te@st/api/workflows/${REMOTE_ID}/stream`,
-      `/te@st/api/workflows/${REMOTE_ID}`,
-    ]);
+    authenticates(remote, KEY);
+    publishes(text(result), "Received Bearer [redacted]", KEY, "the inline result from the project endpoint");
+    expect(fallback.requests).toEqual([]);
   });
-});
 
-describe("workflow request base refusals", () => {
-  // Each unusable base is built against a live loopback socket, so a base that slips through
-  // resolution sends a real request and the zero-request assertion catches it. The parser-side
-  // traps are the point: a trailing `?` or `#` hides from the `.search`/`.hash` getters, and the
-  // userinfo family is stripped by the URL parser itself (measured: `http://@h/p`, `http:/@h/p`,
-  // `http:///@h/p` and the TAB/CR/LF forms all parse to a clean base), so a post-parse check
-  // cannot see them either.
-  const unusable: ReadonlyArray<{ what: string; build: (origin: string) => string; problem: RegExp }> = [
-    { what: "a bare query delimiter", build: (origin) => `${origin}/graph?`, problem: /query/i },
-    { what: "a bare fragment delimiter", build: (origin) => `${origin}/graph#`, problem: /fragment/i },
+  it.for([
     {
-      what: "a non-http scheme",
-      build: (origin) => `ftp://${origin.slice("http://".length)}/graph`,
-      problem: /scheme|protocol/i,
+      name: "create rejection",
+      options: { rejection: { status: 422, body: errorBody(`Input refused: ${AUTH_ECHO}`) } },
+      label: "Input refused",
     },
     {
-      what: "embedded credentials",
-      build: (origin) => `http://user:pass@${origin.slice("http://".length)}/graph`,
-      problem: /credential|userinfo|embedded/i,
+      name: "terminal failure",
+      options: { reads: [stateReply({ status: "failed", error: `Run failed: ${AUTH_ECHO}` })] },
+      label: "Run failed",
     },
     {
-      what: "an empty userinfo marker",
-      build: (origin) => `http://@${origin.slice("http://".length)}/graph`,
-      problem: /credential|userinfo|embedded/i,
+      name: "terminal interruption",
+      options: { reads: [stateReply({ status: "interrupted", error: `Runner lost: ${AUTH_ECHO}` })] },
+      label: "Runner lost",
     },
-    {
-      what: "a single-slash authority carrying an at-sign",
-      build: (origin) => `http:/@${origin.slice("http://".length)}/graph`,
-      problem: /credential|userinfo|embedded/i,
-    },
-    {
-      what: "a triple-slash authority carrying an at-sign",
-      build: (origin) => `http:///@${origin.slice("http://".length)}/graph`,
-      problem: /credential|userinfo|embedded/i,
-    },
-    {
-      what: "a tab before the authority",
-      build: (origin) => `http://\t/@${origin.slice("http://".length)}/graph`,
-      problem: /credential|userinfo|embedded/i,
-    },
-    {
-      what: "a carriage return before the authority",
-      build: (origin) => `http://\r/@${origin.slice("http://".length)}/graph`,
-      problem: /credential|userinfo|embedded/i,
-    },
-    {
-      what: "a line feed before the authority",
-      build: (origin) => `http://\n/@${origin.slice("http://".length)}/graph`,
-      problem: /credential|userinfo|embedded/i,
-    },
-  ];
+  ])("redacts the echoed Authorization in a $name", async ({ options, label }) => {
+    const remote = await server({ ...options, echoAuth: true });
+    install(remote.url, `${KEY} `);
+    const logs = consoleLines();
+    const capture = await start();
+    const row = resultRow(capture);
 
-  for (const { what, build, problem } of unusable) {
-    it(`refuses a base carrying ${what}, quoting no URL value`, async () => {
-      const remote = await server();
-      write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-      writeConfig(build(remote.url));
-      const logs = captureConsole();
+    const result = await report(run(capture, undefined, (update) => row.paint(update)));
 
-      const result = await outcome(executable(await start()));
+    authenticates(remote, KEY);
+    expect(result.isError).toBe(true);
+    publishes(result.text, `${label}: Bearer [redacted]`, KEY, "the tool error");
+    if (options.reads)
+      publishes(row.repaints.join("\n"), `${label}: Bearer [redacted]`, KEY, "the record's error on repaint");
+    expect(
+      logs.some((line) => line.includes(KEY)),
+      "diagnostics must not leak the configured key",
+    ).toBe(false);
+  });
 
-      expect(result.isError).toBe(true);
-      // The refusal names the endpoint and its url setting, and states the problem.
-      expect(result.text).toContain('"local"');
-      expect(result.text).toMatch(/url/i);
-      expect(result.text).toMatch(problem);
-      // A refusal is a published surface and the resolver has no redaction: no URL value is
-      // quoted at all — neither host, path, nor the credentials a userinfo base carried.
-      expect(result.text).not.toContain(remote.url.slice("http://".length));
-      expect(result.text).not.toContain("/graph");
-      expect(result.text).not.toContain("user:pass");
-      expect(logs.join("\n")).not.toContain("user:pass");
-      expect(remote.requests).toEqual([]);
+  it("redacts the transport credential in a stream diagnostic", async () => {
+    const remote = await server({ holdStream: true, streams: [DISPATCH], reads: [declaredOutputRead()] });
+    install(remote.url, `${KEY}\t`);
+    const logs = consoleLines();
+    const capture = await start();
+    let first = true;
+
+    const result = await run(capture, undefined, () => {
+      if (!first) return;
+      first = false;
+      // A failure of the Pi callback is reported by the stream's outer diagnostic boundary.
+      throw new Error(`Host could not display a response from ${streamRequests(remote)[0]?.authorization}`);
     });
-  }
-});
 
-describe("workflow credential", () => {
-  it("authenticates with the space-padded key's trimmed value and redacts it wherever it is echoed", async () => {
-    await runPaddedKeyCase(" ");
+    authenticates(remote, KEY);
+    publishes(
+      logs.join("\n"),
+      "Host could not display a response from Bearer [redacted]",
+      KEY,
+      "the stream diagnostic",
+    );
+    expect(text(result)).toBe(ANSWER);
   });
 
-  it("authenticates with the tab-padded key's trimmed value and redacts it wherever it is echoed", async () => {
-    await runPaddedKeyCase("\t");
-  });
-
-  it("shows the key redacted on the run's display copy when the path prefix embeds it", async () => {
-    const key = "example-key";
-    const remote = await server({ prefix: `/${key}/v1`, holdStream: true });
+  it.for([
+    { key: KEY, path: `/${KEY}/v1`, displayPath: "/[redacted]/v1" },
+    { key: "k<7>", path: "/k%3C7%3E/v1", displayPath: "" },
+  ])("uses a safe display URL for a prefix with display suffix '$displayPath'", async ({ key, path, displayPath }) => {
+    const remote = await server({
+      prefix: path,
+      echoAuth: true,
+      holdStream: true,
+      streams: [DISPATCH],
+      reads: [stateReply({ result: `Answer received ${AUTH_ECHO}` })],
+    });
     install(`${remote.url}/${key}/v1`, key);
-    const logs = captureConsole();
-    const capture = await start();
-    const pending = outcome(executable(capture));
-    await beforeEnd(remote.streamOpened, pending, "the stream opened");
+    const { capture, widgetText } = await startWithWidget();
+    const pending = run(capture);
+    await beforeEnd(remote.streamOpened, pending, "the credential-bearing prefix reached the wire");
 
-    const rows = rendered(await openRunningAgents(capture));
+    const menu = await runningMenu(capture);
+    const widget = widgetText();
     remote.releaseStream();
-    await pending;
+    const result = await pending;
 
-    // The row's description is the record's display copy of the endpoint: the key it embeds is
-    // redacted there, present as [redacted] rather than merely gone.
-    expect(rows).toContain("audit");
-    expect(rows).toContain("[redacted]");
-    expect(rows).not.toContain(`${key}/`);
-    expect(logs.join("\n")).not.toContain(key);
-    expect(createRequest(remote).authorization).toBe(`Bearer ${key}`);
+    authenticates(remote, key);
+    publishes(text(result), "Answer received Bearer [redacted]", key, "the inline result");
+    for (const [surface, name] of [
+      [menu, "running-agents menu"],
+      [widget, "widget"],
+    ]) {
+      expect.soft(surface.includes("audit workflow"), `the ${name} must show this run`).toBe(true);
+      publishes(surface, `${remote.url}${displayPath}${name === "widget" ? " " : "\n"}`, key, name);
+      expect.soft(surface.includes(path), `the ${name} must not show the raw or escaped prefix`).toBe(false);
+    }
   });
 
-  it("withholds an escaped path prefix instead of displaying it", async () => {
-    // A key of `k<7>` used as the prefix leaves the wire: the URL parser percent-encodes it, and
-    // the escaped form is not the literal a redaction needle can find. The honest display is the
-    // origin alone, on every surface that shows the endpoint.
-    const key = "k<7>";
-    const remote = await server({ prefix: "/k%3C7%3E/v1", holdStream: true });
-    install(`${remote.url}/${key}/v1`, key);
-    const capture = await start();
-    const pending = outcome(executable(capture));
-    await beforeEnd(remote.streamOpened, pending, "the stream opened");
-
-    const rows = rendered(await openRunningAgents(capture));
-    remote.releaseStream();
-    await pending;
-
-    expect(rows).toContain("audit");
-    expect(rows).toContain(remote.url);
-    expect(rows).not.toContain(key);
-    expect(rows).not.toContain("%3C");
-  });
-
-  it("names only the origin in a transport fault when the prefix cannot be shown", async () => {
-    const key = "k<7>";
+  it.for([
+    { key: KEY, displayPath: "/[redacted]/v1" },
+    { key: "k<7>", displayPath: "" },
+  ])("uses the same safe URL in a transport failure (display suffix '$displayPath')", async ({ key, displayPath }) => {
     const dead = await server();
     await dead.close();
     install(`${dead.url}/${key}/v1`, key);
-    const logs = captureConsole();
+    const logs = consoleLines();
 
-    const result = await outcome(executable(await start()));
+    const result = await report(run(await start()));
 
     expect(result.isError).toBe(true);
-    expect(result.text).toContain(dead.url);
-    expect(result.text).not.toContain(key);
-    expect(result.text).not.toContain("%3C");
-    expect(logs.join("\n")).not.toContain(key);
+    expect
+      .soft(result.text.includes(`(${dead.url}${displayPath})`), "the fault must identify the same safe URL")
+      .toBe(true);
+    const published = `${result.text}\n${logs.join("\n")}`;
+    expect
+      .soft(
+        published.includes(key) || published.includes("k%3C7%3E"),
+        "the fault must not publish literal or escaped credentials",
+      )
+      .toBe(false);
   });
 
-  for (const [label, key] of [
-    ["an empty", ""],
-    ["a whitespace-only", " \t "],
-    ["a json-unstable", 'bad"key'],
-    ["a non-ascii", "clé"],
-  ] as const) {
-    it(`refuses ${label} apiKey instead of sending without it`, async () => {
-      const target = await server();
-      write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-      writeConfig(target.url, key);
-      const logs = captureConsole();
+  it.for([
+    { label: "an empty string", key: "" },
+    { label: "whitespace only", key: " \t " },
+    { label: "a quote", key: 'fixture"token' },
+    { label: "a backslash", key: "fixture\\token" },
+    { label: "an embedded tab", key: "fixture\ttoken" },
+    { label: "non-ASCII", key: "fixturé-token" },
+    { label: "null", key: null },
+    { label: "a non-string", key: 1285927 },
+  ])("refuses a declared apiKey containing $label instead of sending a request", async ({ key }) => {
+    const remote = await server();
+    install(remote.url, key);
+    const logs = consoleLines();
 
-      const result = await outcome(executable(await start()));
+    const refusal = await report(run(await start()));
 
-      expect(result.isError).toBe(true);
-      expect(result.text).toContain('"local"');
-      expect(result.text).toMatch(/api\s*key|apikey/i);
-      expect(target.requests).toEqual([]);
-      if (key.trim() !== "") {
-        expect(result.text).not.toContain(key.trim());
-        expect(logs.join("\n")).not.toContain(key.trim());
-      }
-    });
-  }
+    expect.soft(remote.requests.length, "the endpoint must receive no requests").toBe(0);
+    expect.soft(refusal.isError).toBe(true);
+    expect
+      .soft(
+        refusal.text.includes(TARGET) && /apiKey/i.test(refusal.text),
+        "the refusal must identify the endpoint's apiKey",
+      )
+      .toBe(true);
+    const value = String(key).trim();
+    if (value) {
+      const published = `${refusal.text}\n${logs.join("\n")}`;
+      expect
+        .soft(
+          published.includes(value) || published.includes(JSON.stringify(value).slice(1, -1)),
+          "a refused key must not appear literally or JSON-escaped in a refusal or diagnostic",
+        )
+        .toBe(false);
+    }
+  });
 });
+
+function unknown(node: string, ...names: string[]): string {
+  return names.map((name) => `event: ${name}\ndata: ${JSON.stringify({ node_id: node })}\n\n`).join("");
+}
+
+const PROTOTYPE_NAMES = ["constructor", "toString", "__proto__", "hasOwnProperty"];
 
 describe("workflow stream event admission", () => {
-  it("leaves prototype-named events inert and keeps the connection and the text channel intact", async () => {
-    const frames =
-      DISPATCH +
-      prototypeFrame("constructor") +
-      prototypeFrame("toString") +
-      prototypeFrame("__proto__") +
-      prototypeFrame("hasOwnProperty") +
-      textFrame("Text that still belongs to analysis");
-    const remote = await server({ streams: [frames], holdStream: true });
+  it.for([...PROTOTYPE_NAMES, "future_node_event"])("leaves %s inert on the running stream", async (event) => {
+    const remote = await server({
+      holdStream: true,
+      streams: [DISPATCH + textFrame("Inspecting the ")],
+      reads: [declaredOutputRead()],
+    });
     install(remote.url);
-    const logs = captureConsole();
     const capture = await start();
-    const tool = executable(capture);
-    const args = { workflow: "audit", prompt: "Review changes" };
-    const { views, paint } = liveViews(tool, args);
+    const exchanges = clockedLoopback();
+    const row = resultRow(capture);
+    const first = deferred<string>();
+    const followup = deferred<string>();
+    const views: string[] = [];
+    const pending = run(capture, undefined, (update) => {
+      const view = row.paint(update);
+      views.push(view);
+      if (view.includes("Inspecting the")) first.resolve(view);
+      if (view.includes("diff.") && view.includes("read_file")) followup.resolve(view);
+    });
+    await beforeEnd(first.promise, pending, "the original text appeared on screen");
+    await vi.advanceTimersByTimeAsync(45_000);
 
-    const pending = run(tool, args, undefined, paint);
-    // The chunk after the unknown frames still renders, attributed where the last recognized
-    // frame left the unnamed channel: nothing repainted the source and no node named "rogue" exists.
-    const live = await viewMatching(
-      views,
-      (view) => view.includes("Text that still belongs to analysis"),
-      "the chunk after the unknown frames is on screen",
-      pending,
+    // The full turn replaces only analysis's chunks. If the unknown node stole the unnamed
+    // channel, the tail remains visible a second time under that other source.
+    remote.sendStream(
+      unknown("foreign-node", event) +
+        textFrame("diff.") +
+        progressFrame("full-turn", "Inspecting the diff.") +
+        progressFrame("tool-call"),
     );
-    expect(live).toContain("analysis");
-    for (const view of views) {
-      expect(view).not.toContain("rogue");
-      expect(view).not.toContain("constructor");
-    }
-    // The unknown frames neither threw inside the run nor ended the connection: the endpoint still
-    // holds one stream socket, and no read task died on its own.
-    expect(logs.join("\n")).not.toContain("stopped following");
+    await beforeEnd(followup.promise, remote.streamSocketClosed(), "a later chunk rendered on the same open stream");
+    const later = await followup.promise;
+
+    expect(later.split("\n")).toEqual(["▶ analysis dispatched", "analysis tool read_file", "Inspecting the diff."]);
+    expect(views.every((view) => !view.includes("foreign-node"))).toBe(true);
     expect(remote.streamSocketsOpen()).toBe(1);
 
-    remote.releaseStream();
-    const result = await pending;
-    expect(text(result)).toContain("The declared output");
+    // The full turn's repaint proves the later bytes were consumed before we advance the clock.
+    await vi.advanceTimersByTimeAsync(44_999);
+    await expectReadAtDeadline(exchanges, remote);
+    expect(text(await pending)).toBe(ANSWER);
+    expect(readRequests(remote)).toHaveLength(1);
   });
 
-  it("still reads GET when a connection delivers only unknown frames", async () => {
-    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-    writeConfig(FAKED_URL);
-    const capture = await start();
-    const tool = executable(capture);
-    const streamReady = deferred<void>();
-    let push: (frame: string) => void = () => {
-      throw new Error("workflow stream did not open");
-    };
-    const remote = fakeWorkflowFetch({
-      stream: (send) => {
-        push = send;
-        streamReady.resolve();
-      },
-      read: () => jsonResponse(200, readState({ result: DEFAULT_RESULT })),
+  it("uses GET at the original silence deadline when no recognized events arrive", async () => {
+    const remote = await server({
+      holdStream: true,
+      streams: [unknown("foreign-node", ...PROTOTYPE_NAMES)],
+      reads: [declaredOutputRead()],
     });
-    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
-    vi.stubGlobal("fetch", remote.fetch);
-    try {
-      const pending = outcome(tool);
-      await streamReady.promise;
+    install(remote.url);
+    const capture = await start();
+    const exchanges = clockedLoopback();
+    const updates: Result[] = [];
+    const pending = run(capture, undefined, (update) => updates.push(update));
+    await beforeEnd(remote.streamOpened, pending, "the stream opened");
+    await exchanges[1].opened;
+    await vi.advanceTimersByTimeAsync(0);
 
-      // Unknown frames at the silence window's midpoint must neither end the connection early nor
-      // rearm the window: the authoritative read belongs at the window's expiry, not before.
-      push(prototypeFrame("constructor") + prototypeFrame("toString") + prototypeFrame("__proto__"));
-      await vi.advanceTimersByTimeAsync(0);
-      expect(remote.reads()).toBe(0);
-
-      await vi.advanceTimersByTimeAsync(90_000);
-      expect(remote.reads()).toBe(1);
-      const result = await pending;
-      expect(result.isError).toBe(false);
-      expect(result.text).toContain("The declared output");
-    } finally {
-      await shutdownSession(capture);
-      vi.useRealTimers();
-      vi.unstubAllGlobals();
-    }
+    await vi.advanceTimersByTimeAsync(89_999);
+    expect(updates).toEqual([]);
+    await expectReadAtDeadline(exchanges, remote);
+    expect(text(await pending)).toBe(ANSWER);
+    expect(readRequests(remote)).toHaveLength(1);
   });
 });
 
-describe("workflow monitor and stop arbitration", () => {
-  it("continues the read backoff 2/4/8/16/30/30 across the hand-back", async () => {
-    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-    writeConfig(FAKED_URL);
+async function expectReadAtDeadline(exchanges: Exchanges, remote: TestEndpoint): Promise<void> {
+  expect(exchanges, "unknown names must not start an early read or reopen the stream").toHaveLength(2);
+  expect(readRequests(remote)).toHaveLength(0);
+
+  await vi.advanceTimersByTimeAsync(1);
+  expect(exchanges[2]?.path, "the original silence deadline must start an authoritative read").toBe(runPath(remote));
+}
+
+/** The first five failed reads, timed from real replies before advancing the application clock. */
+async function handBack(exchanges: Exchanges, remote: TestEndpoint, pending: Promise<Result>): Promise<Result> {
+  await beforeEnd(readReply(exchanges, remote, 1), pending, "the first read failed");
+  const start = Date.now();
+  for (const [index, gap] of [2_000, 4_000, 8_000, 16_000].entries()) {
+    const trafficBefore = exchanges.length;
+    await vi.advanceTimersByTimeAsync(gap);
+    expect(exchanges.length, `there must be a new observation at the ${gap}ms retry`).toBeGreaterThan(trafficBefore);
+    await readReply(exchanges, remote, index + 2);
+  }
+  const reads = exchanges.filter(({ method, path }) => method === "GET" && path === runPath(remote));
+  expect(reads.slice(0, 5).map(({ at }) => at - start)).toEqual([0, 2_000, 6_000, 14_000, 30_000]);
+  expect(
+    readRequests(remote)
+      .slice(0, 5)
+      .map(({ receivedAt }) => receivedAt - start),
+  ).toEqual([0, 2_000, 6_000, 14_000, 30_000]);
+  return returnedNow(pending, "the fifth failed read must return the waiter at 30s without any further clock advance");
+}
+
+describe("workflow monitor continuity", () => {
+  it("keeps the 2/4/8/16/30/30 read cadence across a degraded hand-back", async () => {
+    const remote = await server({ streams: [DISPATCH], reads: [OUTAGE] });
+    install(remote.url);
     const capture = await start();
-    const tool = executable(capture);
-    const firstRead = deferred<void>();
-    const readTimes: number[] = [];
-    let streamOpens = 0;
-    const remote = fakeWorkflowFetch({
-      stream: (_push, close) => {
-        streamOpens += 1;
-        close();
-      },
-      read: () => {
-        readTimes.push(Date.now());
-        firstRead.resolve();
-        return jsonResponse(503, { error: "Temporarily unavailable" });
-      },
-    });
-    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
-    vi.stubGlobal("fetch", remote.fetch);
-    try {
-      const pending = outcome(tool);
-      await beforeEnd(firstRead.promise, pending, "the first state read");
-      await vi.advanceTimersByTimeAsync(0);
+    const exchanges = clockedLoopback();
+    const pending = run(capture);
 
-      // Five failed reads land the hand-back at the 30s cumulative mark; the call is released
-      // while the run keeps its observation and its accumulated backoff position.
-      await pump(4, 10_000);
-      const result = await pending;
-      expect(result.isError).toBe(false);
-      expect(result.text).toMatch(/stalled|unknown|degraded/i);
+    const handed = await handBack(exchanges, remote, pending);
+    expect(text(handed)).toMatch(/unknown/i);
+    expect(await status(capture)).toMatch(/audit workflow\) running/);
 
-      const readsAtHandBack = remote.reads();
-      await pump(12, 10_000);
-      // The gaps between consecutive reads continue growing to the cap and hold it across the
-      // hand-back: a restart at the base delay shows up as a 2s gap where 30s belongs.
-      const gaps = readTimes.slice(1).map((time, index) => time - readTimes[index]!);
-      expect(gaps.slice(0, 6)).toEqual([2_000, 4_000, 8_000, 16_000, 30_000, 30_000]);
-      expect(remote.reads()).toBeGreaterThan(readsAtHandBack);
-      // No stream is opened while the last known state is not running: reads continue on backoff.
-      expect(streamOpens).toBe(1);
-    } finally {
-      await shutdownSession(capture);
-      vi.useRealTimers();
-      vi.unstubAllGlobals();
+    for (const reads of [5, 6]) {
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(
+        exchanges.filter(({ path }) => path === runPath(remote)),
+        "hand-back must carry the owed 30s delay",
+      ).toHaveLength(reads);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(exchanges.at(-1)?.path, "the capped delay must end in a read, not a new stream").toBe(runPath(remote));
+      await readReply(exchanges, remote, reads + 1);
     }
+    const timestamps = readRequests(remote).map(({ receivedAt }) => receivedAt);
+    expect(timestamps.slice(1).map((at, index) => at - timestamps[index]!)).toEqual([
+      2_000, 4_000, 8_000, 16_000, 30_000, 30_000,
+    ]);
+    expect(streamRequests(remote)).toHaveLength(1);
   });
 
-  it("reopens the stream after recovery and keeps painting the row after the call handed back", async () => {
-    write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-    writeConfig(FAKED_URL);
-    const capture = await start();
-    const tool = executable(capture);
-    expect(tool.renderResult, "Workflow must render its live result").toBeTypeOf("function");
-    const args = { workflow: "audit", prompt: "Review changes" };
-    const { state, paint } = liveViews(tool, args);
-    const firstRead = deferred<void>();
-    let streamOpens = 0;
-    const remote = fakeWorkflowFetch({
-      stream: (send, close) => {
-        streamOpens += 1;
-        send(
-          streamOpens === 1
-            ? DISPATCH + textFrame("Progress before the outage")
-            : lifecycle("node_dispatched", "recovered") + textFrame("Progress after recovery"),
-        );
-        close();
-      },
-      read: (reads) => {
-        if (reads === 1) firstRead.resolve();
-        if (reads <= 5) return jsonResponse(503, { error: "Temporarily unavailable" });
-        if (reads === 6) return jsonResponse(200, readState({ status: "running" }));
-        return jsonResponse(200, readState({ result: DEFAULT_RESULT }));
-      },
+  it("repaints the handed-back row from the recovered run", async () => {
+    const remote = await server({
+      streams: [
+        DISPATCH + textFrame("Progress before the outage"),
+        lifecycle("node_dispatched", "recovery") + textFrame("Progress on the new connection") + TERMINAL,
+      ],
+      reads: [...Array.from({ length: 5 }, () => OUTAGE), recordedResponse("read-running"), declaredOutputRead()],
     });
-    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
-    vi.stubGlobal("fetch", remote.fetch);
-    try {
-      const pending = run(tool, args, undefined, paint);
-      await beforeEnd(firstRead.promise, pending, "the first state read");
-      await pump(4, 10_000);
-      const handed = await pending;
+    install(remote.url);
+    const capture = await start();
+    const exchanges = clockedLoopback();
+    const row = resultRow(capture);
 
-      expect(handed.isError ?? false).toBe(false);
-      expect(text(handed)).toMatch(/stalled|unknown|degraded/i);
-      // The progress observed before the outage survives the hand-back on the row.
-      expect(resultView(tool, handed, args, { state })).toContain("Progress before the outage");
+    // Pi no longer submits partial results to the row once the tool waiter has returned.
+    const pending = run(capture);
+    const handed = await handBack(exchanges, remote, pending);
+    expect(text(handed)).toMatch(/unknown/i);
+    const before = row.paint(handed);
+    expect(before).toContain("Progress before the outage");
+    expect(streamRequests(remote), "the stream must not reopen before recovery GET answers running").toHaveLength(1);
 
-      // Recovery: a read that answers running reopens the stream exactly once, the new connection
-      // rebuilds the display, and the next read settles the run.
-      await pump(12, 10_000);
-      expect(streamOpens).toBe(2);
-      const status = await run(executable(capture, "AgentStatus"), {});
-      expect(text(status)).toMatch(/completed/i);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(exchanges.at(-1)?.path).toBe(runPath(remote));
+    await readReply(exchanges, remote, 6);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(exchanges.at(8)?.path, "only the running GET should have reopened the stream").toBe(
+      `${runPath(remote)}/stream`,
+    );
+    await readReply(exchanges, remote, 7);
 
-      // The row's repaint after settlement carries the progress observed after the call returned:
-      // the record is the source, not the call's returned snapshot.
-      const repainted = resultView(tool, handed, args, { state });
-      expect(repainted).toContain("Progress after recovery");
-      expect(repainted).toContain("The declared output");
-    } finally {
-      await shutdownSession(capture);
-      vi.useRealTimers();
-      vi.unstubAllGlobals();
-    }
+    expect(await status(capture)).toMatch(/audit workflow\) completed/);
+    expect(row.repaints).toEqual([`▶ recovery dispatched\nProgress on the new connection\n${ANSWER}`]);
   });
 
-  for (const acknowledgement of ["already_finished", "interrupted"] as const) {
-    it(`reconciles a non-stopped acknowledgement (${acknowledgement}) through one immediate read with the stream held`, async () => {
-      const remote = await server({
-        holdStream: true,
-        releaseStreamOn: "stopped",
-        stopOutcome: acknowledgement,
-        streams: [DEFAULT_STREAM],
-        reads: [acknowledgement === "already_finished" ? declaredOutputRead() : recordedResponse("read-interrupted")],
-      });
+  it.for([
+    {
+      label: "a rejected read",
+      response: { status: 503, body: errorBody(`Read refused: ${AUTH_ECHO}`) },
+      echo: "Read refused: Bearer [redacted]",
+    },
+    {
+      label: "an unreadable read",
+      response: { status: 200, body: JSON.stringify({ detail: `Unrecognized body: ${AUTH_ECHO}` }) },
+      echo: "Unrecognized body: Bearer [redacted]",
+    },
+  ])("redacts the remote diagnostic when $label hands the waiter back", async ({ response, echo }) => {
+    const remote = await server({ echoAuth: true, streams: [DISPATCH], reads: [response] });
+    install(remote.url, `${KEY}\t`);
+    const capture = await start();
+    const exchanges = clockedLoopback();
+
+    const handed = await handBack(exchanges, remote, run(capture));
+
+    authenticates(remote, KEY);
+    expect(handed.isError ?? false).toBe(false);
+    expect(text(handed)).toMatch(/unknown/i);
+    publishes(text(handed), echo, KEY, "the hand-back note");
+  });
+});
+
+describe("workflow stop arbitration", () => {
+  it.for([
+    { ack: "already_finished" as const, read: declaredOutputRead(), status: "completed", answer: ANSWER },
+    {
+      ack: "interrupted" as const,
+      read: stateReply({ status: "interrupted", error: "runner lost its lease" }),
+      status: "error",
+      answer: "runner lost its lease",
+    },
+  ])(
+    "reads GET on the same tick as $ack without a new stream",
+    async ({ ack, read, status: expectedStatus, answer }) => {
+      const remote = await server({ holdStream: true, stopOutcome: ack, streams: [DISPATCH], reads: [read] });
       install(remote.url);
       const capture = await start();
-      const abort = new AbortController();
-      const pending = outcome(executable(capture), undefined, abort.signal);
-      await beforeEnd(remote.streamOpened, pending, "the stream opened");
-      const streamsAtStop = streamRequests(remote).length;
+      const exchanges = clockedLoopback();
+      const esc = new AbortController();
+      const row = resultRow(capture);
+      const live = deferred<void>();
+      const pending = run(capture, esc.signal, (update) => {
+        row.paint(update);
+        live.resolve();
+      });
+      await beforeEnd(live.promise, pending, "the held stream rendered live progress");
 
-      abort.abort();
-      await remote.stopReceived;
-      // The authoritative read happens on the acknowledgement's own tick: no new SSE connection,
-      // no backoff sleep — the ack owes one GET and pays it now.
-      await vi.waitFor(() => expect(readRequests(remote)).toHaveLength(1), { timeout: 3_000 });
+      const atStop = Date.now();
+      esc.abort();
+      await consumed(exchanges, remote, 2);
+      expect(exchanges[3]?.path, "the next action on this tick must be GET, without waiting on SSE").toBe(
+        runPath(remote),
+      );
+      await consumed(exchanges, remote, 3);
       const result = await pending;
 
-      expect(streamRequests(remote)).toHaveLength(streamsAtStop);
-      expect(stopRequests(remote)).toHaveLength(1);
-      const status = await run(executable(capture, "AgentStatus"), {});
-      expect(text(status)).toContain("audit");
-      if (acknowledgement === "already_finished") {
-        expect(result.isError).toBe(false);
-        expect(result.text).toContain("The declared output");
-        expect(text(status)).toMatch(/completed/i);
-      } else {
-        expect(result.isError).toBe(true);
-        expect(result.text).toMatch(/interrupt/i);
-        expect(text(status)).toMatch(/error/i);
-      }
-    });
-  }
+      expect(wire(remote)).toEqual([
+        "POST /api/workflows",
+        `GET ${runPath(remote)}/stream`,
+        `POST ${runPath(remote)}/stop`,
+        `GET ${runPath(remote)}`,
+      ]);
+      expect(readRequests(remote)[0]?.receivedAt).toBe(atStop);
+      expect(result.isError ?? false).toBe(expectedStatus === "error");
+      expect(text(result)).toContain(answer);
+      expect(await status(capture)).toMatch(new RegExp(`audit workflow\\) ${expectedStatus}`));
+      expect(row.repaints).toHaveLength(1);
+    },
+  );
 
-  it("keeps a settled run's terminal state when a stop arrives after it", async () => {
-    // The read-before-stop order at the record boundary: GET's terminal state applied first is the
-    // record's state, the later stop is refused without a request, and nothing settles twice.
-    const remote = await server();
+  it("skips an owed read delay for a non-stopped acknowledgement", async () => {
+    const remote = await server({
+      streams: [DISPATCH],
+      reads: [OUTAGE, declaredOutputRead()],
+      stopOutcome: "already_finished",
+    });
     install(remote.url);
     const capture = await start();
+    const exchanges = clockedLoopback();
+    const esc = new AbortController();
+    const pending = run(capture, esc.signal);
+    await beforeEnd(readReply(exchanges, remote, 1), pending, "the failed GET started its first backoff");
 
-    const result = await run(executable(capture));
-    expect(text(result)).toContain("The declared output");
-
-    const id = listedRunId(await run(executable(capture, "AgentStatus"), {}));
-    const stop = await outcome(executable(capture, "StopAgent"), { agent_id: id });
-
-    expect(stop.isError).toBe(false);
-    expect(stop.text).toMatch(/already/i);
-    expect(stopRequests(remote)).toHaveLength(0);
-    const after = await run(executable(capture, "AgentStatus"), {});
-    expect(text(after)).toMatch(/completed/i);
-    expect(text(after)).not.toMatch(/stopped/i);
-  });
-});
-
-describe("workflow disposal", () => {
-  it("releases the waiter with an honest note and publishes nothing (mid-backoff)", async () => {
-    await disposalCase("mid-backoff");
+    const atStop = Date.now();
+    esc.abort();
+    await consumed(exchanges, remote, 3);
+    expect(exchanges[4]?.path, "the owed delay must not defer the authoritative read").toBe(runPath(remote));
+    expect(text(await pending)).toBe(ANSWER);
+    expect(readRequests(remote).map(({ receivedAt }) => receivedAt)).toEqual([atStop, atStop]);
+    expect(streamRequests(remote)).toHaveLength(1);
   });
 
-  it("releases the waiter with an honest note and cancels the in-flight stop's deadline (stop in flight)", async () => {
-    await disposalCase("stop in flight");
-  });
-
-  it("ends observation at shutdown without publishing a completion (stream open)", async () => {
-    const remote = await server({ holdStream: true });
+  it("applies the stopped acknowledgement when an unanswered terminal GET is cancelled", async () => {
+    const remote = await server({
+      streams: [DISPATCH + TERMINAL],
+      reads: [stateReply({ status: "failed", error: "terminated" })],
+      holdRead: true,
+    });
     install(remote.url);
-    const notices: string[] = [];
-    const capture = await start(true, notices);
-    const updates: WorkflowResult[] = [];
-    const pending = run(executable(capture), undefined, undefined, (update) => updates.push(update));
-    await beforeEnd(remote.streamOpened, pending, "the stream opened");
-    const updatesAtShutdown = updates.length;
-    const requestsAtShutdown = remote.requests.length;
+    const capture = await start();
+    const exchanges = clockedLoopback();
+    const esc = new AbortController();
+    const row = resultRow(capture);
+    const partial = deferred<void>();
+    const pending = run(capture, esc.signal, (update) => {
+      row.paint(update);
+      partial.resolve();
+    });
+    await beforeEnd(partial.promise, pending, "progress was recorded");
+    await beforeEnd(remote.requestAt(2), pending, "a GET was in flight");
+    await exchanges[2].opened;
 
-    await shutdownSession(capture);
-    await remote.streamSocketClosed();
-    const report = text(await pending);
+    esc.abort();
+    await remote.stopReceived;
+    remote.releaseRead();
+    const stopped = await pending;
+    await exchanges[2].bodyRead;
+    await vi.advanceTimersByTimeAsync(0);
 
-    expectHonestShutdownNote(report, notices);
-    // No terminal publication: no update from the disposal path, and the local socket is gone.
-    expect(updates).toHaveLength(updatesAtShutdown);
-    expect(remote.requests).toHaveLength(requestsAtShutdown);
+    expect(wire(remote)).toEqual([
+      "POST /api/workflows",
+      `GET ${runPath(remote)}/stream`,
+      `GET ${runPath(remote)}`,
+      `POST ${runPath(remote)}/stop`,
+    ]);
+    expect(await status(capture)).toMatch(/audit workflow\) stopped/);
+    expect(text(stopped)).toMatch(/acknowledged the stop/i);
+    expect(row.repaints).toEqual([`▶ analysis dispatched\n${text(stopped)}`]);
+    expect(row.repaints.join("\n")).not.toContain("terminated");
+  });
+
+  it("keeps the terminal record when Stop arrives after an applied GET", async () => {
+    const remote = await server({ streams: [DISPATCH + TERMINAL], reads: [declaredOutputRead()] });
+    install(remote.url);
+    const capture = await start();
+    const row = resultRow(capture);
+
+    const result = await run(capture, undefined, (update) => row.paint(update));
+    const applied = await status(capture);
+    const sent = wire(remote);
+    const stopped = await stop(capture, runId(applied));
+
+    // The arbiter has already settled this run. There is no concurrent POST to manufacture a late ack from.
+    expect(stopped).toMatch(/already completed/i);
+    expect(await status(capture)).toBe(applied);
+    expect(text(result)).toBe(ANSWER);
+    expect(row.repaints).toEqual([`▶ analysis dispatched\n${ANSWER}`]);
+    expect(wire(remote)).toEqual(sent);
+  });
+
+  it("keeps a refused stop retryable after handing the waiter back", async () => {
+    const remote = await server({
+      holdStream: true,
+      streams: [DISPATCH],
+      echoAuth: true,
+      stopRejection: [{ status: 503, body: errorBody(`Stop refused: ${AUTH_ECHO}`) }],
+    });
+    install(remote.url, `${KEY} `);
+    const capture = await start();
+    const row = resultRow(capture);
+    const esc = new AbortController();
+    const pending = run(capture, esc.signal);
+    await beforeEnd(remote.streamOpened, pending, "the stoppable run is streaming");
+    const id = runId(await status(capture));
+
+    await stop(capture, id);
+    const handed = await pending;
+    publishes(text(handed), "Stop refused: Bearer [redacted]", KEY, "the stop-failed note");
+    expect(text(handed)).toMatch(/stop failed.*unknown/i);
+    expect(await status(capture)).toMatch(/audit workflow\) running/);
+    row.paint(handed);
+
+    esc.abort();
+    expect(stopRequests(remote)).toHaveLength(1);
+    await stop(capture, id);
+    expect(await row.invalidated).toMatch(/acknowledged the stop/i);
+    expect(await status(capture)).toMatch(/audit workflow\) stopped/);
+    // The second request is explicit; the abandoned foreground waiter's Esc must not contribute a stop.
+    expect(stopRequests(remote)).toHaveLength(2);
+    authenticates(remote, KEY);
   });
 });
 
-/** The padded-key case as one behavior: the sent value is the trimmed key, the echoed value is redacted. */
-async function runPaddedKeyCase(padding: string): Promise<void> {
-  const key = `${padding}example-key${padding}`;
-  const remote = await server({ echoAuth: true });
-  install(remote.url, key);
-  const logs = captureConsole();
+describe("workflow session shutdown", () => {
+  it.for(["an open stream", "read backoff", "an unanswered stop"] as const)(
+    "ends local observation during %s",
+    async (window) => {
+      const remote = await server({
+        holdStream: window !== "read backoff",
+        holdStop: window === "an unanswered stop",
+        streams: [DISPATCH],
+        reads: [OUTAGE],
+      });
+      install(remote.url);
+      const notices: string[] = [];
+      const messages: unknown[] = [];
+      const capture = await start(notices);
+      capture.api.sendMessage.mockImplementation((message: unknown) => messages.push(message));
+      const exchanges = clockedLoopback();
+      const esc = new AbortController();
+      const updates: Result[] = [];
+      const row = resultRow(capture);
+      const live = deferred<void>();
+      const pending = run(capture, esc.signal, (update) => {
+        updates.push(update);
+        row.paint(update);
+        live.resolve();
+      });
+      await beforeEnd(live.promise, pending, "the active run rendered progress");
+      if (window === "read backoff") {
+        await readReply(exchanges, remote, 1);
+        expect(readRequests(remote)).toHaveLength(1);
+      }
+      if (window === "an unanswered stop") {
+        esc.abort();
+        await beforeEnd(remote.stopReceived, pending, "the stop was sent but not acknowledged");
+        expect(stopRequests(remote)).toHaveLength(1);
+      }
+      expect(vi.getTimerCount(), "the session must have virtual work to cancel").toBeGreaterThan(0);
+      const published = [...updates];
+      const sent = wire(remote);
+      const attempts = exchanges.length;
 
-  const result = await outcome(executable(await start()));
-
-  // The wire strips trailing header whitespace, so the padded form is not what the endpoint sees:
-  // the effective value is the trimmed key, on both sides of the boundary.
-  expect(createRequest(remote).authorization).toBe("Bearer example-key");
-  expect(result.isError).toBe(true);
-  expect(result.text).toContain("[redacted]");
-  expect(result.text).not.toContain("example-key");
-  expect(logs.join("\n")).not.toContain("example-key");
-}
-
-/** The one honest shutdown note, on both surfaces it reaches: observation ended, outcome unknown —
- * never a claim about whether a stop was sent, landed, or failed. */
-function expectHonestShutdownNote(report: string, notices: string[]): void {
-  expect(report).toMatch(/shut ?down|session/i);
-  expect(report).toMatch(/unknown/i);
-  expect(report).not.toMatch(/(?:was not|nothing was) stopped/i);
-  expect(notices.join("\n")).toMatch(/watched|observ/i);
-  expect(notices.join("\n")).toMatch(/unknown/i);
-  expect(notices.join("\n")).not.toMatch(/nothing was stopped|left running remotely/i);
-}
-
-/**
- * The two fake-clock disposal windows share one shape: pending work when the session ends, the
- * waiter released with the honest note, no update, no new request, and no scheduled work left.
- */
-async function disposalCase(window: "mid-backoff" | "stop in flight"): Promise<void> {
-  write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-  writeConfig(FAKED_URL);
-  const notices: string[] = [];
-  const capture = await start(true, notices);
-  const tool = executable(capture);
-  const updates: WorkflowResult[] = [];
-  const firstRead = deferred<void>();
-  const streamOpened = deferred<void>();
-  const heldStop = deferred<Response>();
-  const remote = fakeWorkflowFetch({
-    stream: (send, close) => {
-      send(DISPATCH);
-      streamOpened.resolve();
-      close();
-    },
-    read: () => {
-      firstRead.resolve();
-      return jsonResponse(503, { error: "Temporarily unavailable" });
-    },
-    stop: (signal) =>
-      new Promise<Response>((resolve, reject) => {
-        signal?.addEventListener("abort", () => reject(new Error("The request was aborted")), { once: true });
-        void heldStop.promise.then(resolve, reject);
-      }),
-  });
-  vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
-  vi.stubGlobal("fetch", remote.fetch);
-  const stopCount = () => remote.requests().filter((request) => request.url.endsWith("/stop")).length;
-  try {
-    const abort = new AbortController();
-    const pending = run(tool, undefined, abort.signal, (update) => updates.push(update));
-    await beforeEnd(streamOpened.promise, pending, "the stream opened");
-    if (window === "stop in flight") {
-      abort.abort();
+      await shutdown();
       await vi.advanceTimersByTimeAsync(0);
-      expect(stopCount(), "the stop is on the wire and unanswered").toBe(1);
-    } else {
-      // Three seconds in: past the first failed read and its 2s retry, inside the growing backoff.
-      await beforeEnd(firstRead.promise, pending, "the first state read");
-      await pump(1, 3_000);
-    }
 
-    const updatesAtShutdown = updates.length;
-    const requestsAtShutdown = remote.requests().length;
-    await shutdownSession(capture);
-    const report = text(await pending);
+      const released = await returnedNow(pending, "the waiter must return without a remote response or advancing time");
+      expect.soft(text(released)).toMatch(/no longer watched.*(?:outcome|state).*unknown/i);
+      expect.soft(notices.join("\n")).toMatch(/no longer watched.*(?:outcome|state).*unknown/i);
+      expect
+        .soft(`${text(released)} ${notices.join("\n")}`)
+        .not.toMatch(/left running remotely|nothing was stopped|was not stopped/i);
+      expect.soft(updates, "disposal must not publish a tool update").toEqual(published);
+      expect.soft(row.repaints, "disposal must not repaint a terminal result").toEqual([]);
+      expect.soft(messages, "disposal must not deliver a completion into the old session").toEqual([]);
+      expect
+        .soft(vi.getTimerCount(), "no workflow timer may survive disposal, even before an outstanding stop replies")
+        .toBe(0);
 
-    expectHonestShutdownNote(report, notices);
-    // No terminal publication into the dead session, and no work scheduled for later.
-    expect(updates).toHaveLength(updatesAtShutdown);
-    expect(vi.getTimerCount()).toBe(0);
-    // A stop that was already on the wire keeps its bytes; its late acknowledgement changes nothing.
-    heldStop.resolve(jsonResponse(200, stopAck("stopped", REMOTE_ID)));
-    await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(300_000);
-    expect(remote.requests()).toHaveLength(requestsAtShutdown);
-    expect(remote.requests().length).toBe(requestsAtShutdown);
-    expect(updates).toHaveLength(updatesAtShutdown);
-  } finally {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-  }
-}
+      const atRelease = [...updates];
+      if (window === "an open stream") await remote.streamSocketClosed();
+      remote.releaseStop();
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(exchanges, "no local retry, read, or extra stop may be started after shutdown").toHaveLength(attempts);
+      expect(wire(remote)).toEqual(sent);
+      expect(updates, "a late response cannot update the disposed call").toEqual(atRelease);
+      expect(messages).toEqual([]);
+    },
+  );
+});

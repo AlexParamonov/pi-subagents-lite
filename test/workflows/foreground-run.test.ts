@@ -49,6 +49,7 @@ import {
   REPLAY_COMPLETED_STREAM,
   REPLAY_DECLARED_STREAM,
   REPLAY_FAILED_STREAM,
+  stateReply,
   stopAck,
   stopRequests,
   streamRequests,
@@ -1612,7 +1613,7 @@ describe("workflow endpoint and input errors", () => {
     it(`rejects an ${scenario} endpoint without contacting another server`, async () => {
       const remote = await server();
       write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
-      const offender = scenario === "unknown-default" ? "missing-default" : "not a valid URL";
+      const offender = scenario === "unknown-default" ? "missing-default" : "invalid";
       write(
         join(ws.agentDir, "subagents-lite.json"),
         JSON.stringify({
@@ -1631,6 +1632,10 @@ describe("workflow endpoint and input errors", () => {
 
       expect(result.isError).toBe(true);
       expect(result.text).toContain(offender);
+      if (scenario === "invalid-url") {
+        expect(result.text).toContain("workflows.endpoints[invalid].url");
+        expect(result.text).not.toContain("not a valid URL");
+      }
       expect(remote.requests).toEqual([]);
     });
   }
@@ -1783,13 +1788,13 @@ describe("workflow cancellation and shutdown", () => {
 
   it("settles an already-finished stop from GET rather than a stopped label", async () => {
     // The stop reaches the endpoint after the run's terminal event was journaled, so the ack is
-    // `already_finished` and only GET carries the terminal state: the live connection never
-    // delivered that event, and only an acknowledged `stopped` outranks GET (US-18).
+    // `already_finished` and only GET carries the terminal state. The original held stream
+    // never delivered a terminal frame, and only an acknowledged `stopped` outranks GET (US-18).
     const remote = await server({
       holdStream: true,
       stopOutcome: "already_finished",
-      streams: [DEFAULT_STREAM],
-      states: [readState({ status: "failed", error: "Runner lost its lease" })],
+      streams: [DISPATCH, TERMINAL],
+      reads: [stateReply({ status: "failed", error: "Runner lost its lease" })],
     });
     install(remote);
     const capture = await start();
@@ -1887,10 +1892,9 @@ describe("workflow cancellation and shutdown", () => {
       await vi.advanceTimersByTimeAsync(300_000);
 
       expect(report).toMatch(/shutdown|session/i);
-      // A reload ends this session's observation and sends nothing: a notice that calls the run a
-      // killed agent is a false claim about the remote side, and the record does not outlive it.
-      expect(notices.join("\n")).toMatch(/left running remotely/i);
-      expect(notices.join("\n")).not.toMatch(/killed/i);
+      // A reload ends observation. It says nothing about the remote outcome.
+      expect(notices.join("\n")).toMatch(/no longer watched.*unknown/i);
+      expect(notices.join("\n")).not.toMatch(/killed|nothing was stopped|left running remotely/i);
       expect(remote.requests()).toEqual(atShutdown);
       expect(views).toHaveLength(viewsAtShutdown);
       expect(views.join("\n")).not.toContain("text after shutdown");
