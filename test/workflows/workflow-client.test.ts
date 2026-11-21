@@ -240,8 +240,8 @@ describe("create", () => {
   }
 
   // The create gate judges the create response; `monitor` and `stop` take an id from their caller.
-  // The one assembly both use keeps any id inside its own path segment, so a route can never be
-  // walked out of, whatever the id's spelling.
+  // The one assembly both use keeps any id except a dot segment inside its own path segment, and the
+  // dot segment is refused outright below.
   it("routes an id handed straight to monitor or stop as one segment on every follow-up route", async () => {
     const targets: string[] = [];
     const transport: typeof fetch = async (input) => {
@@ -265,6 +265,31 @@ describe("create", () => {
       `${FAKED_URL}/api/workflows/wf%201%2F2/stop`,
     ]);
   });
+
+  // The encoder leaves `.` and `..` alone, and the URL parser deletes such a segment: `..` would put
+  // the request on another route of the endpoint. An empty id routes the collection route and a lone
+  // surrogate has no encoding. A refusal is not a failed read, so it owes no retry and no backoff.
+  it.for([{ id: "" }, { id: "." }, { id: ".." }, { id: "wf\ud800" }])(
+    "refuses to follow the id $id without sending a request",
+    async ({ id }) => {
+      const targets: string[] = [];
+      const transport: typeof fetch = async (input) => {
+        targets.push(String(input instanceof Request ? input.url : input));
+        return jsonResponse(200, readState());
+      };
+      const run = await client(FAKED_URL, "example-private-key", transport);
+
+      await expect(run.monitor(id, watcher().view)).resolves.toEqual({
+        status: "error",
+        error: expect.stringContaining("names no run"),
+      });
+      await expect(run.stop(id)).resolves.toEqual({
+        ok: false,
+        error: expect.stringContaining("did not send the stop request"),
+      });
+      expect(targets).toEqual([]);
+    },
+  );
 
   it("keeps the file's own prompt vars next to the injected working directory", async () => {
     const server = await remote();

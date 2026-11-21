@@ -280,23 +280,25 @@ describe("the effective credential", () => {
   }
 });
 
-// `%` and `+` are the two path characters a transport or an intermediary can turn into another spelling
-// of the same bytes, so a base carrying either refuses: from a base without them every byte this client
-// puts in a request target reaches the endpoint as its own bytes (US-35).
-describe("a base whose path carries a percent escape or a plus", () => {
+// `%` and `+` anywhere in the base - host or path - are the two characters a transport or an
+// intermediary can turn into another spelling of the same bytes, so a base carrying either refuses:
+// from a base without them every byte this client puts in a request target reaches the endpoint as its
+// own bytes (US-35). The URL parser percent-encodes a non-ASCII path itself, so that too is refused.
+describe("a base that needs a percent escape or a plus to be written", () => {
   for (const url of [
     "http://release.invalid:4001/k%3C7%3E/v1",
     "http://release.invalid:4001/gateway/double%253C7%253E",
     "http://release.invalid:4001/a%zz/v1",
     "http://release.invalid:4001/x/a+b/y",
     "http://release.invalid:4001/x/%2Bb/y",
+    "http://release.invalid:4001/M\u00fcller/v1",
   ]) {
     it(`refuses ${url} whatever credential it carries, naming the url and quoting no URL value`, () => {
       const error = expectBrokenEndpointRefusal({ url, apiKey: "release-key" });
 
       expect(error).toContain("workflows.endpoints[broken].url");
       expect(error).toMatch(/percent|plus/i);
-      for (const value of ["release.invalid", "4001", "/gateway", "/x/", "release-key", "%", "+"]) {
+      for (const value of ["release.invalid", "4001", "/gateway", "/x/", "release-key", "%", "+", "M\u00fcller"]) {
         expect(error).not.toContain(value);
       }
     });

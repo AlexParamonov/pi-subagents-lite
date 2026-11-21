@@ -85,9 +85,11 @@ function effectiveCredential(declared: unknown): Credential {
 }
 
 /**
- * Every byte the client puts in a request target is a byte no transport or intermediary rewrites, so a
- * credential can appear in a target, or in any echo of it, only as its literal bytes - which the
- * publisher's needle always matches.
+ * The accepted base and the accepted run id are both `%`-free and `+`-free, so every byte the client
+ * puts in a request target is one no transport or intermediary rewrites: a credential cannot reach
+ * this target except as its literal bytes, which the publisher's needle always matches. Text the
+ * endpoint authors is outside this - a body that quotes the credential in some encoding is content
+ * the endpoint chose, and no rule on the target can recognise it.
  */
 export function targetCarriesCredential(target: string, apiKey: string): boolean {
   return target.includes(apiKey);
@@ -124,7 +126,8 @@ function validatedBase(value: string): Minted {
   // feeds stays literal. Checked on the assembled base, because the parser itself decodes percent
   // escapes in a host (`http://a%2Bb/` arrives here as the host `a+b`).
   const base = `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, "");
-  if (/%|\+/.test(base)) return { ok: false, problem: "carries a percent escape or a plus" };
+  if (/%|\+/.test(base))
+    return { ok: false, problem: "cannot be written as a URL path without a percent escape or a plus" };
   return { ok: true, url: base as ValidatedBase };
 }
 

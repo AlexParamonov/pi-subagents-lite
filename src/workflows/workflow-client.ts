@@ -72,6 +72,11 @@ export type WorkflowOutcome =
 /** The three answers the endpoint gives to a stop request. */
 const STOP_STATUSES = ["stopped", "already_finished", "interrupted"] as const;
 
+/** Why an id naming no run is refused before a request is sent; see `segmentOf`. */
+const ROUTELESS =
+  "it has no path segment: an empty id routes the collection route, `.` and `..` are deleted by the " +
+  "URL parser, and a lone surrogate has no encoding";
+
 type StopStatus = (typeof STOP_STATUSES)[number];
 
 /** The endpoint's three-way stop acknowledgement, or the reason it did not acknowledge. */
@@ -255,6 +260,11 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     },
 
     async monitor(workflowId, view): Promise<WorkflowOutcome> {
+      // Refused here rather than read: an id that names no route cannot be fixed by retrying, so it
+      // must not enter the backoff a failed read earns. `create` gates its own id already; this is
+      // the entry that takes an id from elsewhere.
+      if (segmentOf(workflowId) === null)
+        return { status: "error", error: fault("was given an id that names no run", ROUTELESS) };
       // The delay a failed read owed is carried, not cancelled: a re-entry after a hand-back waits
       // it out before its first read. Only a non-`stopped` stop acknowledgement skips the delay.
       if (bypassNextDelay) bypassNextDelay = false;
@@ -301,6 +311,8 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     },
 
     async stop(workflowId, signal): Promise<WorkflowStop> {
+      if (segmentOf(workflowId) === null)
+        return { ok: false, error: fault("did not send the stop request", ROUTELESS) };
       // Any stop request takes the stream away: the run's own state after a stop is whatever the
       // next authoritative read says.
       lastKnown = "unknown";
@@ -535,6 +547,9 @@ function runIds(body: string): { workflowId: string; taskId: string } | null {
 /**
  * The three routes one run is followed on. One assembly serves the requests and the admission that
  * gates them, so a check of a run's target cannot fall behind the target actually sent.
+ *
+ * Precondition: the id is `segmentOf`-routable. Both entries that take an id from elsewhere
+ * (`monitor`, `stop`) refuse otherwise, and `create` gates the id it read from the endpoint.
  */
 function runRoutes(workflowId: string): { read: Route; stream: Route; stop: Route } {
   const segment = encodeURIComponent(workflowId);
@@ -547,20 +562,26 @@ function runRoutes(workflowId: string): { read: Route; stream: Route; stop: Rout
 
 /**
  * Whether an id arrives as the bytes its path segment travels as. A segment `encodeURIComponent`
- * changes is a spelling a forwarding hop can rewrite, a dot segment walks out of the run's own route
- * once Fetch normalizes it, and an unpaired surrogate has no encoding. The empty check is not
- * reachable through `create`, which reads the id through `field` (non-empty by construction); it is
- * here because an empty segment would route the collection route, and a later caller that admits an
- * id from elsewhere must not have to re-derive that fact.
+ * changes is a spelling a forwarding hop can rewrite, so `create` refuses it. The empty segment is
+ * not reachable through `create`, which reads the id through `field` (non-empty by construction);
+ * it is refused because a later caller that admits an id from elsewhere must not re-derive that an
+ * empty segment routes the collection route.
  */
 function literalSegment(id: string): boolean {
+  return segmentOf(id) === id;
+}
+
+/** The id as its path segment travels, or nothing for an id that names no route: an empty segment
+ * routes the collection route, `.` and `..` are deleted by the URL parser (the encoder leaves both
+ * alone), and a lone surrogate has no encoding. */
+function segmentOf(id: string): string | null {
   let encoded: string;
   try {
     encoded = encodeURIComponent(id);
   } catch {
-    return false;
+    return null;
   }
-  return encoded === id && encoded !== "" && encoded !== "." && encoded !== "..";
+  return encoded === "" || encoded === "." || encoded === ".." ? null : encoded;
 }
 
 function parseError(body: string): string | null {

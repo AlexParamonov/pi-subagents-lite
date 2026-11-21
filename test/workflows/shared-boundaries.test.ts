@@ -576,8 +576,8 @@ describe("workflow credentials", () => {
     },
   );
 
-  // A percent escape or a plus in the configured path is refused on the base alone: those are the two
-  // path characters a hop can rewrite, so a base carrying either cannot promise a literal target.
+  // A percent escape or a plus anywhere in the configured base is refused on the base alone: those are
+  // the two characters a hop can rewrite, so a base carrying either cannot promise a literal target.
   it.for([
     { path: "/gateway/double%253C7%253E", key: "double<7>" },
     { path: "/gateway/a+b", key: "a b" },
@@ -601,7 +601,7 @@ describe("workflow credentials", () => {
       expect
         .soft(
           refusal.text.includes(
-            `"release-gateway" (workflows.endpoints[release-gateway].url) carries a percent escape or a plus`,
+            `"release-gateway" (workflows.endpoints[release-gateway].url) cannot be written as a URL path without a percent escape or a plus`,
           ),
           "the refusal must name the url setting alone and its problem",
         )
