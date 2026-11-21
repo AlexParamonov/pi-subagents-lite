@@ -120,7 +120,12 @@ describe("the session's claim on a workflow run", () => {
     await manager.dispose();
     manager.settleWorkflowRun(record, "stopped", "A path that reached a dead session");
 
-    const gate = await Promise.race([record.execution.promise!.then(() => "opened"), "pending"]);
+    // The fallback must wait a whole task: a bare value is adopted one hop before an already-resolved
+    // gate is, so it would report "pending" whether or not the gate had opened.
+    const gate = await Promise.race([
+      record.execution.promise!.then(() => "opened"),
+      new Promise<string>((resolve) => setTimeout(resolve, 0, "pending")),
+    ]);
     expect(gate).toBe("pending");
   });
 });

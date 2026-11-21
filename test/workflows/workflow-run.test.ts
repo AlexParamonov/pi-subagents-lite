@@ -741,7 +741,12 @@ describe("shutdown releases without publishing", () => {
     expect(text(result)).not.toMatch(/left running remotely|nothing was stopped|was not stopped/i);
     expect(record.lifecycle.status, "shutdown is not a settlement").toBe("running");
     expect(shown.views, "nothing is published into a session that is gone").toEqual([]);
-    const gate = await Promise.race([record.execution.promise!.then(() => "opened"), "pending"]);
+    // A bare fallback is adopted one hop before the gate's own reaction runs, so only a wait that
+    // spans a whole task can tell an open gate from a dropped one.
+    const gate = await Promise.race([
+      record.execution.promise!.then(() => "opened"),
+      new Promise<string>((resolve) => setTimeout(resolve, 0, "pending")),
+    ]);
     expect(gate, "the gate opens for nobody: the release came from the note").toBe("pending");
   });
 
