@@ -9,6 +9,7 @@ import "./manager-mocks.js";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { AgentManager } from "../../src/agents/agent-manager.js";
 import type { AgentRecord, WorkflowRunInfo } from "../../src/types.js";
+import { expectGatePending } from "../workflows/gate-assertions.js";
 
 const WORKFLOW: WorkflowRunInfo = {
   name: "audit",
@@ -111,7 +112,7 @@ describe("the session's claim on a workflow run", () => {
     expect(onEnd).not.toHaveBeenCalled();
   });
 
-  it("drops the gate of a run the session outlives, without opening it", async () => {
+  it("drops a live run's gate at session shutdown without opening it", async () => {
     // A settlement path that somehow still holds the record must find no gate to speak into: the
     // resolver is dropped at dispose, never opened, so a dead session receives no completion.
     const manager = new AgentManager();
@@ -120,13 +121,7 @@ describe("the session's claim on a workflow run", () => {
     await manager.dispose();
     manager.settleWorkflowRun(record, "stopped", "A path that reached a dead session");
 
-    // The fallback must wait a whole task: a bare value is adopted one hop before an already-resolved
-    // gate is, so it would report "pending" whether or not the gate had opened.
-    const gate = await Promise.race([
-      record.execution.promise!.then(() => "opened"),
-      new Promise<string>((resolve) => setTimeout(resolve, 0, "pending")),
-    ]);
-    expect(gate).toBe("pending");
+    await expectGatePending(record.execution.promise!);
   });
 });
 

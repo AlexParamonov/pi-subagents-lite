@@ -17,6 +17,7 @@ import type {
   WorkflowView,
 } from "../../src/workflows/workflow-client.js";
 import { mintEndpoint } from "./fixtures.js";
+import { expectGatePending } from "./gate-assertions.js";
 
 const ENDPOINT = mintEndpoint("http://127.0.0.1:4100");
 const KEY = "sekrit-endpoint-value";
@@ -741,13 +742,7 @@ describe("shutdown releases without publishing", () => {
     expect(text(result)).not.toMatch(/left running remotely|nothing was stopped|was not stopped/i);
     expect(record.lifecycle.status, "shutdown is not a settlement").toBe("running");
     expect(shown.views, "nothing is published into a session that is gone").toEqual([]);
-    // A bare fallback is adopted one hop before the gate's own reaction runs, so only a wait that
-    // spans a whole task can tell an open gate from a dropped one.
-    const gate = await Promise.race([
-      record.execution.promise!.then(() => "opened"),
-      new Promise<string>((resolve) => setTimeout(resolve, 0, "pending")),
-    ]);
-    expect(gate, "the gate opens for nobody: the release came from the note").toBe("pending");
+    await expectGatePending(record.execution.promise!, "the release came from the note, not the gate");
   });
 
   it("releases the run whose stop is in flight and applies nothing that arrives after", async () => {
