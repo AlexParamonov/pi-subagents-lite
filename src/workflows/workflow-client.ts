@@ -85,11 +85,12 @@ type Answer =
 export function createWorkflowClient(endpoint: WorkflowEndpoint, options: WorkflowClientOptions = {}): WorkflowClient {
   const transport = options.fetch ?? fetch;
   const key = endpoint.apiKey;
-  const base = endpoint.url.replace(/\/+$/, "");
+  const base = endpoint.url;
   const published = createPublicText(key);
 
-  function url(path: string): string {
-    return `${base}${path}`;
+  /** One route of the run's validated base - never an absolute path resolved against it. */
+  function url(route: string): string {
+    return `${base}${route}`;
   }
 
   /** A failure named by the endpoint it happened against, in text safe to publish. */

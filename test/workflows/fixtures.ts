@@ -23,6 +23,8 @@ import { dirname, join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { vi } from "vite-plus/test";
+import { resolveWorkflowEndpoint } from "../../src/workflows/endpoints.js";
+import type { WorkflowEndpoint } from "../../src/workflows/endpoints.js";
 
 interface EndpointRequest {
   method: string;
@@ -536,6 +538,16 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
     },
   };
   return endpoint;
+}
+
+/** The only way a test gets an endpoint: resolution mints the request base, nothing casts it. */
+export function mintEndpoint(url: string, apiKey?: string): WorkflowEndpoint {
+  const resolution = resolveWorkflowEndpoint(
+    { endpoints: { local: { url, ...(apiKey ? { apiKey } : {}) } }, defaultEndpoint: "local" },
+    "local",
+  );
+  if (!resolution.ok) throw new Error(`the fixture endpoint ${JSON.stringify(url)} must resolve: ${resolution.error}`);
+  return resolution.endpoint;
 }
 
 /** The requests this endpoint served for one of the client's four operations, under its prefix. */

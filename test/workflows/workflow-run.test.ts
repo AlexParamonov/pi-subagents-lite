@@ -16,11 +16,11 @@ import type {
   WorkflowStop,
   WorkflowView,
 } from "../../src/workflows/workflow-client.js";
-import type { WorkflowEndpoint } from "../../src/workflows/endpoints.js";
+import { mintEndpoint } from "./fixtures.js";
 
-const ENDPOINT: WorkflowEndpoint = { name: "local", url: "http://127.0.0.1:4100" };
+const ENDPOINT = mintEndpoint("http://127.0.0.1:4100");
 const KEY = "sekrit-endpoint-value";
-const WITH_KEY: WorkflowEndpoint = { ...ENDPOINT, apiKey: KEY };
+const WITH_KEY = mintEndpoint("http://127.0.0.1:4100", KEY);
 const REMOTE_ID = "wf-remote-1";
 const DECLARED = { text: "The declared output", termination_reason: "final_answer", usage: {} };
 
