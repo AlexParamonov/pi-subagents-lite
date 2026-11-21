@@ -30,6 +30,7 @@ import {
   fakeWorkflowFetch,
   jsonResponse,
   lifecycle,
+  mintEndpoint,
   progressFrame,
   readRequests,
   readState,
@@ -50,7 +51,6 @@ import {
   type TestEndpoint,
 } from "./fixtures.js";
 import type { WorkflowCreate, WorkflowOutcome, WorkflowView } from "../../src/workflows/workflow-client.js";
-import type { WorkflowEndpoint } from "../../src/workflows/endpoints.js";
 import type { WorkflowDisplayItem } from "../../src/workflows/stream-view.js";
 
 let servers: TestEndpoint[] = [];
@@ -70,8 +70,7 @@ async function remote(options: EndpointOptions = {}): Promise<TestEndpoint> {
 
 async function client(url: string, apiKey?: string, fetchImpl?: typeof fetch) {
   const { createWorkflowClient } = await import("../../src/workflows/workflow-client.js");
-  const endpoint: WorkflowEndpoint = { name: "local", url, ...(apiKey ? { apiKey } : {}) };
-  return createWorkflowClient(endpoint, fetchImpl ? { fetch: fetchImpl } : {});
+  return createWorkflowClient(mintEndpoint(url, apiKey), fetchImpl ? { fetch: fetchImpl } : {});
 }
 
 /** The parsed Workflow file, as discovery hands it over: graph keys plus the client-owned one. */
@@ -98,6 +97,30 @@ function error(run: WorkflowCreate): string {
   if (run.ok) throw new Error(`expected the create to fail, got ${JSON.stringify(run)}`);
   return run.error;
 }
+
+// Every route is the one validated base plus its own path: joining an absolute path against a base
+// re-roots at the host, which would send an authenticated request where no config named it.
+describe("request routes", () => {
+  it("builds all four routes under the base's path prefix", async () => {
+    const socket = fakeWorkflowFetch({
+      stream: (_frame, close) => close(),
+      read: () => jsonResponse(200, readState()),
+    });
+    const run = await client("http://release.invalid:4001/gateway/workflows-v1/", undefined, socket.fetch);
+
+    await run.create(request());
+    await expect(run.monitor(REMOTE_ID, watcher().view)).resolves.toEqual({ status: "completed", result: null });
+    await run.stop(REMOTE_ID);
+
+    const base = "http://release.invalid:4001/gateway/workflows-v1";
+    expect(socket.requests().map(({ method, url }) => `${method} ${url}`)).toEqual([
+      `POST ${base}/api/workflows`,
+      `GET ${base}/api/workflows/${REMOTE_ID}/stream`,
+      `GET ${base}/api/workflows/${REMOTE_ID}`,
+      `POST ${base}/api/workflows/${REMOTE_ID}/stop`,
+    ]);
+  });
+});
 
 describe("create", () => {
   it("posts the prompt and the file's config with its endpoint key stripped", async () => {
@@ -277,10 +300,9 @@ describe("create", () => {
     await server.close();
     const { createWorkflowClient } = await import("../../src/workflows/workflow-client.js");
 
-    const run = await createWorkflowClient(
-      { name: "local", url: server.url },
-      { endpointNames: ["local", "release"] },
-    ).create(request());
+    const run = await createWorkflowClient(mintEndpoint(server.url), {
+      endpointNames: ["local", "release"],
+    }).create(request());
 
     expect(error(run)).toContain(server.url);
     expect(error(run)).toContain("local");
@@ -292,10 +314,9 @@ describe("create", () => {
     const server = await remote({ rejection: { status: 422, body: errorBody("Remote validation failed") } });
     const { createWorkflowClient } = await import("../../src/workflows/workflow-client.js");
 
-    const run = await createWorkflowClient(
-      { name: "local", url: server.url },
-      { endpointNames: ["local", "release"] },
-    ).create(request());
+    const run = await createWorkflowClient(mintEndpoint(server.url), {
+      endpointNames: ["local", "release"],
+    }).create(request());
 
     expect(error(run)).toContain("Remote validation failed");
     expect(error(run)).not.toMatch(/configured endpoints/i);
@@ -315,18 +336,15 @@ describe("create", () => {
     const server = await remote();
     const { createWorkflowClient } = await import("../../src/workflows/workflow-client.js");
 
-    const run = await createWorkflowClient(
-      { name: "local", url: server.url },
-      {
-        fetch: () =>
-          Promise.resolve(
-            new Response(JSON.stringify({ workflow_id: COMPLETED_RUN, task_id: COMPLETED_RUN }), {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            }),
-          ),
-      },
-    ).create(request());
+    const run = await createWorkflowClient(mintEndpoint(server.url), {
+      fetch: () =>
+        Promise.resolve(
+          new Response(JSON.stringify({ workflow_id: COMPLETED_RUN, task_id: COMPLETED_RUN }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        ),
+    }).create(request());
 
     expect(run).toEqual({ ok: true, workflowId: COMPLETED_RUN, taskId: COMPLETED_RUN });
   });

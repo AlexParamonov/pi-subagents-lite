@@ -264,7 +264,8 @@ describe("endpoint names are data, not prototype keys", () => {
       expect(Object.keys(merged.workflows!.endpoints!)).toContain(name);
       expect(resolveWorkflowEndpoint(mergeDefaults(merged).workflows)).toEqual({
         ok: true,
-        endpoint: { name, url },
+        // The name is data and keeps its case; the request base is canonical, and a host is lowercase.
+        endpoint: { name, url: `http://${name.toLowerCase()}.invalid:4001` },
       });
     });
   }
@@ -427,7 +428,7 @@ describe("a configured target that cannot be used", () => {
     const resolution = resolveWorkflowEndpoint(mergeDefaults(mergeLayers(global, project)).workflows);
 
     expect(resolution.ok).toBe(false);
-    expect((resolution as { error: string }).error).toContain("not a url");
+    expect((resolution as { error: string }).error).toContain("workflows.endpoints[anagen-x.local].url");
   });
 
   // The other probe from the review: a null default is a configured value, so the usable named

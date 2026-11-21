@@ -208,7 +208,7 @@ describe("Workflow endpoint", () => {
 
     const { sent, refusal } = await callTool({ workflow: "audit", prompt: "Review changes" });
 
-    expect(refusal).toContain('"test" has an unusable URL ""');
+    expect(refusal).toContain('"test" (workflows.endpoints[test].url)');
     expect(sent).toEqual([]);
   });
 });
