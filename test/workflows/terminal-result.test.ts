@@ -1,10 +1,9 @@
 /**
  * terminal-result.test.ts — The one formatting of a run's terminal `result`.
  *
- * The server owns the value (US-37: opaque, string-keyed JSON); this is where it becomes the
- * answer the parent agent reads, so the classification rules are pinned here rather than
- * scattered over the surfaces that show it. Expected values are worked examples, not a
- * re-run of the code.
+ * The server owns the value (US-37: opaque, string-keyed JSON); this is where it becomes the answer
+ * the parent agent reads, so the rules are pinned here rather than scattered over the surfaces that
+ * show it. Expected values are worked examples, not a re-run of the code.
  */
 
 import { describe, expect, it } from "vite-plus/test";
@@ -71,26 +70,42 @@ describe("the answer a completed run delivers", () => {
   });
 });
 
-describe("a result from another kind of producer", () => {
-  it("is the value itself, nested nulls and all", () => {
-    const result = { nested: null, values: [1, false], summary: "kept" };
+// A `local` handler's stored output is its own value: anagen-x unwraps the inner `result` before
+// storing it, and its acceptance test pins a textless one (`{headline, chars}`). Forwarding that whole
+// would put arbitrary nested data - which can be an earlier node's reasoning - into the text the parent
+// agent reads, so an undeclared output says what it is and quotes none of it.
+describe("a result that declares no answer", () => {
+  const UNDECLARED = "The workflow run stored its output on the endpoint without declaring an answer.";
 
-    expect(JSON.parse(formatTerminalResult(result))).toEqual(result);
+  it.for([
+    { label: "a local handler's payload", value: { headline: "a long build narrative", chars: 22 } },
+    { label: "a nested map", value: { nested: null, values: [1, false] } },
+    { label: "an array", value: [{ text: "first" }, null, false] },
+    { label: "a number", value: 0 },
+    { label: "a boolean", value: false },
+  ])("names the undeclared output for $label and quotes none of it", ({ value }) => {
+    expect(formatTerminalResult(value)).toBe(UNDECLARED);
   });
 
-  it("is the array itself, nulls inside it kept as data", () => {
-    expect(formatTerminalResult([{ text: "first" }, null, false])).toBe('[{"text":"first"},null,false]');
+  // A bare string carries no nested field to hide, so it is the answer rather than undeclared data.
+  it("is a bare string result, as the text it is and without the JSON quotes", () => {
+    expect(formatTerminalResult("reviewed 3 files")).toBe("reviewed 3 files");
   });
 
-  it("keeps a scalar answer as the JSON it is", () => {
-    expect(formatTerminalResult(0)).toBe("0");
-    expect(formatTerminalResult(false)).toBe("false");
-    expect(formatTerminalResult("reviewed 3 files")).toBe('"reviewed 3 files"');
+  it("keeps a reasoning block out of an undeclared output", () => {
+    expect(formatTerminalResult({ thinking: "private chain of thought", result: { deployed: true } })).toBe(UNDECLARED);
   });
 
-  // `text` is the answer contract every producer keeps (ADR-0023 requires it of a local handler),
-  // so the rest of the value - a local handler's own payload, a Pi run's transcript - is no longer
-  // dumped into the text the parent agent reads. It reaches the reader through the call's details.
+  // An undeclared output still gets the provenance the producer reported: a cap burnout whose handler
+  // returned no `text` must not read as a clean answer either.
+  it("keeps a reported reason beside an undeclared output", () => {
+    expect(formatTerminalResult({ chars: 22, termination_reason: "max_iterations" })).toBe(
+      `${UNDECLARED}\n\nTermination reason: max_iterations`,
+    );
+  });
+
+  // `text` is the declared answer, and the rest of the value is never part of the published text -
+  // a local handler's own payload, a Pi run's transcript, token counters.
   it("is the declared answer alone, whatever else the value carries", () => {
     const result = {
       status: "completed",
