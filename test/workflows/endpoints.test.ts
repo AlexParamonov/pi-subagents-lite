@@ -26,21 +26,10 @@ const CONFIGURED = settings(
   "local",
 );
 
-/** The refusal one configured url earns, naming the `broken` endpoint it belongs to. */
-function refusal(url: string): string {
-  const resolution = resolveWorkflowEndpoint(settings({ broken: { url } }, "broken"), "broken");
-  expect(resolution.ok, `${JSON.stringify(url)} must be refused`).toBe(false);
-  return (resolution as { error: string }).error;
-}
-
-/** The refusal one configured apiKey earns, naming the `broken` endpoint it belongs to. */
-function keyRefusal(apiKey: unknown): string {
-  const resolution = resolveWorkflowEndpoint(
-    settings({ broken: { url: "http://localhost:4001", apiKey } }, "broken"),
-    "broken",
-  );
-  expect(resolution.ok, `${JSON.stringify(apiKey)} must be refused`).toBe(false);
-  return (resolution as { error: string }).error;
+function expectBrokenEndpointRefusal(entry: SubagentsConfig["workflows"]["endpoints"][string]): string {
+  const resolution = resolveWorkflowEndpoint(settings({ broken: entry }, "broken"), "broken");
+  if (resolution.ok !== false) throw new Error('expected endpoint "broken" to be refused');
+  return resolution.error;
 }
 
 describe("resolveWorkflowEndpoint", () => {
@@ -149,7 +138,7 @@ describe("resolveWorkflowEndpoint", () => {
     ["localhost:4001", /http|scheme/i],
   ] as const) {
     it(`refuses the url ${JSON.stringify(url)} naming its setting and its problem`, () => {
-      const error = refusal(url);
+      const error = expectBrokenEndpointRefusal({ url });
 
       expect(error).toContain("workflows.endpoints[broken].url");
       expect(error).toMatch(problem);
@@ -175,7 +164,7 @@ describe("resolveWorkflowEndpoint", () => {
     "http://fixture-user:fixture-password@release.invalid:4001/graph",
   ]) {
     it(`refuses the embedded credential the url ${JSON.stringify(url)} carries`, () => {
-      const error = refusal(url);
+      const error = expectBrokenEndpointRefusal({ url });
 
       expect(error).toMatch(/user.?info|embedded credential/i);
       for (const part of ["release.invalid", "4001", "/graph", "fixture-user", "fixture-password"]) {
@@ -233,6 +222,14 @@ describe("resolveWorkflowEndpoint", () => {
 // and the bytes the publisher matches have to be one value: outer SP/TAB is normalized here, because
 // the wire strips them anyway (US-8, US-35).
 describe("the effective credential", () => {
+  function expectUnusableCredential(apiKey: unknown): string {
+    const error = expectBrokenEndpointRefusal({ url: "http://localhost:4001", apiKey });
+    expect(error).toContain('"broken"');
+    expect(error).toContain("workflows.endpoints[broken].apiKey");
+    expect(error).toMatch(/unusable|not a usable credential/i);
+    return error;
+  }
+
   for (const [configured, effective] of [
     ["release-key", "release-key"],
     [" release-key", "release-key"],
@@ -268,11 +265,8 @@ describe("the effective credential", () => {
     "release\u007fkey",
   ]) {
     it(`refuses the configured apiKey ${JSON.stringify(key)} naming the setting and echoing no value`, () => {
-      const error = keyRefusal(key);
+      const error = expectUnusableCredential(key);
 
-      expect(error).toContain('"broken"');
-      expect(error).toContain("workflows.endpoints[broken].apiKey");
-      expect(error).toMatch(/unusable|not a usable credential/i);
       const quoted = JSON.stringify(key).slice(1, -1);
       if (quoted.trim() !== "") expect(error).not.toContain(quoted);
     });
@@ -282,11 +276,7 @@ describe("the effective credential", () => {
   // treating it as absence is a silent unauthenticated send (US-8).
   for (const key of [null, 4001, true, { token: "release-key" }, ["release-key"]]) {
     it(`refuses the declared apiKey ${JSON.stringify(key)} rather than sending without a credential`, () => {
-      const error = keyRefusal(key);
-
-      expect(error).toContain('"broken"');
-      expect(error).toContain("workflows.endpoints[broken].apiKey");
-      expect(error).toMatch(/unusable|not a usable credential/i);
+      expectUnusableCredential(key);
     });
   }
 });
