@@ -462,7 +462,7 @@ describe("foreground workflow execution", () => {
     expect(text(result)).not.toContain(RECORDED.nodeResult);
   });
 
-  for (const reason of ["max_iterations", null] as const) {
+  for (const reason of ["max_iterations"] as const) {
     it(`keeps ${String(reason)} termination provenance without leaking reasoning or usage`, async () => {
       const remote = await server({
         result: {
@@ -484,16 +484,24 @@ describe("foreground workflow execution", () => {
     });
   }
 
-  it("labels a ReAct result whose termination reason is absent", async () => {
-    const remote = await server({ result: { text: "Partial answer", usage: {} } });
-    install(remote);
-    const tool = executable(await start());
+  // The endpoint reported no reason - either by omitting the key or by the `nil` a strategy with no
+  // reason field answers - so the answer is everything the reader gets: the line this used to print
+  // described a field the run never reported. The rest of the value is still there for the UI and the
+  // export, in the call's details.
+  it.for([{ reason: undefined }, { reason: null }])(
+    "adds no provenance the endpoint did not report ($reason)",
+    async ({ reason }) => {
+      const value = { text: "Partial answer", termination_reason: reason, usage: { input_tokens: 2 } };
+      const remote = await server({ result: value });
+      install(remote);
+      const tool = executable(await start());
 
-    const result = await run(tool);
+      const result = await run(tool);
 
-    expect(text(result)).toContain("Partial answer");
-    expect(text(result)).toMatch(/termination|reason|provenance/i);
-  });
+      expect(text(result)).toBe("Partial answer");
+      expect(result.details?.result).toEqual(value);
+    },
+  );
 
   for (const [label, value] of [
     ["object", { nested: null, values: [1, false] }],
