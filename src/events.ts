@@ -244,8 +244,8 @@ export function setupEventListeners(pi: ExtensionAPI): void {
       const records = currentManager.listAgents();
       const active = records.filter((r) => r.lifecycle.status === "running" || r.lifecycle.status === "queued");
       if (active.length > 0 && ctx.hasUI) {
-        // Only local work is killed by a reload. A remote run keeps executing, and its record goes
-        // with the reload too, so this is the only place its user would hear about it.
+        // Reload kills only local agents. For Workflow runs it ends observation; a stop may
+        // already be in flight, so this notice says nothing about the remote outcome.
         const killed = active.filter((r) => !r.workflow).length;
         const detached = active.length - killed;
         const claims: string[] = [];

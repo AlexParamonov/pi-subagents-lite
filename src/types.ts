@@ -74,10 +74,9 @@ export interface WorkflowRunInfo {
    */
   progress?: string[];
   /**
-   * The run's observation-health note while it applies: the state is unknown (a read that kept
-   * failing, cleared by the next authoritative read) or a stop failed (kept until settlement).
-   * A running-state annotation, never a lifecycle status: a noted run is still running and
-   * stoppable.
+   * The monitor's latest running-state note, not a lifecycle status. A `running` read clears an
+   * unknown-state note but not a stop-failure note. A later hand-back can replace either note;
+   * settlement clears it. A noted run remains stoppable.
    */
   note?: string;
 }

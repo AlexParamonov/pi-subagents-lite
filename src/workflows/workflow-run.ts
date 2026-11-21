@@ -1,11 +1,10 @@
 /**
- * workflow-run.ts — One foreground Workflow run, from create to the server's terminal result.
+ * workflow-run.ts — Follow a foreground Workflow run under the session's claim.
  *
- * The record and the run's lifetime belong to AgentManager (claimed before the create request) and
- * the endpoint to `workflow-client.ts`; this module is the
- * loop that decides what a run means: GET's terminal outcome settles it, an acknowledged stop
- * outranks the endpoint's footprint, and a run that cannot be read is handed back rather than
- * guessed at. `docs/adr/0013-get-authoritative-workflow-client.md` is the reasoning behind that.
+ * The AgentManager claim owns the run's lifetime from before create. This loop applies GET's
+ * terminal outcome or an acknowledged stop, which outranks the endpoint's footprint. Handing the
+ * call back leaves observation running; session shutdown ends observation without settling.
+ * See `docs/adr/0013-get-authoritative-workflow-client.md`.
  */
 
 import type { AgentToolResult, AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
@@ -42,9 +41,8 @@ export interface WorkflowRunPorts {
 const STOPPED = "Workflow run stopped: the endpoint acknowledged the stop and sent no terminal result.";
 
 /**
- * US-30: a shutdown ends this session's observation and never touches the remote run. It asserts
- * only what this session knows - observation ended, outcome unknown - never whether a stop was
- * sent, landed or failed.
+ * US-30: shutdown ends local observation and sends no new stop. A stop may already have been sent,
+ * so the note says only that observation ended and the remote outcome is unknown.
  */
 const SHUTDOWN = "The session shut down, so this run is no longer watched; its remote outcome is unknown.";
 
@@ -68,9 +66,8 @@ export async function runWorkflowForeground(
   // what makes a shutdown reach a run whose create answer has not arrived yet.
   const ownership = manager.beginWorkflowRun(end);
   let settled = false;
-  // Set once the session has ended: every later path - observation re-entry, stop issue, ack
-  // application, publish - finds it and goes inert.
-  let finished = false;
+  // Shutdown releases the waiter without settling. Every later observation or stop path is inert.
+  let sessionEnded = false;
   let noteKind: "unknown" | "stop-failed" | undefined;
   let lines: string[] = [];
   let record: AgentRecord | undefined;
@@ -121,20 +118,19 @@ export async function runWorkflowForeground(
   return record.lifecycle.status === "error" ? { content, details, isError: true } : { content, details };
 
   async function observe(): Promise<void> {
-    while (!settled && !finished) {
+    while (!settled && !sessionEnded) {
       const outcome = await client.monitor(workflow.remoteId, {
         onUpdate: publishProgress,
         onRead: recovered,
         signal: observation.signal,
       });
-      if (settled || finished) return;
+      if (settled || sessionEnded) return;
 
       if (observation.signal.aborted) {
         const ack = await client.stop(workflow.remoteId, disposal.signal);
-        if (settled || finished) return;
-        // US-18: the acknowledged stop outranks whatever footprint the run's own record shows. Any
-        // other answer — including a refusal — says nothing about the run, so the next wait's
-        // immediate authoritative GET decides it.
+        if (settled || sessionEnded) return;
+        // US-18: `stopped` outranks the remote footprint. Other acknowledgements trigger an
+        // immediate GET; an unacknowledged stop leaves the normal read pacing in place.
         if (ack.ok && ack.status === "stopped") {
           settle("stopped", STOPPED);
           return;
@@ -157,19 +153,19 @@ export async function runWorkflowForeground(
   }
 
   function end(reason: "stop" | "shutdown"): void {
-    if (settled || finished) return;
+    if (settled || sessionEnded) return;
     observation.abort();
     if (reason === "stop") return;
     // US-30: shutdown is a release, not a settlement. Nothing is written to the record, no gate
     // opens, nothing is notified or painted, and the local wait for a stop already on the wire is
     // cancelled through the request machinery - which sends nothing new and retracts nothing sent.
-    finished = true;
+    sessionEnded = true;
     disposal.abort();
     if (record) release(published.shown(SHUTDOWN));
   }
 
   function settle(status: WorkflowSettlementStatus, text: string): void {
-    if (settled || finished) return;
+    if (settled || sessionEnded) return;
     settled = true;
     if (!record) return;
     // A running-state note says nothing true of a settled run.
@@ -183,9 +179,8 @@ export async function runWorkflowForeground(
   }
 
   /**
-   * Give the call back with the note that explains it: this caller stops watching, so the parent's
-   * interrupt stops reaching the run too (US-19, US-30). Any later stop is an explicit new request.
-   * The note lands on the record as the run's health until an authoritative answer replaces it.
+   * Record the latest health note and give the call back. Observation continues without forwarding
+   * the parent's interrupt, so any later stop is an explicit new request (US-19, US-30).
    */
   function handBack(note: string, kind: "unknown" | "stop-failed"): void {
     noteKind = kind;
@@ -206,9 +201,9 @@ export async function runWorkflowForeground(
     delete workflow.note;
   }
 
-  /** A snapshot that arrives after this call's own outcome belongs to a wait nobody is reading. */
+  /** Keep the record's snapshot current until settlement or shutdown, even after the call returns. */
   function publishProgress(items: readonly WorkflowDisplayItem[]): void {
-    if (settled || finished) return;
+    if (settled || sessionEnded) return;
     lines = progressLines(items).map((line) => published.shown(line));
     workflow.progress = lines;
     publish();

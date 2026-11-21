@@ -51,7 +51,7 @@ export interface WorkflowClientOptions {
 export interface WorkflowView {
   /** Complete display state for the current connection; a new connection replaces the last. */
   onUpdate(items: readonly WorkflowDisplayItem[]): void;
-  /** An authoritative read answered `running`: the run is live again. Never fired for any other state. */
+  /** Called when an authoritative read answers `running`, never for any other state. */
   onRead?: (state: "running") => void;
   signal?: AbortSignal;
 }
