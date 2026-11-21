@@ -29,6 +29,7 @@ import {
   stateReply,
   stopRequests,
   streamRequests,
+  TARGET_ECHO,
   TERMINAL,
   textFrame,
   workspace,
@@ -523,6 +524,26 @@ describe("workflow credentials", () => {
       logs.some((line) => line.includes(KEY)),
       "diagnostics must not leak the configured key",
     ).toBe(false);
+  });
+
+  it("redacts the credential a rejection reflects back as its own request target", async () => {
+    // What the transport sent is percent-encoded, so the reflected target carries a spelling of the
+    // key that the key itself does not match.
+    const key = "k<7>";
+    const remote = await server({
+      echoTarget: true,
+      prefix: `/${encodeURIComponent(key)}/v1`,
+      rejection: { status: 422, body: errorBody(`Input refused for ${TARGET_ECHO}`) },
+    });
+    install(`${remote.url}/${key}/v1`, key);
+    const logs = consoleLines();
+
+    const result = await report(run(await start()));
+
+    authenticates(remote, key);
+    expect.soft(result.isError, "a reflected target does not make the refused run a success").toBe(true);
+    publishes(result.text, "Input refused for /[redacted]/v1/api/workflows", key, "the tool error");
+    expect(logs.join("\n")).not.toContain(encodeURIComponent(key));
   });
 
   it("redacts the transport credential in a stream diagnostic", async () => {

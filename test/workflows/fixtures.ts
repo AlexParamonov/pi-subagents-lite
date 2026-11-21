@@ -289,6 +289,8 @@ export function deferred<T>() {
 
 /** In echo mode, substitute what the endpoint actually received on the route sending these bytes. */
 export const AUTH_ECHO = "$received-authorization";
+/** In echo mode, substitute the request target the endpoint received, exactly as it arrived. */
+export const TARGET_ECHO = "$received-request-target";
 
 /** A rejection body in the shape every captured rejection uses. */
 export function errorBody(message: string): string {
@@ -304,6 +306,8 @@ export interface EndpointOptions {
   states?: ReadState[];
   /** Expand AUTH_ECHO in response bodies and stream frames to the received Authorization header. */
   echoAuth?: boolean;
+  /** Expand TARGET_ECHO in served bytes to the request target this endpoint received. */
+  echoTarget?: boolean;
   /** Recorded `GET /api/workflows/:id` answers, served in order, the last one repeating. */
   reads?: RecordedResponse[];
   streams?: string[];
@@ -408,14 +412,18 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
     arrivals.get(index)?.resolve(request);
     arrivals.delete(index);
 
-    function echo(body: string, authorization: string): string {
-      return options.echoAuth ? body.replaceAll(AUTH_ECHO, () => authorization) : body;
+    function echo(body: string, received: string, target: string): string {
+      // A body carries these as JSON string data; a stream frame carries them as the bytes they
+      // arrived in.
+      const authorized = options.echoAuth ? body.replaceAll(AUTH_ECHO, () => received) : body;
+      return options.echoTarget ? authorized.replaceAll(TARGET_ECHO, () => target) : authorized;
     }
     const authorization = req.headers.authorization ?? "no authorization header";
     const jsonAuthorization = JSON.stringify(authorization).slice(1, -1);
+    const jsonTarget = JSON.stringify(path).slice(1, -1);
     function answer({ status, body }: RecordedResponse): void {
       res.writeHead(status, { "content-type": "application/json" });
-      res.end(echo(body, jsonAuthorization));
+      res.end(echo(body, jsonAuthorization, jsonTarget));
     }
     function json(status: number, value: unknown): void {
       answer({ status, body: JSON.stringify(value) });
@@ -442,7 +450,7 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
       openStreams.add(res);
       res.writeHead(200, { "content-type": "text/event-stream" });
       const send = (frames: string): void => {
-        res.write(echo(frames, authorization));
+        res.write(echo(frames, authorization, path));
       };
       sendFrames = send;
       res.on("close", () => {
@@ -468,7 +476,7 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
           res.writeHead(read.status, { "content-type": "application/json" });
           res.flushHeaders();
           await releaseRead.promise;
-          res.end(echo(read.body, jsonAuthorization));
+          res.end(echo(read.body, jsonAuthorization, jsonTarget));
         } else {
           answer(read);
         }

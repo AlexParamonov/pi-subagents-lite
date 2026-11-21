@@ -7,7 +7,8 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { displayUrl, resolveWorkflowEndpoint } from "../../src/workflows/endpoints.js";
+import { displayUrl, resolveWorkflowEndpoint, transportSpellings } from "../../src/workflows/endpoints.js";
+import { createPublicText } from "../../src/workflows/public-text.js";
 import type { ValidatedBase } from "../../src/workflows/endpoints.js";
 import type { SubagentsConfig } from "../../src/models/model-precedence.js";
 
@@ -302,3 +303,33 @@ function mint(url: string): ValidatedBase {
   if (!resolution.ok) throw new Error(`${JSON.stringify(url)} must resolve: ${resolution.error}`);
   return resolution.endpoint.url;
 }
+
+// A server that answers with the request target it received reflects the transport's spelling of a
+// credential the path carries, where the configured text is not a substring of it. A path that
+// carries no credential is no spelling of one and stays readable in a diagnostic (US-35).
+describe("the spellings a base and a credential produce", () => {
+  const published = (url: string, key: string) => createPublicText(key, transportSpellings(mint(url), key));
+
+  it("redacts a key the canonical path percent-escaped", () => {
+    const text = published("http://release.invalid:4001/k<7>/v1", "k<7>");
+
+    expect(text.shown("Input refused for /k%3C7%3E/v1/api/workflows")).toBe(
+      "Input refused for /[redacted]/v1/api/workflows",
+    );
+  });
+
+  it("redacts a key the path already carried in escaped form", () => {
+    const text = published("http://release.invalid:4001/k%2Dtoken/v1", "k-token");
+
+    expect(text.shown("Input refused for /k%2Dtoken/v1/api/workflows")).toBe(
+      "Input refused for /[redacted]/v1/api/workflows",
+    );
+  });
+
+  it("redacts nothing of a prefix that carries no credential", () => {
+    const text = published("http://release.invalid:4001/gateway/workflows-v1", "release-key");
+    const diagnostic = "connect ECONNREFUSED 127.0.0.1:4001 /gateway/workflows-v1/api/workflows";
+
+    expect(text.shown(diagnostic)).toBe(diagnostic);
+  });
+});

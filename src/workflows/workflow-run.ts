@@ -11,7 +11,7 @@ import type { AgentToolResult, AgentToolUpdateCallback } from "@earendil-works/p
 import type { AgentManager } from "../agents/agent-manager.ts";
 import type { AgentRecord, WorkflowRunInfo, WorkflowSettlementStatus } from "../types.ts";
 import { createPublicText } from "./public-text.ts";
-import { displayUrl } from "./endpoints.ts";
+import { displayUrl, transportSpellings } from "./endpoints.ts";
 import { formatTerminalResult } from "./terminal-result.ts";
 import { progressLines } from "./stream-view.ts";
 import type { WorkflowDisplayItem } from "./stream-view.ts";
@@ -52,8 +52,12 @@ export async function runWorkflowForeground(
 ): Promise<AgentToolResult<Record<string, unknown>>> {
   const { manager, client } = ports;
   // Every string this run publishes - notes, progress lines, settlement text - crosses the one
-  // boundary that makes endpoint text safe (US-35).
-  const published = createPublicText(args.endpoint.apiKey);
+  // boundary that makes endpoint text safe, with the same spellings of the key the client sends and
+  // redacts (US-35).
+  const published = createPublicText(
+    args.endpoint.apiKey,
+    args.endpoint.apiKey === undefined ? [] : transportSpellings(args.endpoint.url, args.endpoint.apiKey),
+  );
   // The base is transport-only: the record's two URL copies show the display URL, and each crosses
   // this publisher because the surfaces that read them have no publisher of their own (US-35).
   const shownUrl = published.shown(displayUrl(args.endpoint.url));

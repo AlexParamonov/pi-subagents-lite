@@ -83,6 +83,30 @@ export function displayUrl(base: ValidatedBase): string {
   return base.includes("%") ? new URL(base).origin : base;
 }
 
+/**
+ * Every spelling of `apiKey` this base and this client's routing can put on the wire: the key, the
+ * form Fetch sends for it, and a base path segment whose decoded text carries the key as the parser
+ * wrote it. A server that answers with the request target it received reflects those, and the key
+ * itself is not a substring of any of them. A segment that does not carry the key is no spelling of
+ * it, so ordinary path data stays readable in a diagnostic.
+ */
+export function transportSpellings(base: ValidatedBase, apiKey: string): string[] {
+  const forms = new Set<string>([apiKey, encodeURIComponent(apiKey)]);
+  for (const segment of new URL(base).pathname.split("/")) {
+    if (segment !== "" && decodedSegment(segment).includes(apiKey)) forms.add(segment);
+  }
+  return [...forms];
+}
+
+/** A path segment as written when it holds a `%` the parser never produced, such as `/100%`. */
+function decodedSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 type Minted = { ok: true; url: ValidatedBase } | { ok: false; problem: string };
 
 /** The one mint: what cannot serve as a request base is refused here, never repaired. */

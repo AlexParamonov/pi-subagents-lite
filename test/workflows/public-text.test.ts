@@ -55,4 +55,38 @@ describe("public text", () => {
     expect(text.bounded(atTheBound)).toBe(atTheBound);
     expect(text.bounded(`${atTheBound}x`).endsWith("\u2026")).toBe(true);
   });
+
+  // A server that answers with the request target it received reflects the transport's own spelling
+  // of the credential - percent-encoded, and inside a longer path segment - where the key itself is
+  // not a substring of what comes back.
+  it("redacts a transport spelling of the key the endpoint reflects back inside a path", () => {
+    const key = "k<7>";
+    const text = createPublicText(key, [encodeURIComponent(key)]);
+
+    expect(text.shown("Input refused for /k%3C7%3E/v1/api/workflows")).toBe(
+      "Input refused for /[redacted]/v1/api/workflows",
+    );
+  });
+
+  it("redacts a transport spelling that carries the key as one segment of a longer path segment", () => {
+    const key = "k-token";
+    const text = createPublicText(key, ["prefix-k-token-suffix"]);
+
+    expect(text.shown("Input refused for /prefix-k-token-suffix/api/workflows")).toBe(
+      "Input refused for /[redacted]/api/workflows",
+    );
+  });
+
+  it("replaces the longest transport spelling first so a shorter one cannot break it", () => {
+    const key = "k-token";
+    const text = createPublicText(key, ["k-token-suffix", "k-token"]);
+
+    expect(text.shown("target /k-token-suffix/api")).toBe("target /[redacted]/api");
+  });
+
+  it("ignores a transport spelling too short to tell from ordinary text", () => {
+    const text = createPublicText(KEY, ["v1", "api"]);
+
+    expect(text.shown("the /v1/api/workflows route")).toBe("the /v1/api/workflows route");
+  });
 });
