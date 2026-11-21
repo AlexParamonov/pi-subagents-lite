@@ -20,6 +20,7 @@ Pi source code in ../pi
 
 ## Testing
 
+- A bare value as a `Promise.race` arm wins after one microtask hop: a race used to prove "still pending" is vacuous unless the fallback arm is a task-bounded promise that only settles when work is scheduled.
 - When a new run path reuses callback wiring, mirror every first-run callback: a dropped `onTextDelta` silently breaks idle-watchdog feeding.
 - When a run reuses a session's transcript, scope history-scanning to messages added during this run.
 - Pin tool-argument keys against the dependency's actual tool schema, not local assumptions.
@@ -44,6 +45,12 @@ Pi source code in ../pi
 - Pi may re-import extension modules with module caching disabled across cwd changes. Pass child-only parent capabilities through a `Symbol.for`-shared `AsyncLocalStorage` context, not a module-local spawn flag.
 - `AgentSession.dispose()` does NOT emit `session_shutdown`; subagent `bindExtensions` DOES fire parent's `session_start`.
 - A one-shot gate (consumed set) hides re-occurring events: continuations re-settle.
+
+## Boundaries and Transitions
+
+- Validate what the next component will actually act on, at every ingress: the assembled route, not an isolated piece, and every normalization layer it can pass through. Preserve omitted, declared-invalid and inadmissible values until the owning boundary decides. Name the guard's coverage limits where the guarantee is claimed.
+- Put a side effect on the authoritative transition, never on a correlated value or a callback. Text equality is not turn identity, a frame or EOF is not a terminal outcome, a tool returning is not a run settling, and disposal is not the host's whole teardown. Prove it by holding the substitute triggers off.
+- A test seam that degrades gracefully must be proven at the producer first: check the raw wire (SSE, loopback capture, `tool_execution_end.result`) before believing a live pass.
 
 ## SettingsList & Menus
 
