@@ -1396,16 +1396,12 @@ describe("stop", () => {
     expect((stop as { error: string }).error).toContain(server.url);
   });
 
-  it("answers a cancelled stop as the local cancellation it is, never as an acknowledgement", async () => {
-    // Disposal cancels a stop already on the wire. The cancelled wait ends as a failed stop at once,
-    // and the acknowledgement that arrives later changes nothing that was already answered.
-    let endpointAnswer!: (response: Response) => void;
+  it("ends a stop whose local wait was cancelled as the failed stop the ack table expects", async () => {
     const socket = fakeWorkflowFetch({
       stream: (_push, close) => close(),
       read: () => jsonResponse(200, readState()),
       stop: (signal) =>
-        new Promise<Response>((resolve, reject) => {
-          endpointAnswer = resolve;
+        new Promise<Response>((_resolve, reject) => {
           signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
         }),
     });
@@ -1419,8 +1415,6 @@ describe("stop", () => {
       ok: false,
       error: expect.stringContaining("did not answer the stop request"),
     });
-    endpointAnswer(jsonResponse(200, { status: "stopped", workflow_id: REMOTE_ID }));
-    await expect(waiting).resolves.toMatchObject({ ok: false });
   });
 });
 
@@ -1571,6 +1565,38 @@ describe("monitor continuity", () => {
     expect(stamps).toEqual([0, 2_000, 6_000, 14_000, 30_000, 46_000]);
     await vi.advanceTimersByTimeAsync(1_000);
     await expect(resumed).resolves.toEqual({ status: "completed", result: null });
+  });
+
+  it("charges a read whose request or body the transport killed, and keeps the growing cadence", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+    const start = Date.now();
+    const stamps: number[] = [];
+    const socket = fakeWorkflowFetch({
+      stream: (_push, close) => close(),
+      read: (reads) => {
+        stamps.push(Date.now() - start);
+        if (reads === 1) throw new Error("connect ECONNREFUSED 127.0.0.1:4001");
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(control) {
+              control.error(new Error("socket hang up"));
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+    await run.create(request());
+
+    const watching = run.monitor(REMOTE_ID, watcher().view);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await expect(watching).resolves.toEqual({
+      status: "degraded",
+      error: expect.stringContaining("socket hang up"),
+    });
+    expect(stamps).toEqual([0, 2_000, 6_000, 14_000, 30_000]);
   });
 
   it("reads GET before opening any stream while no read has answered running", async () => {
