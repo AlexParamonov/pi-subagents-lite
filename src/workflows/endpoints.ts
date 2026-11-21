@@ -50,6 +50,9 @@ export function resolveWorkflowEndpoint(
   if (!base.ok) return refused(about(requested, "url", base.problem), configured);
   const key = effectiveCredential(entry.apiKey);
   if (!key.ok) return refused(about(requested, "apiKey", "declares an unusable credential"), configured);
+  if (key.apiKey !== undefined && pathCarriesCredential(base.url, key.apiKey)) {
+    return refusedCredentialPath(requested, configured);
+  }
   return {
     ok: true,
     endpoint: { name: requested, url: base.url, ...(key.apiKey === undefined ? {} : { apiKey: key.apiKey }) },
@@ -58,6 +61,13 @@ export function resolveWorkflowEndpoint(
 
 /** The credential one run authenticates with and redacts with, or the reason it cannot be either. */
 type Credential = { ok: true; apiKey?: string } | { ok: false };
+
+/**
+ * The text every request target begins with once the base is joined with the API route, up to and
+ * including the slash that opens the run id's segment. Every route `workflow-client.ts` sends extends
+ * this text, so it is the longest target the configuration alone decides.
+ */
+const API_ROUTE = "/api/workflows/";
 
 /** Printable ASCII except `"` and `\`: every other byte is one a transport, a display or a JSON body rewrites. */
 const USABLE_CREDENTIAL = /^[\x20-\x21\x23-\x5b\x5d-\x7e]+$/;
@@ -84,36 +94,25 @@ export function displayUrl(base: ValidatedBase): string {
 }
 
 /**
- * Every form `apiKey` can reach published text in for this base: the key, the form Fetch encodes it
- * in, and each span of the base's own path that decodes to the key. A server that answers with the
- * request target it received reflects those, and the configured text is not a substring of any of
- * them. A path that carries no credential contributes nothing, so ordinary path data stays readable.
+ * Whether this run would send its own credential inside the request path. The URL parser percent-
+ * escapes what a configured path carries, so the bytes on the wire are not the key and no literal
+ * redaction of published text can match them; such a pair is refused rather than sent. A path that
+ * cannot be decoded cannot be proven credential-free either, so it is refused too.
  */
-export function transportSpellings(base: ValidatedBase, apiKey: string): string[] {
-  const forms = new Set<string>([apiKey, encodeURIComponent(apiKey)]);
-  for (const span of new URL(base).pathname.matchAll(pathForm(apiKey))) forms.add(span[0]);
-  return [...forms];
+function pathCarriesCredential(base: ValidatedBase, apiKey: string): boolean {
+  let target: string;
+  try {
+    target = decodeURIComponent(`${base}${API_ROUTE}`);
+  } catch {
+    return true;
+  }
+  return target.includes(apiKey);
 }
 
-/** The credential as a request path carries it: each character literal or percent-escaped. */
-function pathForm(credential: string): RegExp {
-  return new RegExp(credential.replace(/./gu, characterForm), "g");
-}
-
-/**
- * One character of it, as written or as its whole `%XX` escape in either hex case, so a match is
- * always bytes the transport sent and never half an escape.
- */
-function characterForm(character: string): string {
-  const escaped = [...Buffer.from(character, "utf8")]
-    .map((byte) => `%${byte.toString(16).padStart(2, "0")}`)
-    .join("")
-    .replace(/[A-Za-z]/g, (hex) => `[${hex.toLowerCase()}${hex.toUpperCase()}]`);
-  return `(?:${escapeRegExp(character)}|${escaped})`;
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** A base and a credential that are each usable, but whose joined request path carries the credential. */
+function refusedCredentialPath(endpoint: string, configured: string[]): ResolvedEndpoint {
+  const settings = ["url", "apiKey"].map((setting) => `workflows.endpoints[${endpoint}].${setting}`).join(" and ");
+  return refused(`${shown(endpoint)} (${settings}) sends the configured credential in the request path`, configured);
 }
 
 type Minted = { ok: true; url: ValidatedBase } | { ok: false; problem: string };

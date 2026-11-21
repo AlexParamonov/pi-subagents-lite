@@ -45,7 +45,6 @@ import {
   stopAck,
   stopRequests,
   streamRequests,
-  TARGET_ECHO,
   TERMINAL,
   textFrame,
   THINKING_MULTILINE,
@@ -127,23 +126,25 @@ describe("request routes", () => {
   });
 });
 
-// A fault names the URL the run's own record carries - the display URL - never the request base:
-// a base's path prefix can hold the effective credential, and once the parser percent-escaped it the
-// redaction needle cannot match what it shows (US-35, US-21).
+// A fault names the URL the run's own record carries - the display URL - never the request base,
+// and the two differ once the path is percent-escaped, because escaped bytes cannot be shown safely
+// (US-35, US-21). A path that carries no credential is shown whole.
 describe("the URL a fault names", () => {
-  for (const [key, shown] of [
-    ["example-private-key", "/[redacted]/v1"],
-    ["k<7>", ""],
+  for (const [path, shown] of [
+    ["/gateway/v1", "/gateway/v1"],
+    ["/k%3C7%3E/v1", ""],
   ] as const) {
-    it(`names ${JSON.stringify(shown)} for the prefix that carries ${JSON.stringify(key)}`, async () => {
-      const server = await remote({ prefix: `/${encodeURIComponent(key)}/v1` });
+    it(`names ${JSON.stringify(shown)} for the prefix ${path}`, async () => {
+      const key = "example-private-key";
+      const server = await remote({ prefix: path });
       await server.close();
 
-      const run = await (await client(`${server.url}/${key}/v1`, key)).create(request());
+      const run = await (await client(`${server.url}${path}`, key)).create(request());
 
       expect(error(run)).toContain(`(${server.url}${shown})`);
       expect(error(run)).not.toContain(key);
       expect(error(run)).not.toContain(encodeURIComponent(key));
+      if (shown === "") expect(error(run)).not.toContain(path);
     });
   }
 });
@@ -307,29 +308,6 @@ describe("create", () => {
     expect(error(run)).toContain("Remote validation failed");
     expect(error(run)).not.toContain(key);
   });
-
-  it.for([
-    { key: "k<7>", configured: "/k<7>/v1", served: "/k%3C7%3E/v1", reflected: "k%3C7%3E" },
-    { key: "<", configured: "/</v1", served: "/%3C/v1", reflected: "%3C" },
-    { key: "key+/part", configured: "/key%2B/part/v1", served: "/key%2B/part/v1", reflected: "key%2B/part" },
-  ])(
-    "keeps the credential a rejection reflects back as its own request target out of the error: $reflected",
-    async ({ key, configured, served, reflected }) => {
-      // The transport percent-encodes the path the run is routed under, so a server that answers with
-      // the target it received reflects a spelling of the key the key itself never matches.
-      const server = await remote({
-        prefix: served,
-        echoTarget: true,
-        rejection: { status: 422, body: errorBody(`Input refused for ${TARGET_ECHO}`) },
-      });
-
-      const run = await (await client(`${server.url}${configured}`, key)).create(request());
-
-      expect(error(run)).toContain("Input refused for /[redacted]/v1/api/workflows");
-      expect(error(run)).not.toContain(reflected);
-      expect(error(run)).not.toContain(key);
-    },
-  );
 
   it("caps reported server text, so a proxy's page cannot fill the row", async () => {
     const filler = "The upstream endpoint is unavailable. ";

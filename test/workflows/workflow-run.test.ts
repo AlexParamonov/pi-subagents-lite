@@ -209,22 +209,22 @@ describe("a foreground run's record and result", () => {
 
   // The record's two URL copies are what the widget, the running-agents menu, the conversation viewer
   // and the details export show, and none of them holds this run's publisher: they are written already
-  // safe, as one display value shared with the fault text (US-35).
+  // safe, as one display value shared with the fault text (US-35). A prefix that carries the run's
+  // credential never reaches here - resolution refuses that configuration outright.
   for (const { name, url, apiKey, expectedUrl, hidden } of [
     {
-      name: "records the display URL with the credential redacted, not the request base",
-      url: `http://127.0.0.1:4100/${KEY}/v1`,
+      name: "records a prefix that carries no credential whole in both display copies",
+      url: "http://127.0.0.1:4100/gateway/v1",
       apiKey: KEY,
-      expectedUrl: "http://127.0.0.1:4100/[redacted]/v1",
+      expectedUrl: "http://127.0.0.1:4100/gateway/v1",
       hidden: [KEY],
     },
     {
       name: "withholds a percent-escaped prefix from the record's display copies",
-      url: "http://127.0.0.1:4100/k<7>/v1",
-      apiKey: "k<7>",
-      // The escaped form no longer matches the literal redaction needle.
+      url: "http://127.0.0.1:4100/k%3C7%3E/v1",
+      apiKey: KEY,
       expectedUrl: "http://127.0.0.1:4100",
-      hidden: ["k%3C7%3E", "k<7>"],
+      hidden: ["k%3C7%3E", "k<7>", KEY],
     },
   ]) {
     it(name, async () => {

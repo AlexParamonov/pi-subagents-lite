@@ -9,7 +9,7 @@
  */
 
 import { errorMessage } from "../utils.ts";
-import { displayUrl, transportSpellings } from "./endpoints.ts";
+import { displayUrl } from "./endpoints.ts";
 import { createPublicText } from "./public-text.ts";
 import { field, parseRecord, record } from "./payload.ts";
 import { SseParser } from "./sse.ts";
@@ -97,7 +97,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
   const base = endpoint.url;
   // The one URL any published text may name; the base itself may carry the key in its path prefix.
   const display = displayUrl(base);
-  const published = createPublicText(key, key === undefined ? [] : transportSpellings(base, key));
+  const published = createPublicText(key);
   // Observation state lives here because one client is one run's: a hand-back leaves this where it
   // is and the next `monitor` entry continues from it, so the backoff never restarts at the base.
   let failedReads = 0;

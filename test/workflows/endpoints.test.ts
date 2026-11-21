@@ -7,8 +7,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { displayUrl, resolveWorkflowEndpoint, transportSpellings } from "../../src/workflows/endpoints.js";
-import { createPublicText } from "../../src/workflows/public-text.js";
+import { displayUrl, resolveWorkflowEndpoint } from "../../src/workflows/endpoints.js";
 import type { ValidatedBase } from "../../src/workflows/endpoints.js";
 import type { SubagentsConfig } from "../../src/models/model-precedence.js";
 
@@ -304,48 +303,40 @@ function mint(url: string): ValidatedBase {
   return resolution.endpoint.url;
 }
 
-// A server that answers with the request target it received reflects the transport's spelling of a
-// credential the path carries, where the configured text is not a substring of it. A path that
-// carries no credential is no spelling of one and stays readable in a diagnostic (US-35).
-describe("the spellings a base and a credential produce", () => {
-  const published = (url: string, key: string) => createPublicText(key, transportSpellings(mint(url), key));
+// The only way a credential reaches published text in a form no literal redaction can match is a
+// path this configuration put it on: the parser percent-escapes it, and the escaped text is not the
+// key. Such a pair is refused as an unusable base or key is, so no request carries it (US-35).
+describe("a base and credential that would meet on the request path", () => {
+  for (const [key, url] of [
+    ["k<7>", "http://release.invalid:4001/k<7>/v1"],
+    ["<", "http://release.invalid:4001/</v1"],
+    ["key+/part", "http://release.invalid:4001/key%2B/part/v1"],
+    ["key+/api", "http://release.invalid:4001/key%2B"],
+    ["token", "http://release.invalid:4001/a%zz/v1"],
+  ] as const) {
+    it(`refuses ${url} configured with the credential it carries`, () => {
+      const resolution = resolveWorkflowEndpoint(settings({ local: { url, apiKey: key } }, "local"), "local");
 
-  it("redacts a key the canonical path percent-escaped", () => {
-    const text = published("http://release.invalid:4001/k<7>/v1", "k<7>");
+      expect(resolution.ok).toBe(false);
+      const error = (resolution as { ok: false; error: string }).error;
+      expect(error).toMatch(/"local" \(workflows\.endpoints\[local\]\.url and workflows\.endpoints\[local\]\.apiKey\)/);
+      expect(error).toMatch(/request path/i);
+      expect(error).toContain("Configured endpoints: local.");
+      for (const value of [key, encodeURIComponent(key)]) expect(error).not.toContain(value);
+    });
+  }
 
-    expect(text.shown("Input refused for /k%3C7%3E/v1/api/workflows")).toBe(
-      "Input refused for /[redacted]/v1/api/workflows",
-    );
-  });
+  for (const [key, url] of [
+    ["C+", "http://release.invalid:4001/%3C%2b/v1"],
+    ["release-key", "http://release.invalid:4001/gateway/v1"],
+    ["k<7>", "http://release.invalid:4001/gateway/v1"],
+    ["key+/api", "http://release.invalid:4001/key+/v1"],
+  ] as const) {
+    it(`resolves ${url} configured with the credential ${JSON.stringify(key)}`, () => {
+      const resolution = resolveWorkflowEndpoint(settings({ local: { url, apiKey: key } }, "local"), "local");
 
-  it("redacts a key the path already carried in escaped form", () => {
-    const text = published("http://release.invalid:4001/k%2Dtoken/v1", "k-token");
-
-    expect(text.shown("Input refused for /k%2Dtoken/v1/api/workflows")).toBe(
-      "Input refused for /[redacted]/v1/api/workflows",
-    );
-  });
-
-  it("redacts a credential the path carries across a segment boundary", () => {
-    const text = published("http://release.invalid:4001/key%2B/part/v1", "key+/part");
-
-    expect(text.shown("Input refused for /key%2B/part/v1/api/workflows")).toBe(
-      "Input refused for /[redacted]/v1/api/workflows",
-    );
-  });
-
-  it("redacts a one-character credential the path percent-escaped", () => {
-    const text = published("http://release.invalid:4001/</v1", "<");
-
-    expect(text.shown("Input refused for /%3C/v1/api/workflows")).toBe(
-      "Input refused for /[redacted]/v1/api/workflows",
-    );
-  });
-
-  it("redacts nothing of a prefix that carries no credential", () => {
-    const text = published("http://release.invalid:4001/gateway/workflows-v1", "release-key");
-    const diagnostic = "connect ECONNREFUSED 127.0.0.1:4001 /gateway/workflows-v1/api/workflows";
-
-    expect(text.shown(diagnostic)).toBe(diagnostic);
-  });
+      if (!resolution.ok) throw new Error(`${url} must resolve: ${resolution.error}`);
+      expect(resolution.endpoint).toEqual({ name: "local", url, apiKey: key });
+    });
+  }
 });
