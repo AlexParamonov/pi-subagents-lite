@@ -4,9 +4,9 @@
  *
  * The file's own `endpoint` key wins, otherwise the configured default; the config layers keep what
  * was written and only here is usability decided - the request base and the effective credential are
- * both derived here. Lookup uses own keys, and every refusal names the endpoint, its setting and the
- * configured keys while quoting no URL value. `validatedBase` is the only mint for `ValidatedBase`;
- * tasks/workflows/waves/1r-shared-boundaries/plan.md holds the measurement behind each rule.
+ * both derived here. Lookup uses own keys. Refusals explain the invalid selection or setting and
+ * list the configured keys without quoting the configured URL. `validatedBase` is the only mint for
+ * `ValidatedBase`; tasks/workflows/waves/1r-shared-boundaries/plan.md holds the measurements.
  */
 
 import type { SubagentsConfig } from "../models/model-precedence.ts";
@@ -16,7 +16,7 @@ declare const validatedBaseBrand: unique symbol;
 /** One run's request base: an http(s) `origin + pathname` with trailing slashes normalized. */
 export type ValidatedBase = string & { readonly [validatedBaseBrand]: true };
 
-/** A Workflow endpoint as the caller needs it to make one request. */
+/** The resolved endpoint for every request in one Workflow run. */
 export interface WorkflowEndpoint {
   name: string;
   url: ValidatedBase;

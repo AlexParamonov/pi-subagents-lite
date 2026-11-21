@@ -96,9 +96,9 @@ export interface SubagentsConfig {
     models?: Record<string, number>;
   };
   /**
-   * Workflow endpoints, resolved per run (US-6). The URL, the key and the default name are what the
-   * files declared: an unusable one stays so the run that names it is refused rather than sent to
-   * another target (US-34). `workflows/endpoints.ts` is what decides usability.
+   * Workflow endpoints, resolved per run (US-6). The merged settings retain unusable URL, key and
+   * default values. `workflows/endpoints.ts` refuses the run rather than falling back to another
+   * endpoint or sending it unauthenticated (US-34, US-8).
    */
   workflows: {
     endpoints: Record<string, { url?: unknown; apiKey?: unknown }>;

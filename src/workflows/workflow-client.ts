@@ -1,5 +1,5 @@
 /**
- * workflow-client.ts — The one client of a Workflow endpoint.
+ * workflow-client.ts: The HTTP client for one Workflow run.
  *
  * `create` pushes a run, `monitor` follows it (SSE for display, GET for state), `stop` asks for a
  * kill. Run state comes from GET alone (ADR-0013); the stream is display-only and its event ids are
@@ -57,10 +57,10 @@ export interface WorkflowView {
 }
 
 /**
- * How a followed run ended. `completed`/`failed`/`interrupted` are GET's own states with GET's own
- * payload; `aborted` is a local cancel; `degraded` means the endpoint stopped answering the read —
- * unreachable, refusing, or unreadable — while the run stayed remote, and the caller keeps the
- * record and re-enters `monitor` to go on. Only a GET state settles a run (ADR-0013).
+ * What one monitor wait returns. `completed`, `failed` and `interrupted` come from GET; `error`
+ * rejects the retired completion marker. `aborted` is local cancellation, not a server state.
+ * `degraded` hands back an unknown-state note without settling the run; re-entering `monitor`
+ * carries the retry delay. Stop acknowledgements are reported separately.
  */
 export type WorkflowOutcome =
   | { status: "completed"; result: unknown }
