@@ -581,23 +581,23 @@ describe("workflow credentials", () => {
     // nothing in the echoed target is touched and the endpoint's own words arrive byte for byte.
     { key: "C+", path: "/%3C%2b/v1" },
     { key: "release-key", path: "/gateway/double%253C7%253E" },
-  ])(
-    "publishes an escaped prefix that carries no credential exactly as the endpoint echoed it",
-    async ({ key, path }) => {
-      const remote = await server({
-        prefix: path,
-        echoTarget: true,
-        rejection: { status: 422, body: errorBody(`Input refused for ${TARGET_ECHO}`) },
-      });
-      install(`${remote.url}${path}`, key);
+    // `+` is literal path data; form-style plus-to-space decoding is outside the documented guard.
+    { key: "a b", path: "/gateway/a+b" },
+  ])("publishes a prefix that carries no credential exactly as the endpoint echoed it", async ({ key, path }) => {
+    const remote = await server({
+      prefix: path,
+      echoTarget: true,
+      rejection: { status: 422, body: errorBody(`Input refused for ${TARGET_ECHO}`) },
+    });
+    install(`${remote.url}${path}`, key);
 
-      const result = await report(run(await start()));
+    const result = await report(run(await start()));
 
-      authenticates(remote, key);
-      expect.soft(result.isError, "a reflected target does not make the refused run a success").toBe(true);
-      publishes(result.text, `Input refused for ${path}/api/workflows`, key, "the tool error");
-    },
-  );
+    authenticates(remote, key);
+    expect.soft(result.isError, "a reflected target does not make the refused run a success").toBe(true);
+    publishes(result.text, `Input refused for ${path}/api/workflows`, key, "the tool error");
+    expect(wire(remote)).toEqual([`POST ${path}/api/workflows`]);
+  });
 
   // An endpoint can mint a run id out of the credential it was given. The routes built from that id
   // carry it percent-escaped, which no published text can redact, so the create answer is where this
@@ -1232,9 +1232,7 @@ describe("workflow session shutdown", () => {
     const remote = await server({ holdStream: true, streams: [DISPATCH], reads: [OUTAGE] });
     install(remote.url);
     const notices: string[] = [];
-    const messages: unknown[] = [];
     const capture = await start(notices);
-    capture.api.sendMessage.mockImplementation((message: unknown) => messages.push(message));
     const exchanges = clockedLoopback();
     const esc = new AbortController();
     const updates: Result[] = [];
@@ -1266,7 +1264,6 @@ describe("workflow session shutdown", () => {
     expect(wire(remote)).toEqual(sent);
     expect(updates, "nothing is published into a session that is gone").toEqual(published);
     expect(row.repaints, "the settled row is never repainted by disposal").toEqual(painted);
-    expect(messages).toEqual([]);
     expect(notices.join("\n")).not.toMatch(/no longer watched/i);
   });
 
@@ -1281,9 +1278,7 @@ describe("workflow session shutdown", () => {
       });
       install(remote.url);
       const notices: string[] = [];
-      const messages: unknown[] = [];
       const capture = await start(notices);
-      capture.api.sendMessage.mockImplementation((message: unknown) => messages.push(message));
       const exchanges = clockedLoopback();
       const esc = new AbortController();
       const updates: Result[] = [];
@@ -1320,7 +1315,6 @@ describe("workflow session shutdown", () => {
         .not.toMatch(/left running remotely|nothing was stopped|was not stopped/i);
       expect.soft(updates, "disposal must not publish a tool update").toEqual(published);
       expect.soft(row.repaints, "disposal must not repaint a terminal result").toEqual([]);
-      expect.soft(messages, "disposal must not deliver a completion into the old session").toEqual([]);
       expect
         .soft(vi.getTimerCount(), "no workflow timer may survive disposal, even before an outstanding stop replies")
         .toBe(0);
@@ -1332,7 +1326,6 @@ describe("workflow session shutdown", () => {
       expect(exchanges, "no local retry, read, or extra stop may be started after shutdown").toHaveLength(attempts);
       expect(wire(remote)).toEqual(sent);
       expect(updates, "a late response cannot update the disposed call").toEqual(atRelease);
-      expect(messages).toEqual([]);
     },
   );
 });

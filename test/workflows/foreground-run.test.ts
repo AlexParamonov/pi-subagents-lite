@@ -1806,10 +1806,8 @@ describe("workflow cancellation and shutdown", () => {
     await remote.stopReceived;
     await pending;
 
-    expect(await (await fetch(`${remote.url}/api/workflows/${REMOTE_ID}`)).json()).toMatchObject({
-      status: "failed",
-      error: "Runner lost its lease",
-    });
+    // Count the client's GET; reading the fixture's scripted reply would prove only the fixture.
+    expect(readRequests(remote)).toHaveLength(1);
     expect(stopRequests(remote)).toHaveLength(1);
 
     const status = await run(executable(capture, "AgentStatus"), {});
