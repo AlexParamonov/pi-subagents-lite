@@ -724,6 +724,43 @@ describe("one settlement decider", () => {
 });
 
 describe("shutdown releases without publishing", () => {
+  // Pi awaits the aborted turn before it emits `session_shutdown`, so a bound run has already
+  // settled from its own stop acknowledgement by then: shutdown finds a settled record and must
+  // leave it alone and send nothing.
+  it("sends nothing and writes nothing when the teardown's abort settled the run first", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+    const shown = showPublished();
+    const abort = new AbortController();
+
+    const pending = run(client, manager, { onUpdate: shown.publish, signal: abort.signal });
+    await started(client);
+    abort.abort();
+    const result = await pending;
+    const record = manager.listAgents()[0]!;
+    const settled = {
+      status: record.lifecycle.status,
+      completedAt: record.lifecycle.completedAt,
+      stoppedBy: record.lifecycle.stoppedBy,
+      result: record.result,
+      workflow: structuredClone(record.workflow ?? null),
+    };
+    const views = [...shown.views];
+
+    await manager.dispose();
+    await Promise.resolve();
+
+    expect(text(result)).toMatch(/acknowledged the stop/i);
+    expect(client.stops, "the abort's stop is the only stop this run ever sends").toBe(1);
+    expect(record.lifecycle.status).toBe(settled.status);
+    expect(record.lifecycle.completedAt, "shutdown rewrites no end time").toBe(settled.completedAt);
+    expect(record.lifecycle.stoppedBy, "shutdown rewrites no stop initiator").toBe(settled.stoppedBy);
+    expect(record.result).toBe(settled.result);
+    expect(record.workflow).toEqual(settled.workflow);
+    expect(record.execution.settlementCount).toBe(1);
+    expect(shown.views, "shutdown publishes nothing into a session that is gone").toEqual(views);
+  });
+
   it("releases the watched run with a note that asserts nothing about a stop", async () => {
     const manager = new AgentManager();
     const client = fakeClient();

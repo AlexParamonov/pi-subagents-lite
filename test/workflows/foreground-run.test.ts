@@ -1846,7 +1846,7 @@ describe("workflow cancellation and shutdown", () => {
     expect(stopRequests(remote)).toHaveLength(1);
   });
 
-  it("ends local monitoring on shutdown without stopping the remote run", async () => {
+  it("ends local observation on shutdown alone, with no stop request of its own", async () => {
     let push: (frame: string) => void = () => {
       throw new Error("workflow stream did not open");
     };
@@ -1882,8 +1882,9 @@ describe("workflow cancellation and shutdown", () => {
       const atShutdown = remote.requests();
       const viewsAtShutdown = views.length;
 
-      // US-30: observation is over. A pushed frame and minutes of retry time change nothing,
-      // and the remote run is left alone.
+      // US-30: a shutdown that carried no abort ends observation. A pushed frame and minutes of
+      // retry time change nothing, and this path sends no stop: a teardown that aborts the active
+      // turn first stops the run through that abort, which `shared-boundaries.test.ts` pins.
       try {
         push("data: text after shutdown\n\n");
       } catch {

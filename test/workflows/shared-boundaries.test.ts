@@ -1078,6 +1078,51 @@ describe("workflow stop arbitration", () => {
 });
 
 describe("workflow session shutdown", () => {
+  // Pi's own teardown order (`teardownCurrent`, `dispose`): abort the active turn and await it, then
+  // emit `session_shutdown`. That abort is what stops a bound run, so shutdown itself has to add
+  // nothing - no second stop, no publication, no record write.
+  it("stops the run once when the teardown aborts the turn before it ends the session", async () => {
+    const remote = await server({ holdStream: true, streams: [DISPATCH], reads: [OUTAGE] });
+    install(remote.url);
+    const notices: string[] = [];
+    const messages: unknown[] = [];
+    const capture = await start(notices);
+    capture.api.sendMessage.mockImplementation((message: unknown) => messages.push(message));
+    const exchanges = clockedLoopback();
+    const esc = new AbortController();
+    const updates: Result[] = [];
+    const row = resultRow(capture);
+    const live = deferred<void>();
+    const pending = run(capture, esc.signal, (update) => {
+      updates.push(update);
+      row.paint(update);
+      live.resolve();
+    });
+    await beforeEnd(live.promise, pending, "the active run rendered progress");
+
+    esc.abort();
+    await consumed(exchanges, remote, 2);
+    const settled = await pending;
+    const sent = wire(remote);
+    const attempts = exchanges.length;
+    const published = [...updates];
+    const painted = [...row.repaints];
+    const listed = await status(capture);
+
+    await shutdown();
+    await vi.advanceTimersByTimeAsync(300_000);
+
+    expect(text(settled)).toMatch(/acknowledged the stop/i);
+    expect(listed).toMatch(/audit workflow\) stopped/);
+    expect(stopRequests(remote), "the abort's stop is the only stop the endpoint ever sees").toHaveLength(1);
+    expect(exchanges, "shutdown may start no request, retry or stop of its own").toHaveLength(attempts);
+    expect(wire(remote)).toEqual(sent);
+    expect(updates, "nothing is published into a session that is gone").toEqual(published);
+    expect(row.repaints, "the settled row is never repainted by disposal").toEqual(painted);
+    expect(messages).toEqual([]);
+    expect(notices.join("\n")).not.toMatch(/no longer watched/i);
+  });
+
   it.for(["an open stream", "read backoff", "an unanswered stop"] as const)(
     "ends local observation during %s",
     async (window) => {
