@@ -23,25 +23,13 @@ const NO_OUTPUT = "The workflow run completed with no output.";
 
 export function formatTerminalResult(result: unknown): string {
   if (result === null) return NO_OUTPUT;
-  const body = record(declared(result));
+  const body = record(result);
   const text = typeof body?.text === "string" ? body.text : undefined;
   // A value with no declared answer is its own answer, kept whole.
   if (text === undefined) return plainText(unchanged(result));
   // Computed before the empty answer, because an empty `text` is a delivered value and the reason is
   // then the only provenance the reader gets: a terminal-tool run completes with "".
   return (text === "" ? NO_OUTPUT : plainText(text)) + provenance(body?.termination_reason);
-}
-
-/**
- * The layer a non-`local` output node stores its answer behind: `{"status":"ok","value":{...}}`,
- * measured on anagen-x (wf-1731-1795296255544, `react_local` on `anagen-x:chain/builder`). The answer,
- * its provenance and any `thinking` all live inside `value`, so that layer is stepped through once -
- * printing the outer map instead would put the reasoning block into the text a model reads. A map
- * without both keys is its own answer, which is what a `local` handler's stored value is.
- */
-function declared(value: unknown): unknown {
-  const outer = record(value);
-  return outer && "status" in outer && "value" in outer ? outer.value : value;
 }
 
 /**
