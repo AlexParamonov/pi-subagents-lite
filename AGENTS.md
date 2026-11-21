@@ -50,7 +50,8 @@ Pi source code in ../pi
 
 - Validate what the next component will actually act on, at every ingress: the assembled route, not an isolated piece, and every normalization layer it can pass through. Preserve omitted, declared-invalid and inadmissible values until the owning boundary decides. Name the guard's coverage limits where the guarantee is claimed.
 - Put a side effect on the authoritative transition, never on a correlated value or a callback. Text equality is not turn identity, a frame or EOF is not a terminal outcome, a tool returning is not a run settling, and disposal is not the host's whole teardown. Prove it by holding the substitute triggers off.
-- A renderer that must classify a value to stay safe is missing either the answer field the contract already names or a home for the un-rendered remainder; fix that before asking the producer for a new field, and keep a detail-level switch with the workflow's author.
+- A renderer that must classify a value to stay safe is missing the answer field the contract already names; fix that before asking the producer for a new field, and keep a detail-level switch with the workflow's author.
+- A home for data the model must not see has to be unreachable by the model and covered by redaction. A tool result's `details` is neither: Pi persists it verbatim and a `pi-messages` provider posts the transcript untouched. Leave such a value with its authoritative source.
 - A test seam that degrades gracefully must be proven at the producer first: check the raw wire (SSE, loopback capture, `tool_execution_end.result`) before believing a live pass.
 
 ## SettingsList & Menus
