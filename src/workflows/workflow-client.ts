@@ -9,7 +9,7 @@
  */
 
 import { errorMessage } from "../utils.ts";
-import { displayUrl } from "./endpoints.ts";
+import { displayUrl, targetCarriesCredential } from "./endpoints.ts";
 import { createPublicText } from "./public-text.ts";
 import { field, parseRecord, record } from "./payload.ts";
 import { SseParser } from "./sse.ts";
@@ -108,6 +108,19 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
   /** One route of the run's validated base - never an absolute path resolved against it. */
   function url(route: Route): string {
     return `${base}${route}`;
+  }
+
+  /**
+   * Why an id the endpoint answered cannot become this run's routes, or nothing when it can. The
+   * routes are assembled by `runRoutes` - the same assembly the requests use - because the credential
+   * a minted id spells can span the joins between the route, the id and its suffixes.
+   */
+  function unusableId(id: string): string | null {
+    if (!routableSegment(id)) return "the workflow id it answered cannot be used as a path segment";
+    if (key === undefined) return null;
+    const routes = runRoutes(id);
+    const carries = [routes.read, routes.stream, routes.stop].some((route) => targetCarriesCredential(url(route), key));
+    return carries ? "the workflow id it answered spells the run's credential in its request path" : null;
   }
 
   /** A failure named by the endpoint it happened against, in text safe to publish. */
@@ -231,13 +244,13 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
       const ids = runIds(sent.body);
       if (!ids)
         return { ok: false, error: fault("created a run it did not identify", "the response carried no workflow id") };
-      if (!routableSegment(ids.workflowId))
+      const unusable = unusableId(ids.workflowId);
+      if (unusable)
         return {
           ok: false,
           error: fault(
             "has an unknown outcome",
-            "the workflow id it answered cannot be used as a path segment. " +
-              "The run may still be running remotely; it was not retried.",
+            `${unusable}. The run may still be running remotely; it was not retried.`,
           ),
         };
       lastKnown = "running";
@@ -294,7 +307,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
       // Any stop request takes the stream away: the run's own state after a stop is whatever the
       // next authoritative read says.
       lastKnown = "unknown";
-      const sent = await answer("POST", `/api/workflows/${encodeURIComponent(workflowId)}/stop`, undefined, signal);
+      const sent = await answer("POST", runRoutes(workflowId).stop, undefined, signal);
       if (!sent.ok) return { ok: false, error: fault("did not answer the stop request", sent.reason) };
       if (sent.status < 200 || sent.status >= 300) {
         return { ok: false, error: fault("refused the stop request", `HTTP ${sent.status}: ${rejection(sent.body)}`) };
@@ -356,7 +369,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     arm: () => void,
     reconcile: () => void,
   ): Promise<void> {
-    const opened = await open("GET", `/api/workflows/${encodeURIComponent(workflowId)}/stream`, undefined, signal);
+    const opened = await open("GET", runRoutes(workflowId).stream, undefined, signal);
     if (!opened.ok) {
       reconcile();
       return;
@@ -424,7 +437,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     | { kind: "running" }
     | { kind: "terminal"; status: TerminalStatus; result: unknown; error: string | null }
   > {
-    const polled = await answer("GET", `/api/workflows/${encodeURIComponent(workflowId)}`, undefined, signal);
+    const polled = await answer("GET", runRoutes(workflowId).read, undefined, signal);
     if (!polled.ok) {
       return polled.kind === "cancelled"
         ? { kind: "cancelled" }
@@ -520,6 +533,19 @@ function runIds(body: string): { workflowId: string; taskId: string } | null {
   const ids = parseRecord(body);
   const workflowId = field(ids, "workflow_id");
   return workflowId === undefined ? null : { workflowId, taskId: field(ids, "task_id") ?? "" };
+}
+
+/**
+ * The three routes one run is followed on. One assembly serves the requests and the admission that
+ * gates them, so a check of a run's target cannot fall behind the target actually sent.
+ */
+function runRoutes(workflowId: string): { read: Route; stream: Route; stop: Route } {
+  const segment = encodeURIComponent(workflowId);
+  return {
+    read: `/api/workflows/${segment}`,
+    stream: `/api/workflows/${segment}/stream`,
+    stop: `/api/workflows/${segment}/stop`,
+  };
 }
 
 /**

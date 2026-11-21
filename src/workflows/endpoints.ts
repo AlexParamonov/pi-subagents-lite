@@ -50,7 +50,7 @@ export function resolveWorkflowEndpoint(
   if (!base.ok) return refused(about(requested, "url", base.problem), configured);
   const key = effectiveCredential(entry.apiKey);
   if (!key.ok) return refused(about(requested, "apiKey", "declares an unusable credential"), configured);
-  if (key.apiKey !== undefined && pathCarriesCredential(base.url, key.apiKey)) {
+  if (key.apiKey !== undefined && targetCarriesCredential(`${base.url}${API_ROUTE}`, key.apiKey)) {
     return refusedCredentialPath(requested, configured);
   }
   return {
@@ -93,20 +93,32 @@ export function displayUrl(base: ValidatedBase): string {
   return base.includes("%") ? new URL(base).origin : base;
 }
 
+/** How many percent-decodes past the bytes on the wire a target is followed through. */
+const MAX_DECODE_DEPTH = 8;
+
 /**
- * Whether this run would send its own credential inside the request path. The URL parser percent-
- * escapes what a configured path carries, so the bytes on the wire are not the key and no literal
- * redaction of published text can match them; such a pair is refused rather than sent. A path that
- * cannot be decoded cannot be proven credential-free either, so it is refused too.
+ * Whether a request target carries the credential at any depth a forwarding intermediary can strip.
+ * A gateway decodes the target it forwards and can echo what it decoded, so the bytes this client
+ * sends are only the first layer: the target is decoded to a fixed point and the credential is looked
+ * for in every layer, including the raw bytes (a key carrying `%` lives in them and in no other).
+ * A layer that cannot be decoded, or a target still changing when `MAX_DECODE_DEPTH` is reached,
+ * cannot be proven credential-free and counts as carrying it. Whatever the answer, it is decided
+ * before anything is sent: nothing here decodes or rewrites text an endpoint published.
  */
-function pathCarriesCredential(base: ValidatedBase, apiKey: string): boolean {
-  let target: string;
-  try {
-    target = decodeURIComponent(`${base}${API_ROUTE}`);
-  } catch {
-    return true;
+export function targetCarriesCredential(target: string, apiKey: string): boolean {
+  let layer = target;
+  for (let depth = 0; ; depth++) {
+    if (layer.includes(apiKey)) return true;
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(layer);
+    } catch {
+      return true;
+    }
+    if (decoded === layer) return false;
+    if (depth === MAX_DECODE_DEPTH) return true;
+    layer = decoded;
   }
-  return target.includes(apiKey);
 }
 
 /** A base and a credential that are each usable, but whose joined request path carries the credential. */

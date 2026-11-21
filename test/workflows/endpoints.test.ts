@@ -331,12 +331,39 @@ describe("a base and credential that would meet on the request path", () => {
     ["release-key", "http://release.invalid:4001/gateway/v1"],
     ["k<7>", "http://release.invalid:4001/gateway/v1"],
     ["key+/api", "http://release.invalid:4001/key+/v1"],
+    ["release-key", "http://release.invalid:4001/gateway/double%253C7%253E"],
   ] as const) {
     it(`resolves ${url} configured with the credential ${JSON.stringify(key)}`, () => {
       const resolution = resolveWorkflowEndpoint(settings({ local: { url, apiKey: key } }, "local"), "local");
 
       if (!resolution.ok) throw new Error(`${url} must resolve: ${resolution.error}`);
       expect(resolution.endpoint).toEqual({ name: "local", url, apiKey: key });
+    });
+  }
+});
+
+// A forwarding gateway decodes the target it forwards and echoes what it decoded, so one decode of
+// the configured prefix proves nothing: the credential can surface a layer further down. Every layer
+// below the bytes this client sends is checked, and a target that cannot be settled is refused.
+describe("each decoding of the target a base and credential assemble", () => {
+  for (const [key, url, layer] of [
+    ["%3Cy", "http://release.invalid:4001/a%3Cy/v1", "the bytes as sent, which decoding erases"],
+    ["single<7>", "http://release.invalid:4001/gateway/single%3C7%3E", "one decode below them"],
+    ["double<7>", "http://release.invalid:4001/gateway/double%253C7%253E", "two decodes below them"],
+    ["deeper<7>", "http://release.invalid:4001/gateway/deeper%25253C7%25253E", "three decodes below them"],
+    [
+      "release-key",
+      "http://release.invalid:4001/x%25252525252525253C7%25252525252525253E",
+      "a target still escaping when the decodes run out",
+    ],
+  ] as const) {
+    it(`refuses ${url} with the credential ${JSON.stringify(key)} appearing at ${layer}`, () => {
+      const resolution = resolveWorkflowEndpoint(settings({ local: { url, apiKey: key } }, "local"), "local");
+
+      expect(resolution.ok).toBe(false);
+      const error = (resolution as { ok: false; error: string }).error;
+      expect(error).toMatch(/request path/i);
+      for (const value of [key, encodeURIComponent(key)]) expect(error).not.toContain(value);
     });
   }
 });

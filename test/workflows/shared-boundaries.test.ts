@@ -283,7 +283,7 @@ function wire(remote: TestEndpoint): string[] {
 }
 
 function runPath(remote: TestEndpoint): string {
-  return `${remote.prefix}/api/workflows/${remote.run}`;
+  return `${remote.prefix}/api/workflows/${remote.segment}`;
 }
 
 /** Call only after draining the response on the current virtual tick. */
@@ -543,6 +543,8 @@ describe("workflow credentials", () => {
   it.for([
     { key: "key+/part", path: "/key%2B/part/v1" },
     { key: "key+/api", path: "/key%2B" },
+    // The bytes a gateway that decodes once forwards still carry: `/gateway/double%3C7%3E`.
+    { key: "double<7>", path: "/gateway/double%253C7%253E" },
   ])(
     "refuses the endpoint whose request path carries the credential $key before sending anything",
     async ({ key, path }) => {
@@ -574,20 +576,72 @@ describe("workflow credentials", () => {
     },
   );
 
-  it("publishes an escaped prefix that carries no credential exactly as the endpoint echoed it", async () => {
-    // `%3C` decodes to `<`, not to `C+`: this path holds no credential, so nothing in it is touched.
+  it.for([
+    // `%3C` decodes to `<`, not to `C+`, and `%253C` to `%3C`: neither path holds a credential, so
+    // nothing in the echoed target is touched and the endpoint's own words arrive byte for byte.
+    { key: "C+", path: "/%3C%2b/v1" },
+    { key: "release-key", path: "/gateway/double%253C7%253E" },
+  ])(
+    "publishes an escaped prefix that carries no credential exactly as the endpoint echoed it",
+    async ({ key, path }) => {
+      const remote = await server({
+        prefix: path,
+        echoTarget: true,
+        rejection: { status: 422, body: errorBody(`Input refused for ${TARGET_ECHO}`) },
+      });
+      install(`${remote.url}${path}`, key);
+
+      const result = await report(run(await start()));
+
+      authenticates(remote, key);
+      expect.soft(result.isError, "a reflected target does not make the refused run a success").toBe(true);
+      publishes(result.text, `Input refused for ${path}/api/workflows`, key, "the tool error");
+    },
+  );
+
+  // An endpoint can mint a run id out of the credential it was given. The routes built from that id
+  // carry it percent-escaped, which no published text can redact, so the create answer is where this
+  // client has to notice - before the id reaches a request, a row, a record or a log line.
+  it("publishes nothing about a created run whose id spells the credential in its own routes", async () => {
     const remote = await server({
-      prefix: "/%3C%2b/v1",
+      prefix: "/gateway/v1",
+      run: "wf-minted<7>-suffix",
       echoTarget: true,
-      rejection: { status: 422, body: errorBody(`Input refused for ${TARGET_ECHO}`) },
+      streams: [DISPATCH + textFrame(`Progress on ${TARGET_ECHO}`)],
+      reads: [stateReply({ status: "failed", error: `Run failed on ${TARGET_ECHO}` })],
     });
-    install(`${remote.url}/%3C%2b/v1`, "C+");
+    install(`${remote.url}/gateway/v1`, "minted<7>");
+    const logs = consoleLines();
+    const capture = await start();
+    const row = resultRow(capture);
+    const updates: Result[] = [];
 
-    const result = await report(run(await start()));
+    const pending = run(capture, undefined, (update) => {
+      updates.push(update);
+      row.paint(update);
+    });
+    const reported = await report(pending);
+    const painted = row.paint(await pending);
 
-    authenticates(remote, "C+");
-    expect.soft(result.isError, "a reflected target does not make the refused run a success").toBe(true);
-    publishes(result.text, "Input refused for /%3C%2b/v1/api/workflows", "C+", "the tool error");
+    expect.soft(reported.isError, "an id this client cannot route leaves the create outcome unknown").toBe(true);
+    expect.soft(reported.text).toMatch(/unknown outcome/i);
+    expect
+      .soft(wire(remote), "no follow-up request may be built from an id that spells the credential")
+      .toEqual(["POST /gateway/v1/api/workflows"]);
+    expect
+      .soft(await status(capture), "a run whose routes cannot be built is never registered")
+      .not.toContain("audit workflow");
+    const surfaces = [
+      [reported.text, "the tool error"],
+      [painted, "the call's row"],
+      [updates.map(text).join("\n"), "what the call published"],
+      [logs.join("\n"), "diagnostics"],
+    ] as const;
+    for (const [surface, name] of surfaces) {
+      for (const spelling of ["minted<7>", "minted%3C7%3E", "minted%253C7%253E", "wf-minted"]) {
+        expect.soft(surface.includes(spelling), `${name} must not publish ${spelling}`).toBe(false);
+      }
+    }
   });
 
   it.for([{ key: "k<7>" }, { key: "<" }, { key: "key+/part" }])(

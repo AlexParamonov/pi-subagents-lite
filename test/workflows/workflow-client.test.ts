@@ -208,21 +208,60 @@ describe("create", () => {
     });
   }
 
-  it("routes a created run whose id needs percent-encoding as one path segment", async () => {
+  // An id the endpoint mints can spell the run's own credential once it becomes a route, in a spelling
+  // that no published text can redact (the route is percent-escaped, the key is not). The three routes
+  // this id would be followed on are therefore judged at this same gate, assembled exactly as the
+  // requests assemble them - which is what catches a credential spanning the route/id or id/join.
+  for (const [where, key, id] of [
+    ["inside the id itself", "minted<7>", "wf-minted<7>-suffix"],
+    ["across the route/id join", "flows/ab", "ab-1"],
+    ["across the id/stream join", "7%3E/stream", "run-7>"],
+    ["across the id/stop join", "7%3E/stop", "run-7>"],
+  ] as const) {
+    it(`treats a created run whose routes carry the credential ${where} as an unknown outcome`, async () => {
+      const targets: string[] = [];
+      const transport: typeof fetch = async (input) => {
+        const url = String(input instanceof Request ? input.url : input);
+        targets.push(url);
+        return url.endsWith("/api/workflows")
+          ? jsonResponse(201, { workflow_id: id, task_id: id })
+          : jsonResponse(200, readState());
+      };
+      const run = await client(FAKED_URL, key, transport);
+
+      const created = await run.create(request());
+
+      const note = error(created);
+      expect(note).toMatch(/unknown outcome/i);
+      expect(note).toMatch(/was not retried/i);
+      for (const value of [key, id, encodeURIComponent(id)]) expect(note).not.toContain(value);
+      expect(targets).toEqual([`${FAKED_URL}/api/workflows`]);
+    });
+  }
+
+  // Percent-encoding an id is not the same as refusing one: an id that merely needs it still routes.
+  it("routes a created run whose id needs percent-encoding as one segment on every follow-up route", async () => {
     const targets: string[] = [];
     const transport: typeof fetch = async (input) => {
       const url = String(input instanceof Request ? input.url : input);
       targets.push(url);
-      return url.endsWith("/api/workflows")
-        ? jsonResponse(201, { workflow_id: "wf 1/2", task_id: "wf 1/2" })
-        : jsonResponse(200, stopAck("stopped", "wf 1/2"));
+      if (url.endsWith("/api/workflows")) return jsonResponse(201, { workflow_id: "wf 1/2", task_id: "wf 1/2" });
+      if (url.endsWith("/stream")) return new Response("", { headers: { "content-type": "text/event-stream" } });
+      if (url.endsWith("/stop")) return jsonResponse(200, stopAck("stopped", "wf 1/2"));
+      return jsonResponse(200, readState());
     };
-    const run = await client(FAKED_URL, undefined, transport);
+    const run = await client(FAKED_URL, "example-private-key", transport);
     await run.create(request());
 
+    await expect(run.monitor("wf 1/2", watcher().view)).resolves.toEqual({ status: "completed", result: null });
     await expect(run.stop("wf 1/2")).resolves.toEqual({ ok: true, status: "stopped" });
 
-    expect(targets).toEqual([`${FAKED_URL}/api/workflows`, `${FAKED_URL}/api/workflows/wf%201%2F2/stop`]);
+    expect(targets).toEqual([
+      `${FAKED_URL}/api/workflows`,
+      `${FAKED_URL}/api/workflows/wf%201%2F2/stream`,
+      `${FAKED_URL}/api/workflows/wf%201%2F2`,
+      `${FAKED_URL}/api/workflows/wf%201%2F2/stop`,
+    ]);
   });
 
   it("keeps the file's own prompt vars next to the injected working directory", async () => {

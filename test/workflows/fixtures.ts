@@ -337,6 +337,8 @@ export interface TestEndpoint {
   prefix: string;
   /** The run id this endpoint hands out for a created run. */
   run: string;
+  /** The run id as it appears in the run's routes: encoded once, the way the client encodes it. */
+  segment: string;
   requests: EndpointRequest[];
   /** Wait for a request by its zero-based position in the wire log. */
   requestAt(index: number): Promise<EndpointRequest>;
@@ -364,6 +366,9 @@ export const DEFAULT_RESULT = {
 
 export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpoint> {
   const run = options.run ?? REMOTE_ID;
+  // The client puts the id it was answered into a path segment, so the run's routes live under that
+  // encoding and not under the raw id.
+  const segment = encodeURIComponent(run);
   const prefix = options.prefix ?? "";
   const requests: EndpointRequest[] = [];
   const arrivals = new Map<number, ReturnType<typeof deferred<EndpointRequest>>>();
@@ -446,7 +451,7 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
       } else {
         json(201, { workflow_id: run, task_id: run });
       }
-    } else if (req.method === "GET" && path === `${prefix}/api/workflows/${run}/stream`) {
+    } else if (req.method === "GET" && path === `${prefix}/api/workflows/${segment}/stream`) {
       openStreams.add(res);
       res.writeHead(200, { "content-type": "text/event-stream" });
       const send = (frames: string): void => {
@@ -469,7 +474,7 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
             ? frameOf(REPLAY_FAILED, "workflow_failed")
             : frameOf(REPLAY_DECLARED, "workflow_engine_finished"),
       );
-    } else if (req.method === "GET" && path === `${prefix}/api/workflows/${run}`) {
+    } else if (req.method === "GET" && path === `${prefix}/api/workflows/${segment}`) {
       if (options.reads) {
         const read = options.reads[Math.min(readIndex++, options.reads.length - 1)]!;
         if (options.holdRead) {
@@ -488,7 +493,7 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
           ? readState({ status: "running" })
           : states[Math.min(stateIndex++, states.length - 1)]!;
       json(200, readBody(run, state));
-    } else if (req.method === "POST" && path === `${prefix}/api/workflows/${run}/stop`) {
+    } else if (req.method === "POST" && path === `${prefix}/api/workflows/${segment}/stop`) {
       stopReceived.resolve();
       if (options.holdStop) await releaseStop.promise;
       const rejection = Array.isArray(refusals) ? refusals[stopIndex++] : refusals;
@@ -514,6 +519,7 @@ export async function endpoint(options: EndpointOptions = {}): Promise<TestEndpo
     url: `http://127.0.0.1:${port}`,
     prefix,
     run,
+    segment,
     requests,
     requestAt(index) {
       if (requests[index]) return Promise.resolve(requests[index]);
@@ -565,7 +571,7 @@ export function createRequests(server: TestEndpoint): TestEndpoint["requests"] {
 
 export function readRequests(server: TestEndpoint): TestEndpoint["requests"] {
   return server.requests.filter(
-    (entry) => entry.method === "GET" && entry.path === `${server.prefix}/api/workflows/${server.run}`,
+    (entry) => entry.method === "GET" && entry.path === `${server.prefix}/api/workflows/${server.segment}`,
   );
 }
 
@@ -575,7 +581,7 @@ export function streamRequests(server: TestEndpoint): TestEndpoint["requests"] {
 
 export function stopRequests(server: TestEndpoint): TestEndpoint["requests"] {
   return server.requests.filter(
-    (entry) => entry.method === "POST" && entry.path === `${server.prefix}/api/workflows/${server.run}/stop`,
+    (entry) => entry.method === "POST" && entry.path === `${server.prefix}/api/workflows/${server.segment}/stop`,
   );
 }
 
@@ -674,6 +680,7 @@ export interface FetchFakeOptions {
 export function fakeWorkflowFetch(options: FetchFakeOptions): FetchFake {
   const encoder = new TextEncoder();
   const run = options.run ?? REMOTE_ID;
+  const segment = encodeURIComponent(run);
   const requests: Array<{ method: string; url: string; authorization: string | undefined }> = [];
   let reads = 0;
   const fetchFake: typeof fetch = async (input, init) => {
@@ -683,7 +690,7 @@ export function fakeWorkflowFetch(options: FetchFakeOptions): FetchFake {
     if (method === "POST" && url.endsWith("/api/workflows")) {
       return jsonResponse(201, { workflow_id: run, task_id: run });
     }
-    if (method === "GET" && url.endsWith(`/api/workflows/${run}/stream`)) {
+    if (method === "GET" && url.endsWith(`/api/workflows/${segment}/stream`)) {
       return new Response(
         new ReadableStream<Uint8Array>({
           start(control) {
@@ -696,11 +703,11 @@ export function fakeWorkflowFetch(options: FetchFakeOptions): FetchFake {
         { headers: { "content-type": "text/event-stream" } },
       );
     }
-    if (method === "GET" && url.endsWith(`/api/workflows/${run}`)) {
+    if (method === "GET" && url.endsWith(`/api/workflows/${segment}`)) {
       reads += 1;
       return options.read(reads);
     }
-    if (method === "POST" && url.endsWith(`/api/workflows/${run}/stop`)) {
+    if (method === "POST" && url.endsWith(`/api/workflows/${segment}/stop`)) {
       return options.stop?.(init?.signal ?? undefined) ?? jsonResponse(200, stopAck("stopped", run));
     }
     throw new Error(`Unexpected workflow test request: ${method} ${url}`);
