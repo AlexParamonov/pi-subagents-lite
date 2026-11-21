@@ -69,6 +69,35 @@ describe("the answer a completed run delivers", () => {
 
     expect(formatTerminalResult(result)).toBe("The audit found two issues.");
   });
+
+  // Measured on anagen-x (wf-1731-1795296255544, `react_local` on `anagen-x:chain/builder`): the
+  // terminal `result` of a ReAct output node is the executor's own `{status, value}` map, and the
+  // declared answer with its `thinking` sits inside `value`. Reading only the outer key put the whole
+  // envelope, reasoning included, into the text the parent model reads.
+  it("is the answer the ReAct envelope carries inside its value", () => {
+    const result = {
+      status: "ok",
+      value: {
+        text: "GATE-A-relay-default",
+        usage: { cached_tokens: 1152, total_tokens: 1333, thinking_tokens: 54 },
+        termination_reason: "final_answer",
+        thinking: 'The user is asking me to reply with exactly "GATE-A-relay-default".',
+      },
+    };
+
+    expect(formatTerminalResult(result)).toBe("GATE-A-relay-default");
+  });
+
+  // Triangulation: the provenance lives beside the answer, not beside the envelope's status, so a
+  // stub that unwrapped only `value.text` and reported the outer reason could not pass.
+  it("keeps the provenance that sits beside the answer inside the envelope", () => {
+    const result = {
+      status: "ok",
+      value: { text: "I ran out of turns.", termination_reason: "max_iterations", thinking: "private" },
+    };
+
+    expect(formatTerminalResult(result)).toBe("I ran out of turns.\n\nTermination reason: max_iterations");
+  });
 });
 
 describe("a result from another kind of producer", () => {
