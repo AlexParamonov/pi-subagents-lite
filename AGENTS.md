@@ -31,6 +31,8 @@ Pi source code in ../pi
 - For a class with private members, mock at the real class's call boundary with one intersection cast.
 - Replacing `: any` fixtures with real types: merge with `?? base` so absent overrides keep the base value.
 - A lib-contract test via `vi.importActual` pins the input formats a fix claims to support.
+- With `clockedLoopback`, a virtual clock step alone never delivers a socket response: await the endpoint's request arrival (`requestAt`) and step the clock at the cadence the client owes. `vi.waitFor` advances the fake clock in real time, so a 30s backoff ladder costs minutes of wall time.
+- The extension reads `subagents-lite.json` as the session starts: a workflow test that writes the endpoint config after `session_start` talks to the developer's real `~/.pi/agent/subagents-lite.json` endpoint, not the loopback it scripted.
 - `vi.fn(impl)` infers its generic from impl's return type — widen the mock's generic when tests replace returns with structurally-different fakes.
 - Node builtin ESM namespaces reject `vi.spyOn` — fake partial imports instead.
 - Schema library mocks produce mock-specific shapes — assert against the real library.
