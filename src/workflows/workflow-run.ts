@@ -1,21 +1,22 @@
 /**
- * workflow-run.ts — Follow a foreground Workflow run under the session's claim.
+ * workflow-run.ts — Follow a Workflow run under the session's claim, waited for or detached.
  *
  * The AgentManager claim owns the run beyond the tool waiter's lifetime. Progress and observation
- * health stay on the record; the per-run client retains retry pacing. The waiter only views the run,
- * and a hand-back does not stop observation. Session shutdown releases the waiter without settling
- * the run. See `docs/adr/0013-get-authoritative-workflow-client.md`.
+ * health stay on the record; the per-run client retains retry pacing. A background launch and a
+ * foreground hand-back leave the same detached watch behind, enrolled for one settlement
+ * notification. Session shutdown releases the waiter without settling the run.
+ * See `docs/adr/0013-get-authoritative-workflow-client.md`.
  */
 
-import type { AgentToolResult, AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
+import type { AgentToolResult, AgentToolUpdateCallback, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentManager } from "../agents/agent-manager.ts";
-import type { AgentRecord, WorkflowRunInfo, WorkflowSettlementStatus } from "../types.ts";
+import { SHORT_ID_LENGTH, type WorkflowRunInfo, type WorkflowSettlementStatus } from "../types.ts";
 import { createPublicText } from "./public-text.ts";
 import { formatTerminalResult } from "./terminal-result.ts";
 import { progressLines } from "./stream-view.ts";
 import type { WorkflowDisplayItem } from "./stream-view.ts";
 import type { WorkflowEndpoint } from "./endpoints.ts";
-import type { WorkflowClient, WorkflowOutcome } from "./workflow-client.ts";
+import type { WorkflowClient, WorkflowOutcome, WorkflowStop } from "./workflow-client.ts";
 
 /** What a run needs to be sent, and where its updates go. */
 export interface WorkflowRunArgs {
@@ -26,14 +27,24 @@ export interface WorkflowRunArgs {
   prompt: string;
   workingDir: string;
   toolCallId?: string;
+  /** Return as soon as the endpoint admits the run; its outcome arrives as a notification. */
+  runInBackground?: boolean;
   signal?: AbortSignal;
   onUpdate?: AgentToolUpdateCallback<Record<string, unknown>>;
+  /** The calling tool's context, kept on the record so a later notification has somewhere to go. */
+  ctx?: ExtensionContext;
 }
 
-/** The shared record store, and the client bound to the run's endpoint. */
+/** What a run's outcome can still be delivered to. The delivery owner decides what it sends. */
+export interface NudgeEnrollment {
+  enrollForNudge(agentId: string): void;
+}
+
+/** The shared record store, the client bound to the run's endpoint, and the delivery owner. */
 export interface WorkflowRunPorts {
   manager: AgentManager;
   client: WorkflowClient;
+  nudges: NudgeEnrollment;
 }
 
 /** What an acknowledged stop leaves the record: the stop, and no terminal result. */
@@ -45,11 +56,21 @@ const STOPPED = "Workflow run stopped: the endpoint acknowledged the stop and se
  */
 const SHUTDOWN = "The session shut down, so this run is no longer watched; its remote outcome is unknown.";
 
-export async function runWorkflowForeground(
+/**
+ * The running-state notes a record can carry. A standing kind (`stop-failed`, `interrupted`) is
+ * cleared by nothing but settlement; `unknown` also falls to an authoritative `running` read. A
+ * write of a lesser kind is dropped, so an outage cannot bury a refused stop.
+ */
+type NoteKind = "unknown" | "interrupted" | "stop-failed";
+
+const NOTE_RANK: Record<NoteKind, number> = { unknown: 1, interrupted: 2, "stop-failed": 3 };
+
+export async function runWorkflow(
   args: WorkflowRunArgs,
   ports: WorkflowRunPorts,
 ): Promise<AgentToolResult<Record<string, unknown>>> {
-  const { manager, client } = ports;
+  const { manager, client, nudges } = ports;
+  const background = args.runInBackground === true;
   // Every string this run publishes - notes, progress lines, settlement text - crosses the one
   // boundary that makes endpoint text safe (US-35).
   const published = createPublicText(args.endpoint.apiKey);
@@ -67,9 +88,15 @@ export async function runWorkflowForeground(
   let settled = false;
   // Shutdown releases the waiter without settling. Every later observation or stop path is inert.
   let sessionEnded = false;
-  let noteKind: "unknown" | "stop-failed" | undefined;
+  // The call answers as soon as it has returned: a background launch at the launch, a foreground
+  // call at a hand-back. Pi accepts no tool update after that, and the record owns the repaint.
+  let waiting = !background;
+  // Whether this run asked the endpoint to stop: a note may deny a stop, never claim one.
+  let stopRequested = false;
+  let noteKind: NoteKind | undefined;
   let lines: string[] = [];
-  let record: AgentRecord | undefined;
+  // Whether the run has a record: a shutdown that overtakes the create request has none to release.
+  let recorded = false;
   let observation = new AbortController();
   // Cancels the local wait for a stop this session will no longer hear the answer to.
   const disposal = new AbortController();
@@ -95,23 +122,36 @@ export async function runWorkflowForeground(
     url: shownUrl,
     remoteId: created.workflowId,
   };
-  record = ownership.register({
+  const runRecord = ownership.register({
     workflow,
     description: shownUrl,
     toolCallId: args.toolCallId,
-    signal: args.signal,
+    // A detached run is never bound to an interrupt: the turn that launched it is over, and that
+    // turn's Esc belongs to the runs it is still answering for (US-30).
+    signal: background ? undefined : args.signal,
+    runInBackground: background,
+    spawnCtx: args.ctx,
   });
   // US-30: the session ended while the create request was in flight. The run keeps whatever the
   // endpoint makes of it: no record, no observation, no stop, no publication into a gone session.
-  if (!record) return unwatched();
+  if (!runRecord) return unwatched();
+  recorded = true;
+  const record = runRecord;
   const agentId = record.id;
+  const shortId = agentId.slice(0, SHORT_ID_LENGTH);
 
+  // Enrollment precedes observation, so a run that settles before its caller looked away is still
+  // reported. A run the caller waits for is never enrolled: its settlement is that call's result.
+  if (background) nudges.enrollForNudge(agentId);
   // An interrupt that landed while the create request was in flight: the run exists remotely by
   // now, so it is stopped rather than left alone.
-  if (args.signal?.aborted) end("stop");
+  else if (args.signal?.aborted) end("stop");
 
   void observe();
+  if (background) return launched();
+
   const text = await Promise.race([record.execution.promise!, handed]);
+  waiting = false;
   const details = { agentId, progress: lines };
   const content = [{ type: "text" as const, text }];
   return record.lifecycle.status === "error" ? { content, details, isError: true } : { content, details };
@@ -134,15 +174,13 @@ export async function runWorkflowForeground(
           settle("stopped", STOPPED);
           return;
         }
-        if (!ack.ok) {
-          handBack(`Stop failed: ${ack.error} The run's state is unknown; it is still remote.`, "stop-failed");
-        }
+        if (!ack.ok) handBack(stopFailed(ack), "stop-failed");
         observation = new AbortController();
         continue;
       }
 
       if (outcome.status === "degraded") {
-        handBack(outcome.error, "unknown");
+        handBack(readBudget(outcome.observations), "unknown");
         continue;
       }
       const [status, settlement] = settlementOf(outcome);
@@ -154,50 +192,76 @@ export async function runWorkflowForeground(
   function end(reason: "stop" | "shutdown"): void {
     if (settled || sessionEnded) return;
     observation.abort();
-    if (reason === "stop") return;
+    if (reason === "stop") {
+      stopRequested = true;
+      return;
+    }
     // US-30: shutdown is a release, not a settlement. Nothing is written to the record, no gate
     // opens, nothing is notified or painted, and the local wait for a stop already on the wire is
     // cancelled through the request machinery - which sends nothing new and retracts nothing sent.
     sessionEnded = true;
     disposal.abort();
-    if (record) release(published.shown(SHUTDOWN));
+    if (recorded) release(published.shown(SHUTDOWN));
   }
 
   function settle(status: WorkflowSettlementStatus, text: string): void {
     if (settled || sessionEnded) return;
     settled = true;
-    if (!record) return;
     // A running-state note says nothing true of a settled run.
     noteKind = undefined;
     delete workflow.note;
     const outcome = published.shown(text);
     manager.settleWorkflowRun(record, status, outcome);
     // The settled view keeps the partial one: what this connection delivered is not undone by the
-    // outcome, and the row is repainted through the registered invalidation.
-    publish(outcome);
+    // outcome. A call that already returned is repainted by the settlement's own notification.
+    if (waiting) publish(outcome);
   }
 
   /**
-   * Record the latest health note and give the call back. Observation continues without forwarding
-   * the parent's interrupt, so any later stop is an explicit new request (US-19, US-30).
+   * Record the note, enrol for the outcome this call will not deliver, and give the call back.
+   * Observation continues without forwarding the parent's interrupt, so any later stop is an
+   * explicit new request, and the settlement reaches the session as one notification (US-19, US-30).
    */
-  function handBack(note: string, kind: "unknown" | "stop-failed"): void {
-    noteKind = kind;
-    workflow.note = published.shown(note);
-    release(workflow.note);
+  function handBack(note: string, kind: NoteKind): void {
+    writeNote(kind, published.shown(note));
+    nudges.enrollForNudge(agentId);
+    release(workflow.note ?? "");
   }
 
   /** End the call with a note and no outcome: the record keeps whatever state it had. */
   function release(note: string): void {
+    waiting = false;
     manager.detachParentInterrupt(agentId);
     handBackNote(note);
   }
 
-  /** An authoritative `running` says whatever the failed read could not: the unknown note is over. */
+  /**
+   * An authoritative `running` says two things: whatever a failed read could not, the run is live,
+   * and a parent interrupt whose stop the endpoint never confirmed cannot be waited on any longer.
+   * No stop acknowledgement tells that hand-back apart from a stop the caller asked for by hand -
+   * only the parent's own signal does - so the read that decides the run's state decides the wait.
+   */
   function recovered(): void {
-    if (noteKind !== "unknown") return;
+    if (waiting && args.signal?.aborted) {
+      handBack(interrupted(), "interrupted");
+      return;
+    }
+    if (noteKind === "unknown") clearNote();
+  }
+
+  /** The note stands unless the new kind outranks it: a standing kind outlives a later write. */
+  function writeNote(kind: NoteKind, note: string): void {
+    if (noteKind !== undefined && NOTE_RANK[kind] <= NOTE_RANK[noteKind]) return;
+    noteKind = kind;
+    workflow.note = note;
+    repaint();
+  }
+
+  /** A note that no longer holds is a visible change, whatever else does or does not follow it. */
+  function clearNote(): void {
     noteKind = undefined;
     delete workflow.note;
+    repaint();
   }
 
   /** Keep the record's snapshot current until settlement or shutdown, even after the call returns. */
@@ -205,7 +269,13 @@ export async function runWorkflowForeground(
     if (settled || sessionEnded) return;
     lines = progressLines(items).map((line) => published.shown(line));
     workflow.progress = lines;
-    publish();
+    repaint();
+  }
+
+  /** The live view changed: the waiter paints it while it holds, the record's owner after that. */
+  function repaint(): void {
+    if (waiting) publish();
+    else manager.notifyRecordTouched(record);
   }
 
   function publish(outcomeText?: string): void {
@@ -213,6 +283,51 @@ export async function runWorkflowForeground(
       content: outcomeText === undefined ? [] : [{ type: "text", text: outcomeText }],
       details: { agentId, progress: lines },
     });
+  }
+
+  /** What the caller reads the moment the endpoint admits a detached run. */
+  function launched(): AgentToolResult<Record<string, unknown>> {
+    const text = published.shown(
+      `[Workflow "${args.name}" ${shortId} running] Started in the background: the result arrives as ` +
+        `a notification when the run settles. Check it later with AgentStatus using id ${shortId}. ` +
+        `The endpoint holds the run as workflow_id ${workflow.remoteId}, readable by an authorized GET.`,
+    );
+    return { content: [{ type: "text", text }], details: { agentId, progress: lines } };
+  }
+
+  /** How a hand-back sends the caller off: the run's own id, and the surface that reads it back. */
+  function checkLater(): string {
+    return `Check it later with AgentStatus using id ${shortId}.`;
+  }
+
+  /** The read budget spent: as far as this session can tell the run lives, and it is still watched. */
+  function readBudget(observations: number): string {
+    const stop = stopRequested ? "" : "nothing was stopped, and ";
+    return (
+      `Workflow run ${shortId} is still running remotely. Its state is unknown after ${observations} ` +
+      `observations: ${stop}observation was handed back.\n${checkLater()}`
+    );
+  }
+
+  /** A stop the endpoint refused: its own words, and the run it left running. */
+  function stopFailed(ack: Extract<WorkflowStop, { ok: false }>): string {
+    const reason = (ack.refusal ?? ack.error).replace(/\.$/, "");
+    return (
+      `Workflow "${args.name}" ${shortId}: stop failed - ${reason}. ` +
+      `The run is still running remotely; nothing more was stopped.\n${checkLater()}`
+    );
+  }
+
+  /**
+   * A parent interrupt whose stop the endpoint did not confirm. It claims only what happened, and
+   * promises the notification only for as long as this session can deliver one (US-30).
+   */
+  function interrupted(): string {
+    return (
+      `Workflow "${args.name}" ${shortId}: the request to end the run was not confirmed - nothing was ` +
+      `stopped, and the endpoint reports the run still running remotely. Observation continues, and the ` +
+      `outcome arrives as a notification while this session stays open.\n${checkLater()}`
+    );
   }
 
   /** A run that never became a record: the endpoint refused it, or the call was already cancelled. */

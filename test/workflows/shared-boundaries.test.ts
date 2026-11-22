@@ -1094,11 +1094,14 @@ describe("workflow monitor continuity", () => {
     await readReply(exchanges, remote, 7);
 
     expect(await status(capture)).toMatch(/audit workflow\) completed/);
-    expect(row.repaints).toEqual([`▶ recovery dispatched\nProgress on the new connection\n${ANSWER}`]);
+    // A note clear and a progress write repaint on their own now, so the row repaints more than once
+    // before settlement. The exact repaint set is the row's own contract (US-19, US-31).
+    expect(row.repaints.at(-1)).toBe(`▶ recovery dispatched\nProgress on the new connection\n${ANSWER}`);
+    expect(row.repaints.filter((paint) => paint.includes("recovery dispatched"))).toHaveLength(2);
   });
 
   it.for([{ code: 500 }, { code: 503 }])(
-    "redacts the endpoint's reason when a $code read hands the waiter back",
+    "keeps the endpoint's reason out of the note a $code read hands back",
     async ({ code }) => {
       const remote = await server({
         echoAuth: true,
@@ -1113,13 +1116,16 @@ describe("workflow monitor continuity", () => {
 
       authenticates(remote, KEY);
       expect(handed.isError ?? false).toBe(false);
-      expect(text(handed)).toMatch(/unknown/i);
-      publishes(text(handed), "Read refused: Bearer [redacted]", KEY, "the hand-back note");
+      // A read failure says only how many reads failed: the endpoint's reason, redacted or not, is
+      // not in the note (US-35). The credential never reaches it either.
+      expect(text(handed)).toMatch(/state is unknown after 5 observations/i);
+      expect(text(handed)).not.toContain("Read refused");
+      expect(text(handed)).not.toContain(KEY);
     },
   );
 
   it.for([{ code: 500 }, { code: 503 }])(
-    "hands a $code read back with a local diagnostic, never the run's envelope",
+    "hands a $code read back as an observation count, never the run's envelope",
     async ({ code }) => {
       // A 5xx answer is a read that failed, and its body is still the run's own envelope: journal and
       // result text. None of it belongs in the note or the row, quoted or redacted.
@@ -1147,8 +1153,7 @@ describe("workflow monitor continuity", () => {
       authenticates(remote, KEY);
       expect(handed.isError ?? false).toBe(false);
       const note = text(handed);
-      expect(note).toMatch(/unknown/i);
-      expect(note).toMatch(new RegExp(`HTTP ${code}: the endpoint answered with no reason`));
+      expect(note).toMatch(/state is unknown after 5 observations/i);
       for (const surface of [note, row.paint(handed)]) {
         expect(surface).not.toContain("Thinking the run never published");
         expect(surface).not.toContain(ANSWER);
@@ -1159,7 +1164,7 @@ describe("workflow monitor continuity", () => {
     },
   );
 
-  it("hands a read that answers no run status back with a local diagnostic, never the run's envelope", async () => {
+  it("hands a read that answers no run status back as an observation count, never the run's envelope", async () => {
     // The body of a state read is the run's state envelope: its text is journal data, and a note
     // about a failed read quotes none of it, redacted or not.
     const remote = await server({
@@ -1176,8 +1181,7 @@ describe("workflow monitor continuity", () => {
     authenticates(remote, KEY);
     expect(handed.isError ?? false).toBe(false);
     const note = text(handed);
-    expect(note).toMatch(/unknown/i);
-    expect(note).toMatch(/unreadable|no run status/i);
+    expect(note).toMatch(/state is unknown after 5 observations/i);
     expect(note).not.toContain("Unrecognized body");
     expect(note).not.toContain(KEY);
     expect(note).not.toContain(JSON.stringify(`Bearer ${KEY}`).slice(1, -1));
@@ -1330,7 +1334,10 @@ describe("workflow stop arbitration", () => {
     await stop(capture, id);
     const handed = await pending;
     publishes(text(handed), "Stop refused: Bearer [redacted]", KEY, "the stop-failed note");
-    expect(text(handed)).toMatch(/stop failed.*unknown/i);
+    expect(text(handed)).toMatch(/stop failed/i);
+    expect(text(handed), "a refused stop reports the run as the endpoint left it, not as unknown").not.toMatch(
+      /unknown/i,
+    );
     expect(await status(capture)).toMatch(/audit workflow\) running/);
     row.paint(handed);
 

@@ -405,7 +405,8 @@ describe("the settlement notification", () => {
     const { capture } = await start();
 
     await launch(capture);
-    await beforeEnd(remote.streamOpened, Promise.resolve(), "the run was streaming");
+    // A launch never ends, so this wait has no run to fail it: the milestone is awaited whole.
+    await remote.streamOpened;
     await stop(capture, runId(await status(capture)));
     const [first] = await settled(capture);
 
@@ -421,7 +422,8 @@ describe("the settlement notification", () => {
     const paints: Result[] = [];
 
     await launch(capture, undefined, (update) => paints.push(update));
-    await beforeEnd(remote.streamOpened, Promise.resolve(), "the run was streaming");
+    // A launch never ends, so this wait has no run to fail it: the milestone is awaited whole.
+    await remote.streamOpened;
     const sentBefore = requests(remote);
     const paintedBefore = [...paints];
 

@@ -59,14 +59,15 @@ export interface WorkflowView {
 /**
  * What one monitor wait returns. `completed`, `failed` and `interrupted` come from GET; `error`
  * rejects the retired completion marker. `aborted` is local cancellation, not a server state.
- * `degraded` hands back an unknown-state note without settling the run; re-entering `monitor`
- * carries the retry delay. Stop acknowledgements are reported separately.
+ * `degraded` reports how many observations failed without the run saying anything; the caller owns
+ * what that means, because only the caller knows its own run id and what it asked the endpoint.
+ * Stop acknowledgements are reported separately.
  */
 export type WorkflowOutcome =
   | { status: "completed"; result: unknown }
   | { status: "failed" | "interrupted"; error: string | null }
   | { status: "aborted" }
-  | { status: "degraded"; error: string }
+  | { status: "degraded"; observations: number }
   | { status: "error"; error: string };
 
 /** The three answers the endpoint gives to a stop request. */
@@ -79,8 +80,12 @@ const ROUTELESS =
 
 type StopStatus = (typeof STOP_STATUSES)[number];
 
-/** The endpoint's three-way stop acknowledgement, or the reason it did not acknowledge. */
-export type WorkflowStop = { ok: true; status: StopStatus } | { ok: false; error: string };
+/**
+ * The endpoint's three-way stop acknowledgement, or the reason it did not acknowledge.
+ * `refusal` is the refused stop in the short form a one-line note carries: the endpoint's status
+ * and its own words, with no endpoint name or URL. It is absent when nothing answered.
+ */
+export type WorkflowStop = { ok: true; status: StopStatus } | { ok: false; error: string; refusal?: string };
 
 export interface WorkflowClient {
   create(request: WorkflowRunRequest): Promise<WorkflowCreate>;
@@ -285,15 +290,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
         if (run.kind === "unreachable") {
           failedReads += 1;
           lastKnown = "unknown";
-          if (failedReads >= FAILED_READS_BEFORE_DEGRADED) {
-            return {
-              status: "degraded",
-              error: published.shown(
-                `${run.error}. The state is unknown after ${failedReads} observations: the run is still remote, ` +
-                  "nothing was stopped, and observation was handed back.",
-              ),
-            };
-          }
+          if (failedReads >= FAILED_READS_BEFORE_DEGRADED) return { status: "degraded", observations: failedReads };
           await sleep(readBackoff(failedReads), view.signal);
           continue;
         }
@@ -319,7 +316,8 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
       const sent = await answer("POST", runRoutes(workflowId).stop, undefined, signal);
       if (!sent.ok) return { ok: false, error: fault("did not answer the stop request", sent.reason) };
       if (sent.status < 200 || sent.status >= 300) {
-        return { ok: false, error: fault("refused the stop request", `HTTP ${sent.status}: ${rejection(sent.body)}`) };
+        const refusal = `HTTP ${sent.status}: ${rejection(sent.body)}`;
+        return { ok: false, error: fault("refused the stop request", refusal), refusal };
       }
       const status = stopStatus(sent.body);
       if (!status) {
@@ -436,44 +434,26 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     }
   }
 
-  /** GET, read for `status`, `result` and `error` only: its `events` array is not a source. */
+  /**
+   * GET, read for `status`, `result` and `error` only: its `events` array is not a source. A read
+   * that answered nothing usable is reported as a failed observation, never in the endpoint's words:
+   * the envelope a bad read carries is the run's own text whatever its status said.
+   */
   async function read(
     workflowId: string,
     signal?: AbortSignal,
   ): Promise<
     | { kind: "cancelled" }
-    | { kind: "unreachable"; error: string }
+    | { kind: "unreachable" }
     | { kind: "running" }
     | { kind: "terminal"; status: TerminalStatus; result: unknown; error: string | null }
   > {
     const polled = await answer("GET", runRoutes(workflowId).read, undefined, signal);
-    if (!polled.ok) {
-      return polled.kind === "cancelled"
-        ? { kind: "cancelled" }
-        : { kind: "unreachable", error: fault("did not answer the state read", polled.reason) };
-    }
-    if (polled.status < 200 || polled.status >= 300) {
-      // Every non-2xx answer carries no run status: the read failed, and that is the whole message.
-      // Its body is the run's envelope whatever the status said, so the endpoint's `error` field is
-      // the only remote text quoted here, and a read that gives none gets a local diagnostic.
-      const what = polled.status >= 500 ? "did not answer the state read" : "refused the state read";
-      return {
-        kind: "unreachable",
-        error: fault(what, `HTTP ${polled.status}: ${reason(polled.body) ?? "the endpoint answered with no reason"}`),
-      };
-    }
+    if (!polled.ok) return polled.kind === "cancelled" ? { kind: "cancelled" } : { kind: "unreachable" };
+    if (polled.status < 200 || polled.status >= 300) return { kind: "unreachable" };
     const body = parseRecord(polled.body);
     const status = RUN_STATUSES.find((known) => known === body?.status);
-    if (!body || !status) {
-      const found =
-        typeof body?.status === "string"
-          ? `its status was ${JSON.stringify(published.bounded(body.status))}`
-          : "it carried no status";
-      return {
-        kind: "unreachable",
-        error: fault("answered the state read unreadably", `no run status this client can read: ${found}`),
-      };
-    }
+    if (!body || !status) return { kind: "unreachable" };
     if (status === "running") return { kind: "running" };
     return {
       kind: "terminal",

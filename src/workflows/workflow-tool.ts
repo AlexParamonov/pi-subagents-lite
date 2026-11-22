@@ -14,13 +14,13 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { getManager, getPiInstance, getStore } from "../shell.ts";
+import { getCoordinator, getManager, getPiInstance, getStore } from "../shell.ts";
 import { plainText } from "../ui/sanitize.ts";
 import type { Theme } from "../ui/types.ts";
 import { registerAgentInvalidation } from "../ui/renderer.ts";
 import { resolveWorkflowEndpoint } from "./endpoints.ts";
 import { createWorkflowClient } from "./workflow-client.ts";
-import { runWorkflowForeground } from "./workflow-run.ts";
+import { runWorkflow } from "./workflow-run.ts";
 import { formatWorkflowListing, getWorkflowListing, resolveWorkflow } from "./workflow-registry.ts";
 import { workflowWarningSink } from "./workflow-notices.ts";
 
@@ -45,7 +45,11 @@ export function registerWorkflowTool(pi: ExtensionAPI): void {
           Type.String({ description: "Working directory for the run. Defaults to the session's current directory." }),
         ),
         run_in_background: Type.Optional(
-          Type.Boolean({ description: "Background runs are not supported yet; leave unset or pass false." }),
+          Type.Boolean({
+            description:
+              "Return the run's id immediately instead of waiting for the answer. " +
+              "The result arrives as a notification when the run settles.",
+          }),
         ),
       },
       { additionalProperties: false },
@@ -63,9 +67,6 @@ export async function executeWorkflowTool(
   onUpdate: AgentToolUpdateCallback<Record<string, unknown>> | undefined,
   ctx: ExtensionContext,
 ): Promise<AgentToolResult<Record<string, unknown>>> {
-  if (params.run_in_background === true) {
-    throw new Error("Background workflow runs are not supported yet; leave run_in_background unset or pass false.");
-  }
   const name = typeof params.workflow === "string" ? params.workflow.trim() : "";
   const resolution = await resolveWorkflow(name, workflowWarningSink(ctx));
   if (resolution.listingChanged) registerWorkflowTool(getPiInstance());
@@ -77,8 +78,10 @@ export async function executeWorkflowTool(
 
   const manager = getManager();
   if (!manager) throw new Error("Agent manager is unavailable");
+  const coordinator = getCoordinator();
+  if (!coordinator) throw new Error("Spawn coordinator is unavailable");
 
-  return runWorkflowForeground(
+  return runWorkflow(
     {
       name,
       endpoint: endpoint.endpoint,
@@ -86,10 +89,16 @@ export async function executeWorkflowTool(
       prompt: typeof params.prompt === "string" ? params.prompt : "",
       workingDir: workingDirOf(params.path, ctx.cwd),
       toolCallId,
+      runInBackground: params.run_in_background === true,
       signal,
       onUpdate,
+      ctx,
     },
-    { manager, client: createWorkflowClient(endpoint.endpoint, { endpointNames: Object.keys(workflows.endpoints) }) },
+    {
+      manager,
+      client: createWorkflowClient(endpoint.endpoint, { endpointNames: Object.keys(workflows.endpoints) }),
+      nudges: coordinator,
+    },
   );
 }
 

@@ -1102,14 +1102,14 @@ describe("monitor reconcile", () => {
     const degraded = await waiting;
     const readsAtReturn = socket.reads();
 
-    expect(degraded).toEqual({ status: "degraded", error: expect.stringContaining("unknown") });
+    expect(degraded).toEqual({ status: "degraded", observations: 5 });
     expect(readsAtReturn).toBeGreaterThanOrEqual(2);
 
     const resumed = run.monitor(REMOTE_ID, watcher(abort.signal).view);
     await vi.advanceTimersByTimeAsync(29_999);
     expect(socket.reads(), "the carried delay is owed once, not restarted").toBe(readsAtReturn);
     await vi.advanceTimersByTimeAsync(1);
-    await expect(resumed).resolves.toEqual({ status: "degraded", error: expect.stringContaining("unknown") });
+    await expect(resumed).resolves.toEqual({ status: "degraded", observations: 6 });
     expect(socket.reads()).toBeGreaterThan(readsAtReturn);
 
     const again = run.monitor(REMOTE_ID, watcher(abort.signal).view);
@@ -1118,9 +1118,10 @@ describe("monitor reconcile", () => {
     await expect(again).resolves.toEqual({ status: "aborted" });
   });
 
-  it("hands a refused read back as an unknown state, naming the endpoint and never the key", async () => {
+  it("hands a refused read back as an unknown state, quoting neither the endpoint nor its key", async () => {
     // A refused read carries no run status, so it is an observation failure like a 5xx: it ends the
-    // wait as unknown rather than settling anything (ADR-0013).
+    // wait as unknown rather than settling anything (ADR-0013). What it says is the count of failed
+    // observations and nothing else - not the endpoint's words, not its URL, not the run's envelope.
     vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
     const key = "example-private-key";
     const socket = fakeWorkflowFetch({
@@ -1133,27 +1134,26 @@ describe("monitor reconcile", () => {
     await vi.advanceTimersByTimeAsync(90_000);
     const outcome = await waiting;
 
-    expect(outcome).toEqual({ status: "degraded", error: expect.stringContaining("Unauthorized") });
-    expect((outcome as { error: string }).error).toContain(FAKED_URL);
-    expect((outcome as { error: string }).error).not.toContain(key);
+    expect(outcome).toEqual({ status: "degraded", observations: 5 });
+    expect(JSON.stringify(outcome)).not.toContain(key);
+    expect(JSON.stringify(outcome)).not.toContain(FAKED_URL);
+    expect(JSON.stringify(outcome)).not.toContain("Unauthorized");
   });
 
   it.for([
-    { status: 409, names: "HTTP 409", body: { status: "queued", events: [{ text: PRIVATE }] } },
-    { status: 200, names: "queued", body: { status: "queued", result: { text: PRIVATE } } },
+    { status: 409, body: { status: "queued", events: [{ text: PRIVATE }] } },
+    { status: 200, body: { status: "queued", result: { text: PRIVATE } } },
     {
       status: 500,
-      names: "HTTP 500",
       body: { status: "running", events: [{ type: "thinking_delta", text: PRIVATE }], result: { text: PRIVATE } },
     },
     {
       status: 503,
-      names: "HTTP 503",
       body: { status: "running", events: [{ type: "thinking_delta", text: PRIVATE }], result: { text: PRIVATE } },
     },
   ])(
-    "names a $status state read that answers nothing it can use, without quoting the run's envelope",
-    async ({ status, names, body }) => {
+    "hands a $status state read that answers nothing it can use back as a count, not the run's envelope",
+    async ({ status, body }) => {
       // ADR-0013 reads `status`, `result` and `error` only. The envelope also carries the run's result
       // and journal text, and none of that belongs in the note a failed read hands back.
       vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
@@ -1166,10 +1166,10 @@ describe("monitor reconcile", () => {
 
       const waiting = run.monitor(REMOTE_ID, watcher().view);
       await vi.advanceTimersByTimeAsync(90_000);
-      const outcome = (await waiting) as { error: string };
+      const outcome = await waiting;
 
-      expect(outcome.error).toContain(names);
-      expect(outcome.error).not.toContain(PRIVATE);
+      expect(outcome).toEqual({ status: "degraded", observations: 5 });
+      expect(JSON.stringify(outcome)).not.toContain(PRIVATE);
     },
   );
 
@@ -1557,8 +1557,28 @@ describe("stop", () => {
 
     const stop = await run.stop(server.run);
 
-    expect(stop).toEqual({ ok: false, error: expect.stringContaining("Workflow not found") });
+    expect(stop).toEqual({
+      ok: false,
+      error: expect.stringContaining("Workflow not found"),
+      refusal: "HTTP 404: Workflow not found",
+    });
     expect((stop as { error: string }).error).toContain(server.url);
+  });
+
+  it("keeps an echoed key out of the stop refusal it reports", async () => {
+    const key = "example-private-key";
+    const server = await remote({
+      stopRejection: { status: 409, body: errorBody(`Refusing to stop; credential ${key} is not allowed`) },
+    });
+    const run = await client(server.url, key);
+
+    const stop = await run.stop(server.run);
+
+    expect(stop).toEqual({
+      ok: false,
+      error: expect.stringContaining("Refusing to stop"),
+      refusal: "HTTP 409: Refusing to stop; credential [redacted] is not allowed",
+    });
   });
 
   it("ends a stop whose local wait was cancelled as the failed stop the ack table expects", async () => {
@@ -1602,16 +1622,16 @@ describe("monitor continuity", () => {
 
     const first = run.monitor(REMOTE_ID, watcher().view);
     await vi.advanceTimersByTimeAsync(30_000);
-    await expect(first).resolves.toEqual({ status: "degraded", error: expect.stringContaining("unknown") });
+    await expect(first).resolves.toEqual({ status: "degraded", observations: 5 });
     expect(stamps).toEqual([0, 2_000, 6_000, 14_000, 30_000]);
 
     const second = run.monitor(REMOTE_ID, watcher().view);
     await vi.advanceTimersByTimeAsync(30_000);
-    await expect(second).resolves.toEqual({ status: "degraded", error: expect.stringContaining("unknown") });
+    await expect(second).resolves.toEqual({ status: "degraded", observations: 6 });
 
     const third = run.monitor(REMOTE_ID, watcher().view);
     await vi.advanceTimersByTimeAsync(30_000);
-    await expect(third).resolves.toEqual({ status: "degraded", error: expect.stringContaining("unknown") });
+    await expect(third).resolves.toEqual({ status: "degraded", observations: 7 });
     expect(stamps).toEqual([0, 2_000, 6_000, 14_000, 30_000, 60_000, 90_000]);
   });
 
@@ -1633,10 +1653,7 @@ describe("monitor continuity", () => {
 
     const watching = run.monitor(REMOTE_ID, watcher().view);
     await vi.advanceTimersByTimeAsync(61_000);
-    await expect(watching).resolves.toEqual({
-      status: "degraded",
-      error: expect.stringContaining("unknown"),
-    });
+    await expect(watching).resolves.toEqual({ status: "degraded", observations: 5 });
 
     // Four failures, then `running`, then the failures start their count again from the base.
     expect(stamps).toEqual([0, 2_000, 6_000, 14_000, 30_000, 31_000, 33_000, 37_000, 45_000, 61_000]);
@@ -1757,10 +1774,7 @@ describe("monitor continuity", () => {
     const watching = run.monitor(REMOTE_ID, watcher().view);
     await vi.advanceTimersByTimeAsync(30_000);
 
-    await expect(watching).resolves.toEqual({
-      status: "degraded",
-      error: expect.stringContaining("socket hang up"),
-    });
+    await expect(watching).resolves.toEqual({ status: "degraded", observations: 5 });
     expect(stamps).toEqual([0, 2_000, 6_000, 14_000, 30_000]);
   });
 

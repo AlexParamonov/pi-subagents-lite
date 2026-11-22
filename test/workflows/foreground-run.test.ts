@@ -1212,7 +1212,7 @@ describe("workflow run answered by recorded endpoint bytes", () => {
     });
   }
 
-  it("keeps a run whose state read is refused running, and names the endpoint without the key", async () => {
+  it("keeps a run whose state read is refused running, and gives the caller no endpoint reason", async () => {
     // A refused read carries no run status, so it hands the call back as unknown (US-19) instead of
     // settling the run: StopAgent still reaches the endpoint afterwards.
     const key = "example-private-key";
@@ -1238,8 +1238,10 @@ describe("workflow run answered by recorded endpoint bytes", () => {
       const result = await pending;
 
       expect(result.isError).toBe(false);
-      expect(result.text).toContain("Unauthorized");
-      expect(result.text).toContain(FAKED_URL);
+      expect(result.text).toMatch(/state is unknown after 5 observations/i);
+      expect(result.text, "what failed is a read, not the run: its reason is not the caller's to see").not.toContain(
+        "Unauthorized",
+      );
       expect(result.text).not.toContain(key);
       expect(logs.join("\n")).not.toContain(key);
       expect(remote.requests()[0]!.authorization).toBe(`Bearer ${key}`);
@@ -1548,18 +1550,6 @@ describe("workflow endpoint and input errors", () => {
     expect(JSON.parse(createRequest(remote).body).prompt).toBe(prompt);
   });
 
-  it("rejects background execution until that mode is supported", async () => {
-    const remote = await server();
-    install(remote);
-    const tool = executable(await start());
-
-    const result = await outcome(tool, { workflow: "audit", prompt: "Review changes", run_in_background: true });
-
-    expect(result.isError).toBe(true);
-    expect(result.text).toMatch(/background/i);
-    expect(remote.requests).toEqual([]);
-  });
-
   it("identifies unreachable endpoints for troubleshooting", async () => {
     const dead = await server();
     const live = await server();
@@ -1842,11 +1832,13 @@ describe("workflow cancellation and shutdown", () => {
     const stopped = await pending;
     const status = await run(executable(capture, "AgentStatus"), {});
 
-    // US-27: a stop that failed is reported as failed with the remote state unknown,
+    // US-27: a stop that failed is reported as failed, with the state the endpoint confirmed,
     // and the run keeps its running record for a manual retry.
     const report = `${stopped.text}\n${text(status)}`;
     expect(report).toMatch(/stop failed/i);
-    expect(report).toMatch(/unknown/i);
+    expect(report, "a refused stop claims the state the endpoint confirmed, not an unknown state").not.toMatch(
+      /unknown/i,
+    );
     expect(text(status)).toContain("audit");
     expect(text(status)).toMatch(/running/i);
     expect(text(status)).not.toMatch(/stopped/i);
@@ -2091,7 +2083,7 @@ describe("workflow monitoring degradation", () => {
 
       expect(requested.isError ?? false).toBe(false);
       expect(text(returned)).toMatch(/stop failed/i);
-      expect(text(returned)).toMatch(/unknown/i);
+      expect(text(returned), "a refused stop claims no unknown state").not.toMatch(/unknown/i);
       expect(stops(), "the refused stop was asked for once").toHaveLength(1);
 
       abort.abort();
