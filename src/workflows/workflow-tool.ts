@@ -15,6 +15,8 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { getManager, getPiInstance, getStore } from "../shell.ts";
+import type { AgentRecord } from "../types.ts";
+import { recordRow } from "../ui/format.ts";
 import { plainText } from "../ui/sanitize.ts";
 import type { Theme } from "../ui/types.ts";
 import { registerAgentInvalidation } from "../ui/renderer.ts";
@@ -99,9 +101,9 @@ function workingDirOf(path: unknown, cwd: string): string {
 }
 
 /**
- * The call's result view: what this run's connection delivered, then the outcome. Once the record
- * has settled it is the source of the outcome text, so a call that returned early (a degraded read)
- * still shows what the run turned out to be when the invalidation repaints it.
+ * The call's result view: what this run's connection delivered, then the outcome. The record decides
+ * that outcome for as long as it lives, so a repaint after the call returned shows the run's live
+ * health, and a call that returned early still shows what the run turned out to be.
  */
 export function renderWorkflowResult(
   result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown> },
@@ -113,18 +115,38 @@ export function renderWorkflowResult(
   const agentId = typeof details.agentId === "string" ? details.agentId : undefined;
   if (agentId && context?.invalidate) registerAgentInvalidation(agentId, context.invalidate);
   const record = agentId ? getManager()?.getRecord(agentId) : undefined;
-  const outcome =
-    record && record.lifecycle.status !== "running"
-      ? (record.error ?? record.result ?? "")
-      : (result.content.find((part) => part.type === "text")?.text ?? "");
+  const content = result.content.find((part) => part.type === "text")?.text ?? "";
   // The monitor keeps the record's snapshot current after this call returned; `details.progress`
   // is only what the wait had seen when it ended.
   const progress =
     record?.workflow?.progress ?? (Array.isArray(details.progress) ? (details.progress as string[]) : []);
-  const rows = [...progress, outcome].map((row) => plainText(row)).filter((row) => row !== "");
+  const rows = [...progress, ...outcomeRows(record, content)]
+    .map((row) => plainText(row))
+    .filter((row) => row !== "");
   const mark = context?.isError ? theme.fg("error", "\u2717") : "";
   const body = rows.map((row) => `  ${theme.fg("toolOutput", row)}`).join("\n");
   return new Text(mark === "" ? body : `${mark} ${body.trimStart()}`, 0, 0);
+}
+
+/** A settled run shows the one text it ended with. A live one shows its own id, state and note, and
+ * never the text its call returned: for a foreground call that text is a note a later read retracted.
+ * A run launched in the background keeps its launch receipt beside that, as a launch fact, not health. */
+function outcomeRows(record: AgentRecord | undefined, content: string): string[] {
+  if (!record) return [content];
+  if (record.lifecycle.status !== "running") return [record.error ?? record.result ?? ""];
+  const note = record.workflow?.note;
+  if (!note) {
+    return record.display.invocation?.runInBackground ? [recordRow(record), content] : [recordRow(record)];
+  }
+  return [`${recordRow(record)} ${oneRow(note)}`];
+}
+
+/** Text headed for a surface that budgets one physical row. */
+function oneRow(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .join(" ");
 }
 
 /** The call line: the workflow name, then exactly the optional parameters the agent supplied. */
