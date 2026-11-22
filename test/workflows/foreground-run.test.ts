@@ -930,7 +930,7 @@ describe("foreground workflow execution", () => {
 
     const result = await run(executable(await start()));
 
-    expect(text(result)).toContain("no output");
+    expect(text(result)).toContain("empty answer");
     expect(text(result)).toContain("Termination reason: terminal_tool");
   });
 
