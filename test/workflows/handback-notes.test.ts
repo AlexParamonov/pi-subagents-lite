@@ -27,6 +27,7 @@ import {
   DISPATCH,
   endpoint,
   errorBody,
+  RECORDED,
   stateReply,
   stopRequests,
   streamRequests,
@@ -44,7 +45,7 @@ type Exchanges = ReturnType<typeof clockedLoopback>;
 
 /** One hand Pi received: the message, plus the options it was delivered with. */
 interface Nudge {
-  message: { customType: string; content: { type: "text"; text: string }[]; display: boolean; details: unknown };
+  message: { customType: string; content: string; display: boolean; details: unknown };
   options: unknown;
 }
 
@@ -73,8 +74,29 @@ const OUTAGE = { status: 503, body: errorBody("Temporarily unavailable") };
 const QUIET_STREAMS = [DISPATCH, "", "", "", "", "", ""];
 /** The refusal the endpoint gives for a run it will not stop. */
 const REFUSAL = { status: 409, body: errorBody("workflow is not running") };
-/** The hint every hand-back note ends with, so a caller stops polling. */
-const NO_POLL = "Don't poll — a workflow run returns its result in the tool call that started it.";
+/** The declared answer the endpoint's captured read delivers. */
+const ANSWER = RECORDED.answer;
+/** How a hand-back note sends the caller off: the run's id, and the surface that reads it back. */
+const checkLater = (id: string): string => `Check it later with AgentStatus using id ${id}.`;
+/**
+ * The note a run whose read budget ran out hands back. This run never requested a stop, so the note
+ * says so, and it offers no handle the `Workflow` tool would reject.
+ */
+const readBudgetNote = (id: string): string =>
+  `Workflow run ${id} is still running remotely. Its state is unknown after 5 observations: ` +
+  `nothing was stopped, and observation was handed back.\n${checkLater(id)}`;
+/**
+ * What no hand-back note may claim: that a stop was performed, or that it succeeded. The honest
+ * denials a note is required to carry are removed first, so any stop wording left behind is a claim
+ * about a stop the endpoint never confirmed - whether the run issued one whose landing is unknown,
+ * or never issued one at all.
+ */
+const HONEST_STOP_DENIALS = [/nothing(?: more)? was stopped/g, /stop failed/g];
+
+function claimsAStop(note: string): string[] {
+  const wording = HONEST_STOP_DENIALS.reduce((rest, denial) => rest.replace(denial, ""), note);
+  return wording.match(/\bstop(?:s|ped|ping)?\b/gi) ?? [];
+}
 /** A settlement the caller already holds reaches nobody else. */
 const NO_NUDGE: Nudge[] = [];
 
@@ -350,34 +372,30 @@ describe("a run whose monitoring fails", () => {
 
     const handed = await handedBack(exchanges, remote, pending);
     const id = runId(await status(capture));
-    expect(text(handed)).toBe(
-      `Workflow run ${id} is still running remotely. Its state is unknown after 5 observations: ` +
-        `nothing was stopped, and observation was handed back.\n` +
-        `Check it later with AgentStatus using id ${id}, or with Workflow using wait_for: "${id}".\n` +
-        NO_POLL,
-    );
+    expect(text(handed)).toBe(readBudgetNote(id));
     expect(await status(capture), "the run is remote, so it stays listed and running").toMatch(
       new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`),
     );
     expect(stopRequests(remote), "a failed read stops nothing").toHaveLength(0);
     expect(nudges(capture), "a run whose state is unknown has settled for no reason").toEqual(NO_NUDGE);
 
-    // The read that answers after the hand-back is the settlement: the caller learns it once.
+    // The read that answers after the hand-back is the settlement: the caller learns it once, as the
+    // one message shape every settlement delivery has - the run's own header over its published text.
     await readAgain(exchanges, remote, 6);
     expect(await settled(capture)).toEqual([
       {
         message: {
           customType: "subagent-result",
-          content: [{ type: "text", text: `Workflow run ${id} completed:\nThe declared output` }],
+          content: `[Workflow "${WORKFLOW}" ${id} completed]\n\n${ANSWER}`,
           display: true,
-          details: expect.objectContaining({ agentId: expect.stringContaining(id) }),
+          details: expect.objectContaining({ kind: "workflow", status: "completed" }),
         },
         options: { triggerTurn: true },
       },
     ]);
   }, 60_000);
 
-  it("says nothing about the stop in a note about a failed read", async () => {
+  it("claims no stop in a note about a failed read", async () => {
     const remote = await server({ streams: QUIET_STREAMS, reads: Array.from({ length: 8 }, () => OUTAGE) });
     install(remote);
     const capture = (await start()).capture;
@@ -386,14 +404,11 @@ describe("a run whose monitoring fails", () => {
 
     const handed = await handedBack(exchanges, remote, pending);
     const id = runId(await status(capture));
-    expect(text(handed)).toContain(
-      `Workflow run ${id} is still running remotely. Its state is unknown after 5 observations: ` +
-        `nothing was stopped, and observation was handed back.`,
-    );
+    expect(text(handed)).toContain(readBudgetNote(id));
     expect(text(handed), "the run's remote id is the only handle the caller has").toContain(id);
-    expect(text(handed), "nothing was stopped, so a stop must never be implied").not.toMatch(/stop/i);
+    expect(claimsAStop(text(handed)), "a run that never asked to be stopped is not reported as stopped").toEqual([]);
     expect(stopRequests(remote)).toHaveLength(0);
-    expect(row(handed), "the card for a handed-back call names no stop").not.toMatch(/stop failed/i);
+    expect(row(handed), "the card for a handed-back call names no stop failure").not.toMatch(/stop failed/i);
   }, 60_000);
 
   it("keeps the stop failure ahead of the unknown state, and clears both when the run is known again", async () => {
@@ -466,8 +481,8 @@ describe("a run whose monitoring fails", () => {
     expect(row(noted), "the row a reader sees before the note was written names no failure").not.toMatch(
       /state is unknown/i,
     );
-    expect(row(handed)).toContain("state is unknown after 5 observations");
-    expect(row(handed)).toContain(NO_POLL);
+    expect(row(handed), "the row carries the note the caller needs").toContain("state is unknown after 5 observations");
+    expect(row(handed), "the whole note rides this one row, to its last line").toContain(checkLater(id));
     expect(streamRequests(remote).length, "observation continues after the hand-back").toBeGreaterThan(1);
   }, 60_000);
 });
@@ -498,11 +513,9 @@ describe("a stop the endpoint did not confirm", () => {
     const id = runId(await status(capture));
     expect(text(handed)).toBe(
       `Workflow "${WORKFLOW}" ${id}: stop failed - HTTP 409: workflow is not running. ` +
-        `The run is still running remotely; nothing more was stopped.\n` +
-        `Check it later with AgentStatus using id ${id}, or with Workflow using wait_for: "${id}".\n` +
-        NO_POLL,
+        `The run is still running remotely; nothing more was stopped.\n${checkLater(id)}`,
     );
-    expect(text(handed), "a stop that was refused is never reported as done").not.toMatch(/\bstopped\b/i);
+    expect(claimsAStop(text(handed)), "a stop the endpoint refused is never reported as done").toEqual([]);
     expect(text(handed), "the failure was the stop, not the state").not.toMatch(/unknown/i);
     expect(row(lastPaint(paints)), "the row carries the stop failure").toContain("stop failed");
     expect(await status(capture)).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
