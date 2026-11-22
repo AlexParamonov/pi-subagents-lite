@@ -1,9 +1,9 @@
 /**
  * handback-notes.test.ts — what the session is told when workflow monitoring cannot finish: the
  * hand-back note, the widget and AgentStatus rows that carry it while the settlement is still open,
- * the notification for a run that settles after its call was handed back, and the silence kept when
- * the caller still holds the outcome. Driven through the registered tools over a scripted loopback
- * endpoint, with the application's timers under the test's control (`clockedLoopback`).
+ * which stop converts a waiting call and which one does not, and the silence kept when the caller
+ * still holds the outcome. Driven through the registered tools over a scripted loopback endpoint,
+ * with the application's timers under the test's control (`clockedLoopback`).
  */
 
 import { rmSync } from "node:fs";
@@ -74,6 +74,10 @@ const OUTAGE = { status: 503, body: errorBody("Temporarily unavailable") };
 const QUIET_STREAMS = [DISPATCH, "", "", "", "", "", ""];
 /** The refusal the endpoint gives for a run it will not stop. */
 const REFUSAL = { status: 409, body: errorBody("workflow is not running") };
+/** The answer a live run's read carries: the run is running and has nothing to report yet. */
+const RUNNING = stateReply({ status: "running" });
+/** A stream that yields the dispatch and then nothing, as often as a live run gets it reopened. */
+const ENDLESS_QUIET = [DISPATCH, ...Array.from({ length: 20 }, () => "")];
 /** The declared answer the endpoint's captured read delivers. */
 const ANSWER = RECORDED.answer;
 /** How a hand-back note sends the caller off: the run's id, and the surface that reads it back. */
@@ -210,6 +214,10 @@ function text(result: Result): string {
   return result.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
 }
 
+async function stop(capture: MockExtensionAPI, id: string): Promise<string> {
+  return text(await tool(capture, "StopAgent").execute("stop-call", { agent_id: id }, undefined, undefined, ctx!));
+}
+
 async function status(capture: MockExtensionAPI): Promise<string> {
   return text(await tool(capture, "AgentStatus").execute("status-call", {}, undefined, undefined, ctx!));
 }
@@ -245,6 +253,13 @@ async function readReply(exchanges: Exchanges, remote: TestEndpoint, ordinal: nu
   }
 }
 
+/** The call has been given back: it returned on the read the test delivered, with no further delay. */
+async function handedOver(pending: Promise<Result>, reason: string): Promise<Result> {
+  const handed = await Promise.race([pending, Promise.resolve(undefined)]);
+  expect(handed, reason).toBeDefined();
+  return handed!;
+}
+
 /**
  * The five failed reads the client owes, at the cadence it owes them; the fifth hands the call back.
  * `firstGap` is how long the first read waits: nothing on a stream that ended, the silence window on
@@ -263,9 +278,7 @@ async function handedBack(
     // The read that hands the call back returns while its own response is still being delivered.
     await readReply(exchanges, remote, index + 2);
   }
-  const handed = await Promise.race([pending, Promise.resolve(undefined)]);
-  expect(handed, "the fifth failed read must hand the waiting call back").toBeDefined();
-  return handed!;
+  return handedOver(pending, "the fifth failed read must hand the waiting call back");
 }
 
 /** The run's read after the hand-back, after the delay the failed reads carried. */
@@ -305,7 +318,11 @@ async function returned(pending: Promise<Result>, reason: string): Promise<Resul
   return result!;
 }
 
-/** Assert the waiting call is still waiting after the delay a failed read owes has elapsed. */
+/**
+ * Assert the call is still waiting after five seconds of the pacing the client owes - long enough to
+ * have included every read the client wanted next, short enough that a test whose scripted reads all
+ * say `running` cannot have settled inside it.
+ */
 async function stillWaiting(pending: Promise<Result>, reason: string): Promise<void> {
   let waiting = true;
   void pending.then(() => {
@@ -411,11 +428,40 @@ describe("a run whose monitoring fails", () => {
     expect(row(handed), "the card for a handed-back call names no stop failure").not.toMatch(/stop failed/i);
   }, 60_000);
 
-  it("keeps the stop failure ahead of the unknown state, and clears both when the run is known again", async () => {
+  it("clears the unknown note when a read says the run is live again", async () => {
+    const remote = await server({
+      streams: QUIET_STREAMS,
+      reads: [...Array.from({ length: 5 }, () => OUTAGE), RUNNING],
+    });
+    install(remote);
+    const capture = (await start()).capture;
+    const exchanges = clockedLoopback();
+    const pending = run();
+
+    const handed = await handedBack(exchanges, remote, pending);
+    const id = runId(await status(capture));
+    expect(row(handed), "the note is on the row to be cleared").toContain("state is unknown after 5 observations");
+
+    // The read that answers authoritatively ends the unknown, and nothing else follows: no further
+    // progress frame, no settlement, no notification.
+    await readAgain(exchanges, remote, 6);
+    expect(row(handed), "the row is still the run's live row").toMatch(
+      new RegExp(`^${id} \\(${WORKFLOW} workflow\\) running`),
+    );
+    expect(row(handed), "and it carries no unknown line").not.toMatch(/state is unknown/i);
+    expect(await status(capture), "the listing reads the record, so the note is gone there too").not.toMatch(
+      /state is unknown/i,
+    );
+    expect(await status(capture)).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
+    expect(nudges(capture), "a run that is known again has not settled").toEqual(NO_NUDGE);
+    expect(stopRequests(remote), "recovery stops nothing").toHaveLength(0);
+  }, 60_000);
+
+  it("keeps the stop failure ahead of the unknown state, and through a read that says the run is live", async () => {
     const remote = await server({
       holdStream: true,
       streams: QUIET_STREAMS,
-      reads: [OUTAGE, OUTAGE, OUTAGE, OUTAGE, OUTAGE, stateReply({ status: "running" })],
+      reads: [...Array.from({ length: 5 }, () => OUTAGE), RUNNING],
       stopRejection: REFUSAL,
     });
     install(remote);
@@ -447,11 +493,16 @@ describe("a run whose monitoring fails", () => {
     expect(await status(capture)).toContain("stop failed");
     expect(await status(capture)).not.toMatch(/unknown/i);
 
-    // The read that says the run is live clears the note, and nothing more is notified.
+    // The read that says the run is live changes nothing about a standing stop failure: only
+    // settlement clears it. Still no notification, still one stop request, still the same note.
     await readAgain(exchanges, remote, 6);
+    expect(row(lastPaint(paints)), "the standing note outlives the read that says the run is live").toContain(
+      "stop failed",
+    );
     expect(row(lastPaint(paints))).toMatch(new RegExp(`^${id} \\(${WORKFLOW} workflow\\) running`));
+    expect(await status(capture)).toContain("stop failed");
+    expect(await status(capture), "the endpoint answered, so the state is no longer unknown").not.toMatch(/unknown/i);
     expect(await status(capture)).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
-    expect(await status(capture)).not.toMatch(/stop failed|unknown/i);
     expect(nudges(capture), "a recovered run is not an outcome the parent is notified of").toEqual(NO_NUDGE);
     expect(stopRequests(remote), "a run whose stop was refused is not stopped again").toHaveLength(1);
   }, 60_000);
@@ -473,12 +524,17 @@ describe("a run whose monitoring fails", () => {
       live.resolve();
     });
     await beforeEnd(live.promise, pending, "the held stream painted live progress");
+    const id = runId(await status(capture));
+    // Read the row while the record still holds no note: after the hand-back a row that reads the
+    // record - which is what 2-2 builds - paints the note for any snapshot it is given.
+    const beforeNote = row(lastPaint(paints));
 
     const handed = await handedBack(exchanges, remote, pending, 90_000);
-    const id = runId(await status(capture));
-    const noted = lastPaint(paints);
     expect(started.widgetText(), "the widget lists the run the caller no longer holds").toContain(id);
-    expect(row(noted), "the row a reader sees before the note was written names no failure").not.toMatch(
+    expect(beforeNote, "the row before the note is the plain live row").toMatch(
+      new RegExp(`^${id} \\(${WORKFLOW} workflow\\) running`),
+    );
+    expect(beforeNote, "the row a reader sees before the note was written names no failure").not.toMatch(
       /state is unknown/i,
     );
     expect(row(handed), "the row carries the note the caller needs").toContain("state is unknown after 5 observations");
@@ -492,7 +548,7 @@ describe("a stop the endpoint did not confirm", () => {
     const remote = await server({
       holdStream: true,
       streams: QUIET_STREAMS,
-      reads: [stateReply({ status: "running" })],
+      reads: [RUNNING],
       stopRejection: REFUSAL,
     });
     install(remote);
@@ -524,38 +580,99 @@ describe("a stop the endpoint did not confirm", () => {
     expect(stopRequests(remote), "an interrupted call whose stop was refused stops nothing further").toHaveLength(1);
   }, 60_000);
 
-  it("answers the call that stayed waiting for the run, and notifies nobody", async () => {
+  it("hands back the call whose parent interrupt the endpoint did not confirm", async () => {
     const remote = await server({
       holdStream: true,
       streams: QUIET_STREAMS,
-      reads: [stateReply({ status: "running" }), declaredOutputRead()],
+      reads: [RUNNING, declaredOutputRead()],
       stopOutcome: "interrupted",
     });
     install(remote);
-    const capture = (await start({ parentIdle: false })).capture;
+    const capture = (await start()).capture;
     const exchanges = clockedLoopback();
     const esc = new AbortController();
     const live = deferred<void>();
     const pending = run(esc.signal, () => live.resolve());
 
     await beforeEnd(live.promise, pending, "the held stream painted live progress");
+    const id = runId(await status(capture));
     esc.abort();
     await beforeEnd(remote.stopReceived, pending, "stop request to arrive");
     remote.releaseStream();
-    // The dead-runner acknowledgement is a GET trigger, and the run says it is live: nothing settled.
+    // The acknowledgement says the runner is gone, the deciding read says the run is live, and the
+    // parent interrupt that asked for the stop is spent: the wait cannot be kept.
     await readReply(exchanges, remote, 1);
-    await stillWaiting(pending, "a run the read says is live leaves its call waiting");
+    const handed = await handedOver(pending, "the read that says the run is live hands the interrupted call back");
+    const note = text(handed);
+
+    expect(nudges(capture), "a hand-back is not a settlement").toEqual(NO_NUDGE);
+    expect(note, "the caller keeps the id the run is addressed by").toContain(id);
+    expect(note, "what the endpoint did not confirm was the stop").toMatch(/stop/i);
+    expect(note, "the run is still live on the endpoint").toMatch(/still running remotely/i);
+    expect(note, "the outcome is promised as a notification").toMatch(/notification/i);
+    expect(note, "the promise holds only while this session stays open").toMatch(/this session/i);
+    expect(claimsAStop(note), "a stop the endpoint did not confirm is never reported as done").toEqual([]);
+    expect(note, "the note sends the caller to no handle the tool would reject").not.toContain("wait_for");
+    expect(row(handed), "the note paints as the run's live health").toContain("still running remotely");
+    expect(await status(capture)).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
+    expect(stopRequests(remote), "the interrupted turn's stop is sent once").toHaveLength(1);
+
+    // Observation continues, and the read that answers is notified exactly once - in the one shape
+    // every settlement delivery has.
+    await vi.advanceTimersByTimeAsync(2_000);
     await readReply(exchanges, remote, 2);
+    expect(await settled(capture)).toEqual([
+      {
+        message: {
+          customType: "subagent-result",
+          content: `[Workflow "${WORKFLOW}" ${id} completed]\n\n${ANSWER}`,
+          display: true,
+          details: expect.objectContaining({ kind: "workflow", status: "completed" }),
+        },
+        options: { triggerTurn: true },
+      },
+    ]);
+  }, 60_000);
+
+  it("answers the call whose stop the caller asked for by hand, and notifies nobody", async () => {
+    const remote = await server({
+      holdStream: true,
+      streams: ENDLESS_QUIET,
+      reads: [...Array.from({ length: 12 }, () => RUNNING), declaredOutputRead()],
+      stopOutcome: "interrupted",
+    });
+    install(remote);
+    const capture = (await start({ parentIdle: false })).capture;
+    const exchanges = clockedLoopback();
+    const turn = new AbortController();
+    const live = deferred<void>();
+    const pending = run(turn.signal, () => live.resolve());
+
+    await beforeEnd(live.promise, pending, "the held stream painted live progress");
     const id = runId(await status(capture));
-    expect(await returned(pending, "the settlement answers the call that stayed waiting")).toContain("completed");
+    // A stop the caller asked for while its turn is still running: nothing here aborts the parent
+    // signal, and that is what separates it from the Esc above.
+    await stop(capture, id);
+    await beforeEnd(remote.stopReceived, pending, "the hand-requested stop to arrive");
+    remote.releaseStream();
+    // The dead-runner acknowledgement is a GET trigger, and the read says the run is live: the call
+    // keeps waiting for the run, and a run that is waited for is never enrolled for a notification.
+    await readReply(exchanges, remote, 1);
+    await stillWaiting(pending, "a hand-requested stop of a run the read says is live keeps its call waiting");
+    expect(await status(capture)).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
+
+    // Twelve reads say `running`, then one answers: the settlement lands in the call that waited.
+    const settledInline = text(await returned(pending, "the read that answers settles the waiting call"));
+    expect(settledInline).toBe(ANSWER);
     expect(nudges(capture), "the caller holds the outcome, so the parent is not told").toEqual(NO_NUDGE);
     expect(await status(capture)).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) completed`));
+    expect(stopRequests(remote), "the hand-requested stop is sent once").toHaveLength(1);
   }, 60_000);
 
   it("stops nothing further when the session ends around a run whose observation was handed back", async () => {
     const remote = await server({
       streams: QUIET_STREAMS,
-      reads: [...Array.from({ length: 5 }, () => OUTAGE), stateReply({ status: "running" })],
+      reads: [...Array.from({ length: 5 }, () => OUTAGE), RUNNING],
     });
     install(remote);
     const capture = (await start()).capture;
