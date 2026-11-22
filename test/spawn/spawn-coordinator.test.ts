@@ -619,7 +619,9 @@ describe("SpawnCoordinator", () => {
     it("labels the notify fallback by the kind it carries", () => {
       const notify = vi.fn();
       const coordinator = new SpawnCoordinator(manager);
-      const record = workflowRecord({ execution: { ...workflowRecord().execution, spawnCtx: asExtensionContext({ ui: { notify } }) } });
+      const record = workflowRecord({
+        execution: { ...workflowRecord().execution, spawnCtx: asExtensionContext({ ui: { notify } }) },
+      });
       coordinator.enrollForNudge(record.id);
       mockPi.sendMessage.mockImplementation(() => {
         throw new Error("stale context");
@@ -631,7 +633,6 @@ describe("SpawnCoordinator", () => {
       expect(notify).toHaveBeenCalledWith('[Workflow "audit" completed] Result available', "info");
     });
   });
-
 
   describe("onAgentComplete", () => {
     it("keeps the live view after completion (a continuation re-feeds it)", async () => {
