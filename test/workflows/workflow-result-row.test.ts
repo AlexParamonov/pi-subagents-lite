@@ -42,7 +42,7 @@ function liveRecord(fixture: RunFixture): AgentRecord {
       ...(fixture.launched ? { invocation: { runInBackground: true } } : {}),
     },
     lifecycle: { status: fixture.status, startedAt: 100, started: true },
-    execution: {},
+    execution: { settled: false, settlementCount: 0 },
     workflow: {
       name: "audit",
       endpoint: "lab",

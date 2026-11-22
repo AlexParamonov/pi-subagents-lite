@@ -725,7 +725,9 @@ describe("workflow run row", () => {
   });
 
   it("shows the newest progress line while the run has no note", () => {
-    manager.listAgents = () => [makeWorkflowRun("w1w1w1w1", { progress: ["\u25b6 analysis dispatched", "\u2713 review done"] })];
+    manager.listAgents = () => [
+      makeWorkflowRun("w1w1w1w1", { progress: ["\u25b6 analysis dispatched", "\u2713 review done"] }),
+    ];
 
     const lines = renderWidgetLines(widget);
 

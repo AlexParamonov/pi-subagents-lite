@@ -796,9 +796,7 @@ export class AgentWidget {
       .split("\n")
       .find((line) => line.trim() !== "");
     if (said) return said;
-    return bg
-      ? describeActivity(bg.activeTools, bg.responseText, this.bashActivity(a, bg.activeTools))
-      : "thinking…";
+    return bg ? describeActivity(bg.activeTools, bg.responseText, this.bashActivity(a, bg.activeTools)) : "thinking…";
   }
 
   /** Colored spinner frame for an agent: uses agent color when configured, else theme accent. */

@@ -120,9 +120,7 @@ export function renderWorkflowResult(
   // is only what the wait had seen when it ended.
   const progress =
     record?.workflow?.progress ?? (Array.isArray(details.progress) ? (details.progress as string[]) : []);
-  const rows = [...progress, ...outcomeRows(record, content)]
-    .map((row) => plainText(row))
-    .filter((row) => row !== "");
+  const rows = [...progress, ...outcomeRows(record, content)].map((row) => plainText(row)).filter((row) => row !== "");
   const mark = context?.isError ? theme.fg("error", "\u2717") : "";
   const body = rows.map((row) => `  ${theme.fg("toolOutput", row)}`).join("\n");
   return new Text(mark === "" ? body : `${mark} ${body.trimStart()}`, 0, 0);

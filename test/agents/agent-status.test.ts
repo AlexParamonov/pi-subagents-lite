@@ -33,7 +33,7 @@ function makeRecord(fixture: FixtureRecord): AgentRecord {
     id: fixture.id,
     display: { type: fixture.type, description: "" },
     lifecycle: { status: fixture.status, startedAt: 100, started: true },
-    execution: {},
+    execution: { settled: false, settlementCount: 0 },
     stats: { toolUses: 0, compactionCount: 0, lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 } },
     ...(fixture.workflow === false
       ? {}
@@ -51,7 +51,12 @@ function makeRecord(fixture: FixtureRecord): AgentRecord {
 }
 
 const WORKFLOW_RECORD: FixtureRecord = { id: "aaaa1111aaaa1111", type: "audit", status: "running" };
-const SUBAGENT_RECORD: FixtureRecord = { id: "bbbb2222bbbb2222", type: "researcher", status: "running", workflow: false };
+const SUBAGENT_RECORD: FixtureRecord = {
+  id: "bbbb2222bbbb2222",
+  type: "researcher",
+  status: "running",
+  workflow: false,
+};
 
 function statusText(records: AgentRecord[], receivesCompletionNotifications = true): Promise<string> {
   mockListAgents.mockReturnValue(records);
