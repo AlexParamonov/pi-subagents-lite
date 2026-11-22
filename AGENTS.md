@@ -40,6 +40,8 @@ Pi source code in ../pi
 - New config setting: audit the full plumbing list in one pass (type, default, resolution/setter/sync, keys, internal defaults). A "setting survives clearAllModelOverrides" test belongs with every new setting.
 - Config constraints: enforce at every entry point in one pass — enforcing two of three is a trap.
 - `vi.fn()` at the call site infers `Mock<Procedure>`, but `ReturnType<typeof vi.fn>` resolves to the constraint. When a shared mock field gets swapped by consumers, annotate with `ReturnType<typeof vi.fn>`.
+- A negative assertion must not forbid a word the same test pins: `not.toMatch(/stop/i)` can never pass on a note pinned as "nothing was stopped". Assert the protected claim instead - allow the honest denials, forbid the claim they deny.
+- Pin model-facing text against the schema and channel that actually exist: with `additionalProperties: false` a note telling the model to pass `wait_for` points it at a validation error, and a run that already handed back has no tool call left to answer in.
 
 ## pi-ai API & Subagent Lifecycle
 
