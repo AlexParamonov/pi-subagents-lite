@@ -16,6 +16,7 @@ import { agentColorAnsi } from "../agent-color.ts";
 import { getStore } from "../shell.ts";
 import type { SubagentType, AgentInvocation } from "../agents/types.ts";
 import type { AgentRecord, AgentStatus } from "../types.ts";
+import { SHORT_ID_LENGTH } from "../types.ts";
 import type { Theme } from "./types.ts";
 import { formatTokens, formatCost } from "../agents/usage.ts";
 import type { ModelThinkingPlacement } from "../config/types.ts";
@@ -197,6 +198,13 @@ export function getDisplayName(type: SubagentType, fallback = "Agent"): string {
  */
 export function recordDisplayName(record: AgentRecord, name: string): string {
   return record.workflow ? `${record.workflow.name} workflow` : name;
+}
+
+/** The row one record paints for itself: its id, what it is, and its lifecycle status. Nothing else
+ * may stand where the status is, because a live run's state is the record's, not a surface's guess. */
+export function recordRow(record: AgentRecord): string {
+  const shortId = record.id.slice(0, SHORT_ID_LENGTH);
+  return `${shortId} (${recordDisplayName(record, record.display.type)}) ${record.lifecycle.status}`;
 }
 
 /** Colored bullet prefix for agent names in pickers/menus.

@@ -1247,7 +1247,8 @@ describe("workflow run answered by recorded endpoint bytes", () => {
       const status = await run(executable(capture, "AgentStatus"), {});
       expect(text(status)).toContain("audit");
       expect(text(status)).toMatch(/running/i);
-      expect(text(status)).not.toMatch(/stopped|\berror\b/i);
+      // The live note says out loud that nothing was stopped; only the row's status slot may not claim one.
+      expect(text(status)).not.toMatch(/\)\s+(stopped|error|completed|failed)\b/);
 
       const stopped = await outcome(executable(capture, "StopAgent"), { agent_id: listedRunId(status) });
       expect(stopped.isError).toBe(false);
@@ -1999,7 +2000,7 @@ describe("workflow runs on the shared management surfaces", () => {
     expect(rows).toMatch(/workflow/i);
   });
 
-  it("promises no completion notification for a workflow run", async () => {
+  it("states the delivery rule for a workflow run without promising it a notification", async () => {
     const remote = await server({ holdStream: true });
     install(remote);
     const capture = await start();
@@ -2010,9 +2011,10 @@ describe("workflow runs on the shared management surfaces", () => {
     remote.releaseStream();
     await pending;
 
-    // Wave 1 delivers no Nudge for workflow runs, so its status line stays honest.
+    // Wave 2 delivers a Nudge for a workflow run too, so the line states one rule for every kind and
+    // promises this run nothing.
     expect(text(status)).toContain("audit");
-    expect(text(status)).not.toMatch(/notif/i);
+    expect(text(status)).toMatch(/Don't poll/);
     expect(text(status)).not.toMatch(/you.ll (receive|get|be told)/i);
   });
 });
@@ -2051,7 +2053,7 @@ describe("workflow monitoring degradation", () => {
       const status = await run(executable(capture, "AgentStatus"), {});
       expect(text(status)).toContain("audit");
       expect(text(status)).toMatch(/running/i);
-      expect(text(status)).not.toMatch(/stopped/i);
+      expect(text(status)).not.toMatch(/\)\s+(stopped|error|completed|failed)\b/);
     } finally {
       await shutdownSession(capture);
       vi.useRealTimers();
