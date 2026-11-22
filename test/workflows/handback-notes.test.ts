@@ -27,10 +27,10 @@ import {
   DISPATCH,
   endpoint,
   errorBody,
+  readRequests,
   RECORDED,
   stateReply,
   stopRequests,
-  streamRequests,
   workspace,
   write,
   workflow,
@@ -539,7 +539,11 @@ describe("a run whose monitoring fails", () => {
     );
     expect(row(handed), "the row carries the note the caller needs").toContain("state is unknown after 5 observations");
     expect(row(handed), "the whole note rides this one row, to its last line").toContain(checkLater(id));
-    expect(streamRequests(remote).length, "observation continues after the hand-back").toBeGreaterThan(1);
+    // Observation continues on the read channel: the hand-back carries the delay its failed reads
+    // owed, and the reads resume after it. No stream reopens - the last known state is unknown, and
+    // only an authoritative `running` read makes it running again (ADR-0013, US-19).
+    await readAgain(exchanges, remote, 6);
+    expect(readRequests(remote).length, "observation continues after the hand-back").toBeGreaterThan(5);
   }, 60_000);
 });
 
@@ -611,6 +615,7 @@ describe("a stop the endpoint did not confirm", () => {
     expect(note, "the run is still live on the endpoint").toMatch(/still running remotely/i);
     expect(note, "the outcome is promised as a notification").toMatch(/notification/i);
     expect(note, "the promise holds only while this session stays open").toMatch(/this session/i);
+    expect(note, "and it routes the caller back to AgentStatus, like every other note").toContain(checkLater(id));
     expect(claimsAStop(note), "a stop the endpoint did not confirm is never reported as done").toEqual([]);
     expect(note, "the note sends the caller to no handle the tool would reject").not.toContain("wait_for");
     expect(row(handed), "the note paints as the run's live health").toContain("still running remotely");

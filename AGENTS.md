@@ -46,6 +46,7 @@ Pi source code in ../pi
 - Before pinning a state transition, read the wave criterion and the existing unit pin for the same transition. Two tests demanding opposite outcomes can be resolved only by deleting one, and an acceptance file is the wrong place to overrule a criterion. Where one input splits on who asked (aborted parent signal or not), pin both arms in adjacent tests.
 - An exact-array render pin in an earlier wave's acceptance file is a shape contract, not a behaviour pin. When a later wave's committed test demands the row that surface now paints, re-point it in place - keep the unchanged rows as an array and pin the new row's own shape - rather than special-casing the surface to keep the old array.
 - A test file that mocks the name registry to answer for every type (e.g. `getDisplayName` capitalising the type) cannot see production's unknown-type fallback. A name assertion in that file proves the renderer passed the field, never that the real registry names it.
+- Pin "observation continued" on the channel the client really re-enters: after failed reads the last-known state is unknown, so no stream reopens until a `running` read restores it (ADR-0013) - count reads, not stream requests, and never make a reopened stream the evidence that monitoring survived.
 
 ## pi-ai API & Subagent Lifecycle
 
