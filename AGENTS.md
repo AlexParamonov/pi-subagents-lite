@@ -42,6 +42,8 @@ Pi source code in ../pi
 - `vi.fn()` at the call site infers `Mock<Procedure>`, but `ReturnType<typeof vi.fn>` resolves to the constraint. When a shared mock field gets swapped by consumers, annotate with `ReturnType<typeof vi.fn>`.
 - A negative assertion must not forbid a word the same test pins: `not.toMatch(/stop/i)` can never pass on a note pinned as "nothing was stopped". Assert the protected claim instead - allow the honest denials, forbid the claim they deny.
 - Pin model-facing text against the schema and channel that actually exist: with `additionalProperties: false` a note telling the model to pass `wait_for` points it at a validation error, and a run that already handed back has no tool call left to answer in.
+- A row or card that reads the record paints the record's current state for any snapshot it is handed: to pin "before" and "after" a live change, capture the earlier rendered text before driving the change, and anchor the positive shape before the negative assertion so an empty row cannot pass it.
+- Before pinning a state transition, read the wave criterion and the existing unit pin for the same transition. Two tests demanding opposite outcomes can be resolved only by deleting one, and an acceptance file is the wrong place to overrule a criterion. Where one input splits on who asked (aborted parent signal or not), pin both arms in adjacent tests.
 
 ## pi-ai API & Subagent Lifecycle
 
