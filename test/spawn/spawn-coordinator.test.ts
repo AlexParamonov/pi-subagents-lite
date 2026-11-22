@@ -27,7 +27,7 @@ vi.mock("../../src/utils.js", () => ({
 }));
 
 // Hoist mock pi so shell mock can return it
-const { mockPi, mockGetPiInstance } = vi.hoisted(() => ({
+const { mockPi, mockGetPiInstance, mockGetSessionCtx } = vi.hoisted(() => ({
   mockPi: {
     sendMessage: vi.fn(),
     sendUserMessage: vi.fn(),
@@ -37,6 +37,7 @@ const { mockPi, mockGetPiInstance } = vi.hoisted(() => ({
     on: vi.fn(),
   },
   mockGetPiInstance: vi.fn<() => ExtensionAPI | null>(() => null),
+  mockGetSessionCtx: vi.fn<() => Pick<ExtensionContext, "isIdle">>(() => ({ isIdle: () => true })),
 }));
 // ExtensionAPI-typed view of the mock for the call boundary; mockPi stays a
 // raw Mock so tests can reach .mock calls and implementations.
@@ -44,7 +45,7 @@ const mockPiApi = asExtensionAPI(mockPi);
 
 vi.mock("../../src/shell.js", () => ({
   getPiInstance: () => mockGetPiInstance(),
-  getSessionCtx: () => ({ isIdle: () => true }),
+  getSessionCtx: () => mockGetSessionCtx(),
   getWidget: () => null,
 }));
 
@@ -155,6 +156,7 @@ describe("SpawnCoordinator", () => {
     ctx = makeMockCtx();
     mockPi.sendMessage.mockReset();
     mockGetPiInstance.mockReturnValue(mockPiApi);
+    mockGetSessionCtx.mockReturnValue({ isIdle: () => true });
   });
 
   it("spawns a background agent and returns result", async () => {
@@ -454,6 +456,35 @@ describe("SpawnCoordinator", () => {
         '[Subagent "builder" agent-0 stopped]\n\ndone' +
           " (STOPPED BY THE USER before completion — output is partial; the task was NOT finished)",
       );
+    });
+  });
+
+  describe("nudge delivery options", () => {
+    // pi queues a custom message into agent.steer()/agent.followUp() whenever it is streaming and triggerTurn !== false.
+    async function nudgeOptions(parentIdle: boolean) {
+      mockGetSessionCtx.mockReturnValue({ isIdle: () => parentIdle });
+      const coordinator = new SpawnCoordinator(manager);
+      const result = await coordinator.spawn(mockPiApi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
+      });
+
+      coordinator.scheduleNudge(result.agentId);
+      vi.advanceTimersByTime(200);
+
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      return mockPi.sendMessage.mock.calls[0][1] as Parameters<ExtensionAPI["sendMessage"]>[1];
+    }
+
+    it("hands a busy parent a committing delivery, not a steered queue entry", async () => {
+      expect(await nudgeOptions(false)).toEqual({ triggerTurn: false });
+    });
+
+    it("hands an idle parent a delivery that starts a turn", async () => {
+      expect(await nudgeOptions(true)).toEqual({ triggerTurn: true });
     });
   });
 
