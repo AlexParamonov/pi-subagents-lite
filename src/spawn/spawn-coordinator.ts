@@ -251,12 +251,9 @@ export class SpawnCoordinator {
     });
 
     try {
-      // Pick delivery mode based on parent session state:
-      // - steer: queues while running, delivers before next LLM call
-      // - followUp: waits for agent to finish, then delivers
+      // Explicit triggerTurn and no deliverAs: pi's streaming queue branch (triggerTurn !== false) is emptied by an ordinary Esc.
       const ctx = getSessionCtx();
       const parentIdle = ctx?.isIdle?.() ?? true;
-      const deliverAs = parentIdle ? "followUp" : "steer";
 
       pi.sendMessage(
         {
@@ -265,10 +262,7 @@ export class SpawnCoordinator {
           details,
           display: true,
         },
-        {
-          deliverAs,
-          triggerTurn: true,
-        },
+        parentIdle ? { triggerTurn: true } : { triggerTurn: false },
       );
     } catch {
       // sendMessage failed (shared runtime overwritten by subagent bindCore).
