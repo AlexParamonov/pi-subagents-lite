@@ -44,6 +44,7 @@ Pi source code in ../pi
 - Pin model-facing text against the schema and channel that actually exist: with `additionalProperties: false` a note telling the model to pass `wait_for` points it at a validation error, and a run that already handed back has no tool call left to answer in.
 - A row or card that reads the record paints the record's current state for any snapshot it is handed: to pin "before" and "after" a live change, capture the earlier rendered text before driving the change, and anchor the positive shape before the negative assertion so an empty row cannot pass it.
 - Before pinning a state transition, read the wave criterion and the existing unit pin for the same transition. Two tests demanding opposite outcomes can be resolved only by deleting one, and an acceptance file is the wrong place to overrule a criterion. Where one input splits on who asked (aborted parent signal or not), pin both arms in adjacent tests.
+- Pin "observation continued" on the channel the client really re-enters: after failed reads the last-known state is unknown, so no stream reopens until a `running` read restores it (ADR-0013) - count reads, not stream requests, and never make a reopened stream the evidence that monitoring survived.
 
 ## pi-ai API & Subagent Lifecycle
 

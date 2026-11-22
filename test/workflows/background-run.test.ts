@@ -359,8 +359,10 @@ describe("the settlement notification", () => {
     const paints: Result[] = [];
 
     const launched = await launch(capture, undefined, (update) => paints.push(update));
+    // The launch call has returned, so from this instant nothing may reach its `onUpdate` again -
+    // every repaint until delivery included.
+    const atLaunchReturn = [...paints];
     const [first] = await settled(capture);
-    const atDelivery = [...paints];
 
     expect(first.message.content).toBe(`[Workflow "audit" ${runId(await status(capture))} completed]\n\n${ANSWER}`);
     expect(first.options, "an idle parent is woken by the notification").toEqual({ triggerTurn: true });
@@ -369,7 +371,7 @@ describe("the settlement notification", () => {
     expect(text(launched), "the launch call was never the result").not.toContain(ANSWER);
     await vi.waitFor(() => expect(streamRequests(remote)).toHaveLength(1));
     expect(nudges(capture), "one settlement, one notification").toHaveLength(1);
-    expect(paints, "a call that already returned receives no further updates").toEqual(atDelivery);
+    expect(paints, "a call that already returned receives no further updates").toEqual(atLaunchReturn);
   });
 
   it("renders as a workflow card carrying the run's own status and body", async () => {
