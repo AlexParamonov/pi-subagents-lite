@@ -1,7 +1,7 @@
 # GET-authoritative client over the SSE stream
 
 Workflow run state always comes from `GET /api/workflows/:id` (status, result,
-persisted events); SSE is a display-only push channel. The client reconciles
+error); SSE is a display-only push channel. The client reconciles
 from GET after a silence window or any reconnect, never trusts SSE event ids,
 and detects terminal state from the polled `status` field, never from stream
 quiet.
