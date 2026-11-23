@@ -47,6 +47,9 @@ Pi source code in ../pi
 - An exact-array render pin in an earlier wave's acceptance file is a shape contract, not a behaviour pin. When a later wave's committed test demands the row that surface now paints, re-point it in place - keep the unchanged rows as an array and pin the new row's own shape - rather than special-casing the surface to keep the old array.
 - A test file that mocks the name registry to answer for every type (e.g. `getDisplayName` capitalising the type) cannot see production's unknown-type fallback. A name assertion in that file proves the renderer passed the field, never that the real registry names it.
 - Pin "observation continued" on the channel the client really re-enters: after failed reads the last-known state is unknown, so no stream reopens until a `running` read restores it (ADR-0013) - count reads, not stream requests, and never make a reopened stream the evidence that monitoring survived.
+- "The two copies differ" is a claim, not a fact: when de-forking a harness, run the swap. Handback's settlement waiter moved onto the real-clock `vi.waitFor` stayed green (`vi.waitFor` advances a fake clock, and the settling read is delivered before the wait), so that fork is clock ownership, not observed behaviour - while the same file's `waited`/`until` ladder is not interchangeable.
+- A shared text read-back is pinned only as deep as its deepest assertion: truncating the `AgentStatus` listing to its first line stayed green because `notedRow` folds the row and the note's first line onto one physical line, so the note's routing line is unpinned on that surface.
+- A field a test helper writes onto an object production handed it must exist in production: `widget.showStatus = true` outlived the property it once set, so the write was inert and the row it seemed to reveal came from elsewhere. Check the real object before believing a helper's setup.
 
 ## pi-ai API & Subagent Lifecycle
 
