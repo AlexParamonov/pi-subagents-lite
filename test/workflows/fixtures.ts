@@ -595,6 +595,16 @@ export function stopRequests(server: TestEndpoint): TestEndpoint["requests"] {
   );
 }
 
+/** Every request the endpoint served, as `METHOD /path` in the order it arrived. */
+export function wire(server: TestEndpoint): string[] {
+  return server.requests.map(({ method, path }) => `${method} ${path}`);
+}
+
+/** The route one created run is read and stopped on, under the endpoint's own prefix. */
+export function runPath(server: TestEndpoint): string {
+  return `${server.prefix}/api/workflows/${server.segment}`;
+}
+
 /**
  * Await a remote milestone, but fail with a named reason if the run ends first: without this a
  * broken settle path shows up as a bare test timeout.
@@ -809,4 +819,13 @@ export function configure(ws: Workspace, url: string, apiKey?: string): void {
       workflows: { endpoints: { local: { url, ...(apiKey ? { apiKey } : {}) } }, defaultEndpoint: "local" },
     }),
   );
+}
+
+/**
+ * The workflow file and endpoint config one single-workflow session needs: the `audit` workflow, and
+ * `remote` as the endpoint its default route resolves to. Install it before the session starts.
+ */
+export function installWorkflow(ws: Workspace, remote: TestEndpoint): void {
+  write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+  configure(ws, remote.url);
 }

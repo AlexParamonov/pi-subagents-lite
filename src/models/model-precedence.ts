@@ -30,7 +30,7 @@ export interface SubagentsConfig {
     widgetMaxLines?: number;
     widgetMaxLinesCompact?: number;
     widgetCompact?: boolean;
-    /** Show background completion cards in the TUI. Default: true. */
+    /** Show the subagent and Workflow run completion cards in the transcript. Default: true. */
     showCompletionCards?: boolean;
     widgetShortcut?: boolean;
     /** System prompt mode: replace (default), inherit parent, or custom file. */

@@ -3,13 +3,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentToolResult, AgentToolUpdateCallback, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import {
-  createMockExtensionAPI,
-  fakeCtx,
-  loadExtension,
-  type MockExtensionAPI,
-  type RegisteredTool,
-} from "../fixtures.js";
+import { createMockExtensionAPI, fakeCtx, loadExtension, type MockExtensionAPI } from "../fixtures.js";
 import { defaultTheme, defaultUi } from "../mock-utils.js";
 import { asCommandContext, asTui, asUiCustom } from "../pi-boundaries.js";
 import {
@@ -33,12 +27,15 @@ import {
   TERMINAL,
   textFrame,
   workspace,
+  wire,
+  runPath,
   write,
   workflow,
   type EndpointOptions,
   type TestEndpoint,
   type Workspace,
 } from "./fixtures.js";
+import { mockAgentDir, renderedRows, report, runId, text, tool } from "./session.js";
 
 const TARGET = "release-gateway";
 const KEY = "fixture-api-token";
@@ -50,16 +47,6 @@ type Result = AgentToolResult<Record<string, unknown>>;
 type Update = AgentToolUpdateCallback<Record<string, unknown>>;
 type Exchanges = ReturnType<typeof clockedLoopback>;
 
-interface ExecutableTool extends RegisteredTool {
-  execute(
-    id: string,
-    args: Record<string, unknown>,
-    signal: AbortSignal | undefined,
-    update: Update | undefined,
-    ctx: ExtensionContext,
-  ): Promise<Result>;
-}
-
 let ws: Workspace;
 let api: MockExtensionAPI | undefined;
 let ctx: ExtensionContext | undefined;
@@ -68,11 +55,7 @@ let remotes: TestEndpoint[];
 beforeEach(() => {
   ws = workspace();
   remotes = [];
-  vi.resetModules();
-  vi.doMock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
-    ...(await importOriginal<typeof import("@earendil-works/pi-coding-agent")>()),
-    getAgentDir: () => ws.agentDir,
-  }));
+  mockAgentDir(ws);
 });
 
 afterEach(async () => {
@@ -129,55 +112,21 @@ function overrideProjectUrl(url: string): void {
   );
 }
 
-function tool(capture: MockExtensionAPI, name = "Workflow"): ExecutableTool {
-  const registered = capture.tools.filter((tool) => tool.name === name).at(-1) as ExecutableTool | undefined;
-  expect(registered?.execute, `Pi must be able to call ${name}`).toBeTypeOf("function");
-  return registered!;
-}
-
 function run(capture: MockExtensionAPI, signal?: AbortSignal, onUpdate?: Update): Promise<Result> {
   return tool(capture).execute("workflow-call", ARGS, signal, onUpdate, ctx!);
-}
-
-function text(result: Result): string {
-  return result.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
-}
-
-async function report(pending: Promise<Result>) {
-  try {
-    const result = await pending;
-    return { isError: result.isError ?? false, text: text(result) };
-  } catch (error) {
-    if (!(error instanceof Error)) throw error;
-    return { isError: true, text: error.message };
-  }
 }
 
 async function status(capture: MockExtensionAPI): Promise<string> {
   return text(await tool(capture, "AgentStatus").execute("status-call", {}, undefined, undefined, ctx!));
 }
 
-function runId(listing: string): string {
-  const id = listing.match(/\b[0-9a-f]{8}\b/)?.[0];
-  expect(id, "AgentStatus must list the run by its short id").toBeTypeOf("string");
-  return id!;
-}
-
 async function stop(capture: MockExtensionAPI, id: string): Promise<string> {
   return text(await tool(capture, "StopAgent").execute("stop-call", { agent_id: id }, undefined, undefined, ctx!));
 }
 
+/** This file reads every surface as fully trimmed text, so its rows are trimmed at both ends. */
 function rows(component: unknown): string[] {
-  if (
-    typeof component !== "object" ||
-    component === null ||
-    !("render" in component) ||
-    typeof component.render !== "function"
-  )
-    return [];
-  const lines: unknown = component.render(240);
-  if (!Array.isArray(lines)) return [];
-  return lines.filter((line): line is string => typeof line === "string").map((line) => line.trim());
+  return renderedRows(component).map((line) => line.trim());
 }
 
 /** Drive the real Workflow row, including its registered completion invalidation. */
@@ -276,14 +225,6 @@ function consoleLines(): string[] {
     vi.spyOn(console, level).mockImplementation((...values: unknown[]) => lines.push(values.map(String).join(" ")));
   }
   return lines;
-}
-
-function wire(remote: TestEndpoint): string[] {
-  return remote.requests.map(({ method, path }) => `${method} ${path}`);
-}
-
-function runPath(remote: TestEndpoint): string {
-  return `${remote.prefix}/api/workflows/${remote.segment}`;
 }
 
 /** Call only after draining the response on the current virtual tick. */
@@ -947,7 +888,10 @@ describe("workflow stream event admission", () => {
     await beforeEnd(followup.promise, remote.streamSocketClosed(), "a later chunk rendered on the same open stream");
     const later = await followup.promise;
 
-    expect(later.split("\n")).toEqual(["▶ analysis dispatched", "analysis tool read_file", "Inspecting the diff."]);
+    const rows = later.split("\n");
+    // The run's own row closes the view: the row reads the record, so it names the run and its state.
+    expect(rows.slice(0, -1)).toEqual(["▶ analysis dispatched", "analysis tool read_file", "Inspecting the diff."]);
+    expect(rows.at(-1)).toMatch(/^[0-9a-f]{8} \(audit workflow\) running$/);
     expect(views.every((view) => !view.includes("foreign-node"))).toBe(true);
     expect(remote.streamSocketsOpen()).toBe(1);
 
@@ -1081,7 +1025,6 @@ describe("workflow monitor continuity", () => {
     const handed = await handBack(exchanges, remote, pending);
     expect(text(handed)).toMatch(/unknown/i);
     const before = row.paint(handed);
-    expect(before).toContain("Progress before the outage");
     expect(streamRequests(remote), "the stream must not reopen before recovery GET answers running").toHaveLength(1);
 
     await vi.advanceTimersByTimeAsync(30_000);
@@ -1093,12 +1036,31 @@ describe("workflow monitor continuity", () => {
     );
     await readReply(exchanges, remote, 7);
 
-    expect(await status(capture)).toMatch(/audit workflow\) completed/);
-    expect(row.repaints).toEqual([`▶ recovery dispatched\nProgress on the new connection\n${ANSWER}`]);
+    const listing = await status(capture);
+    expect(listing).toMatch(/audit workflow\) completed/);
+    const id = runId(listing);
+    // The hand-back note rides the record's own row for as long as the record holds it, and the
+    // authoritative `running` read deletes it: a live record with no note paints that bare row and
+    // never the text its call returned (US-19, US-31).
+    const liveRow = `${id} (audit workflow) running`;
+    const notedRow =
+      `${liveRow} Workflow run ${id}: its state is unknown after 5 ` +
+      `observations; nothing was stopped, and observation was handed back. ` +
+      `Check it later with AgentStatus using id ${id}.`;
+    expect(before, "the paint the hand-back leaves behind carries the note on the run's own row").toBe(
+      `▶ analysis dispatched\nProgress before the outage\n${notedRow}`,
+    );
+    // The cleared note and the new connection's progress each repaint on their own, before the
+    // settlement does.
+    expect(row.repaints).toEqual([
+      `▶ analysis dispatched\nProgress before the outage\n${liveRow}`,
+      `▶ recovery dispatched\nProgress on the new connection\n${liveRow}`,
+      `▶ recovery dispatched\nProgress on the new connection\n${ANSWER}`,
+    ]);
   });
 
   it.for([{ code: 500 }, { code: 503 }])(
-    "redacts the endpoint's reason when a $code read hands the waiter back",
+    "keeps the endpoint's reason out of the note a $code read hands back",
     async ({ code }) => {
       const remote = await server({
         echoAuth: true,
@@ -1113,13 +1075,16 @@ describe("workflow monitor continuity", () => {
 
       authenticates(remote, KEY);
       expect(handed.isError ?? false).toBe(false);
-      expect(text(handed)).toMatch(/unknown/i);
-      publishes(text(handed), "Read refused: Bearer [redacted]", KEY, "the hand-back note");
+      // A read failure says only how many reads failed: the endpoint's reason, redacted or not, is
+      // not in the note (US-35). The credential never reaches it either.
+      expect(text(handed)).toMatch(/state is unknown after 5 observations/i);
+      expect(text(handed)).not.toContain("Read refused");
+      expect(text(handed)).not.toContain(KEY);
     },
   );
 
   it.for([{ code: 500 }, { code: 503 }])(
-    "hands a $code read back with a local diagnostic, never the run's envelope",
+    "hands a $code read back as an observation count, never the run's envelope",
     async ({ code }) => {
       // A 5xx answer is a read that failed, and its body is still the run's own envelope: journal and
       // result text. None of it belongs in the note or the row, quoted or redacted.
@@ -1147,8 +1112,7 @@ describe("workflow monitor continuity", () => {
       authenticates(remote, KEY);
       expect(handed.isError ?? false).toBe(false);
       const note = text(handed);
-      expect(note).toMatch(/unknown/i);
-      expect(note).toMatch(new RegExp(`HTTP ${code}: the endpoint answered with no reason`));
+      expect(note).toMatch(/state is unknown after 5 observations/i);
       for (const surface of [note, row.paint(handed)]) {
         expect(surface).not.toContain("Thinking the run never published");
         expect(surface).not.toContain(ANSWER);
@@ -1159,7 +1123,7 @@ describe("workflow monitor continuity", () => {
     },
   );
 
-  it("hands a read that answers no run status back with a local diagnostic, never the run's envelope", async () => {
+  it("hands a read that answers no run status back as an observation count, never the run's envelope", async () => {
     // The body of a state read is the run's state envelope: its text is journal data, and a note
     // about a failed read quotes none of it, redacted or not.
     const remote = await server({
@@ -1176,8 +1140,7 @@ describe("workflow monitor continuity", () => {
     authenticates(remote, KEY);
     expect(handed.isError ?? false).toBe(false);
     const note = text(handed);
-    expect(note).toMatch(/unknown/i);
-    expect(note).toMatch(/unreadable|no run status/i);
+    expect(note).toMatch(/state is unknown after 5 observations/i);
     expect(note).not.toContain("Unrecognized body");
     expect(note).not.toContain(KEY);
     expect(note).not.toContain(JSON.stringify(`Bearer ${KEY}`).slice(1, -1));
@@ -1330,7 +1293,10 @@ describe("workflow stop arbitration", () => {
     await stop(capture, id);
     const handed = await pending;
     publishes(text(handed), "Stop refused: Bearer [redacted]", KEY, "the stop-failed note");
-    expect(text(handed)).toMatch(/stop failed.*unknown/i);
+    expect(text(handed)).toMatch(/stop failed/i);
+    expect(text(handed), "a refused stop reports the run as the endpoint left it, not as unknown").not.toMatch(
+      /unknown/i,
+    );
     expect(await status(capture)).toMatch(/audit workflow\) running/);
     row.paint(handed);
 
@@ -1386,6 +1352,60 @@ describe("workflow session shutdown", () => {
     expect(updates, "nothing is published into a session that is gone").toEqual(published);
     expect(row.repaints, "the settled row is never repainted by disposal").toEqual(painted);
     expect(notices.join("\n")).not.toMatch(/no longer watched/i);
+  });
+
+  it("sends one stop for each run the torn-down turn was still answering for", async () => {
+    // US-30 counts per run: the teardown's turn abort is the only stop, and every still-bound run of
+    // that turn gets exactly one of its own. A run the session only watched is not a stop target.
+    const first = await server({ holdStream: true, streams: [DISPATCH], reads: [OUTAGE] });
+    const second = await server({ holdStream: true, streams: [DISPATCH], reads: [OUTAGE] });
+    write(
+      join(ws.agentDir, "workflows", "audit.yaml"),
+      `${workflow("audit", "Inspect a repository")}endpoint: first\n`,
+    );
+    write(join(ws.agentDir, "workflows", "report.yaml"), `${workflow("report", "Write a report")}endpoint: second\n`);
+    write(
+      join(ws.agentDir, "subagents-lite.json"),
+      JSON.stringify({
+        workflows: {
+          endpoints: { first: { url: first.url }, second: { url: second.url } },
+          defaultEndpoint: "first",
+        },
+      }),
+    );
+    const capture = await start();
+    const turn = new AbortController();
+    const audit = tool(capture).execute(
+      "call-audit",
+      { workflow: "audit", prompt: "Inspect it" },
+      turn.signal,
+      undefined,
+      ctx!,
+    );
+    const report = tool(capture).execute(
+      "call-report",
+      { workflow: "report", prompt: "Write it" },
+      turn.signal,
+      undefined,
+      ctx!,
+    );
+    await Promise.all([first.streamOpened, second.streamOpened]);
+
+    turn.abort();
+    const [auditResult, reportResult] = await Promise.all([audit, report]);
+    const listed = await status(capture);
+    const sent = [wire(first), wire(second)];
+
+    await shutdown();
+
+    expect(text(auditResult)).toMatch(/acknowledged the stop/i);
+    expect(text(reportResult)).toMatch(/acknowledged the stop/i);
+    expect(listed).toMatch(/audit workflow\) stopped/);
+    expect(listed).toMatch(/report workflow\) stopped/);
+    expect(stopRequests(first), "the first bound run is stopped once").toHaveLength(1);
+    expect(stopRequests(second), "the second bound run is stopped once").toHaveLength(1);
+    expect([wire(first), wire(second)], "teardown adds no request to either run").toEqual(sent);
+    expect(capture.api.sendMessage, "a torn-down turn notifies nobody").not.toHaveBeenCalled();
   });
 
   it.for(["an open stream", "read backoff", "an unanswered stop"] as const)(

@@ -53,6 +53,8 @@ import {
   stopAck,
   stopRequests,
   streamRequests,
+  wire,
+  runPath,
   PING,
   RECONNECT,
   FAKED_URL,
@@ -930,7 +932,7 @@ describe("foreground workflow execution", () => {
 
     const result = await run(executable(await start()));
 
-    expect(text(result)).toContain("no output");
+    expect(text(result)).toContain("empty answer");
     expect(text(result)).toContain("Termination reason: terminal_tool");
   });
 
@@ -1212,7 +1214,7 @@ describe("workflow run answered by recorded endpoint bytes", () => {
     });
   }
 
-  it("keeps a run whose state read is refused running, and names the endpoint without the key", async () => {
+  it("keeps a run whose state read is refused running, and gives the caller no endpoint reason", async () => {
     // A refused read carries no run status, so it hands the call back as unknown (US-19) instead of
     // settling the run: StopAgent still reaches the endpoint afterwards.
     const key = "example-private-key";
@@ -1238,8 +1240,10 @@ describe("workflow run answered by recorded endpoint bytes", () => {
       const result = await pending;
 
       expect(result.isError).toBe(false);
-      expect(result.text).toContain("Unauthorized");
-      expect(result.text).toContain(FAKED_URL);
+      expect(result.text).toMatch(/state is unknown after 5 observations/i);
+      expect(result.text, "what failed is a read, not the run: its reason is not the caller's to see").not.toContain(
+        "Unauthorized",
+      );
       expect(result.text).not.toContain(key);
       expect(logs.join("\n")).not.toContain(key);
       expect(remote.requests()[0]!.authorization).toBe(`Bearer ${key}`);
@@ -1247,7 +1251,8 @@ describe("workflow run answered by recorded endpoint bytes", () => {
       const status = await run(executable(capture, "AgentStatus"), {});
       expect(text(status)).toContain("audit");
       expect(text(status)).toMatch(/running/i);
-      expect(text(status)).not.toMatch(/stopped|\berror\b/i);
+      // The live note says out loud that nothing was stopped; only the row's status slot may not claim one.
+      expect(text(status)).not.toMatch(/\)\s+(stopped|error|completed|failed)\b/);
 
       const stopped = await outcome(executable(capture, "StopAgent"), { agent_id: listedRunId(status) });
       expect(stopped.isError).toBe(false);
@@ -1548,18 +1553,6 @@ describe("workflow endpoint and input errors", () => {
     expect(JSON.parse(createRequest(remote).body).prompt).toBe(prompt);
   });
 
-  it("rejects background execution until that mode is supported", async () => {
-    const remote = await server();
-    install(remote);
-    const tool = executable(await start());
-
-    const result = await outcome(tool, { workflow: "audit", prompt: "Review changes", run_in_background: true });
-
-    expect(result.isError).toBe(true);
-    expect(result.text).toMatch(/background/i);
-    expect(remote.requests).toEqual([]);
-  });
-
   it("identifies unreachable endpoints for troubleshooting", async () => {
     const dead = await server();
     const live = await server();
@@ -1667,13 +1660,24 @@ describe("workflow endpoint and input errors", () => {
   it("reports a lost create response as an unknown outcome without retrying", async () => {
     const remote = await server({ loseCreateResponse: true });
     install(remote);
-    const tool = executable(await start());
+    const capture = await start();
+    const tool = executable(capture);
 
-    const result = await outcome(tool);
+    const result = await run(tool);
+    const report = { text: text(result), isError: result.isError ?? false };
 
-    expect(result.isError).toBe(true);
-    expect(result.text).toMatch(/unknown|possibly|may still/i);
+    expect(report.isError).toBe(true);
+    expect(report.text).toMatch(/unknown|possibly|may still/i);
+    expect(report.text, "the only honest claim is that a run may be live behind the lost answer").toMatch(
+      /may still be running remotely/i,
+    );
+    expect(report.text, "a lost answer claims no run outcome; the transport's own words may still appear").not.toMatch(
+      /completed|terminated/,
+    );
+    expect(result.details, "a create that never answered leaves no record to settle").toEqual({});
     expect(createRequests(remote)).toHaveLength(1);
+    expect(wire(remote), "nothing is retried and nothing is followed").toEqual(["POST /api/workflows"]);
+    expect(text(await run(executable(capture, "AgentStatus"), {}))).toMatch(/no agents running or completed/i);
   });
 });
 
@@ -1722,6 +1726,85 @@ describe("workflow cancellation and shutdown", () => {
 
     expect(createRequests(remote)).toHaveLength(1);
     expect(stopRequests(remote)).toHaveLength(1);
+  });
+
+  it("settles a create interrupted by the parent from the stop acknowledgement alone", async () => {
+    // The create window is the one place a stop is asked for before any observation exists: the
+    // admitted id must be stopped, and the `stopped` acknowledgement is the whole settlement - GET
+    // is never read, so the `terminated` footprint the endpoint keeps cannot overrule it (US-18).
+    const remote = await server({ holdCreate: true });
+    install(remote);
+    const capture = await start();
+    const tool = executable(capture);
+    const abort = new AbortController();
+    const pending = outcome(tool, { workflow: "audit", prompt: "Review changes" }, abort.signal);
+    await beforeEnd(remote.createReceived, pending, "create was sent");
+
+    abort.abort();
+    remote.releaseCreate();
+    await remote.stopReceived;
+    const stopped = await pending;
+
+    expect(stopped.text).toMatch(/acknowledged the stop/i);
+    const status = await run(executable(capture, "AgentStatus"), {});
+    expect(text(status)).toMatch(/audit workflow\) stopped/);
+    expect(text(status), "the terminated footprint never reaches the record").not.toMatch(/terminated|failed/i);
+    expect(stopRequests(remote), "the admitted id is stopped once").toHaveLength(1);
+    expect(readRequests(remote), "the acknowledgement settles it; no read is asked for").toHaveLength(0);
+    expect(streamRequests(remote), "a create never answered has no connection to follow").toHaveLength(0);
+  });
+
+  it("settles a create interrupted by the parent from the read a non-stopped acknowledgement triggers", async () => {
+    // `already_finished` says the log already holds the run's end: GET carries the state, and it
+    // outranks any label the stop could have given (US-18).
+    const remote = await server({ holdCreate: true, stopOutcome: "already_finished", reads: [declaredOutputRead()] });
+    install(remote);
+    const capture = await start();
+    const tool = executable(capture);
+    const abort = new AbortController();
+    const pending = outcome(tool, { workflow: "audit", prompt: "Review changes" }, abort.signal);
+    await beforeEnd(remote.createReceived, pending, "create was sent");
+
+    abort.abort();
+    remote.releaseCreate();
+    const answered = await pending;
+
+    expect(answered.isError ?? false).toBe(false);
+    expect(answered.text).toBe(RECORDED.answer);
+    const status = await run(executable(capture, "AgentStatus"), {});
+    expect(text(status)).toMatch(/audit workflow\) completed/);
+    expect(wire(remote)).toEqual(["POST /api/workflows", `POST ${runPath(remote)}/stop`, `GET ${runPath(remote)}`]);
+    expect(stopRequests(remote)).toHaveLength(1);
+  });
+
+  it("hands back a create the parent interrupted when the read after the stop still says running", async () => {
+    // The third create-window arm: the endpoint did not confirm the stop and its read still reports
+    // the run live. The waiting call cannot be kept (the parent is gone), so it is handed back with
+    // the interrupted note and the record keeps running under its own watch.
+    const remote = await server({
+      holdCreate: true,
+      holdStream: true,
+      stopOutcome: "interrupted",
+      reads: [stateReply({ status: "running" })],
+    });
+    install(remote);
+    const capture = await start();
+    const tool = executable(capture);
+    const abort = new AbortController();
+    const pending = outcome(tool, { workflow: "audit", prompt: "Review changes" }, abort.signal);
+    await beforeEnd(remote.createReceived, pending, "create was sent");
+
+    abort.abort();
+    remote.releaseCreate();
+    const handed = await pending;
+    const sent = wire(remote);
+
+    expect(handed.isError ?? false).toBe(false);
+    expect(handed.text).toMatch(/not confirmed/i);
+    expect(handed.text, "the note may deny a stop, never claim one").toMatch(/nothing was stopped/i);
+    const status = await run(executable(capture, "AgentStatus"), {});
+    expect(text(status)).toMatch(/audit workflow\) running/);
+    expect(sent).toEqual(["POST /api/workflows", `POST ${runPath(remote)}/stop`, `GET ${runPath(remote)}`]);
   });
 
   it("leaves a run whose create answer arrived after shutdown unwatched and unstopped", async () => {
@@ -1826,7 +1909,7 @@ describe("workflow cancellation and shutdown", () => {
     expect(text(status)).not.toMatch(/stopped|running/i);
   });
 
-  it("reports an honest unknown outcome when the endpoint refuses the stop", async () => {
+  it("reports the endpoint's own refusal when the stop is refused, and keeps the record running", async () => {
     // The captured refusal is the endpoint's own 404 body: a stop the endpoint did not
     // acknowledge says nothing about the run.
     const remote = await server({ holdStream: true, stopRejection: recordedResponse("stop-unknown") });
@@ -1842,14 +1925,18 @@ describe("workflow cancellation and shutdown", () => {
     const stopped = await pending;
     const status = await run(executable(capture, "AgentStatus"), {});
 
-    // US-27: a stop that failed is reported as failed with the remote state unknown,
+    // US-27: a stop that failed is reported as failed, with the state the endpoint confirmed,
     // and the run keeps its running record for a manual retry.
     const report = `${stopped.text}\n${text(status)}`;
     expect(report).toMatch(/stop failed/i);
-    expect(report).toMatch(/unknown/i);
+    expect(report, "a refused stop names the endpoint's refusal, not an unknown state").not.toMatch(/unknown/i);
+    expect(report, "an endpoint that has no such run supplied no state, so nothing may claim it lives").not.toMatch(
+      /running remotely/i,
+    );
     expect(text(status)).toContain("audit");
     expect(text(status)).toMatch(/running/i);
-    expect(text(status)).not.toMatch(/stopped/i);
+    // The note quotes the endpoint's refusal out loud; only the row's status slot may not claim an outcome.
+    expect(text(status)).not.toMatch(/\)\s+(stopped|error|completed|failed)\b/);
     expect(stopRequests(remote)).toHaveLength(1);
   });
 
@@ -1999,7 +2086,7 @@ describe("workflow runs on the shared management surfaces", () => {
     expect(rows).toMatch(/workflow/i);
   });
 
-  it("promises no completion notification for a workflow run", async () => {
+  it("states the delivery rule for a workflow run without promising it a notification", async () => {
     const remote = await server({ holdStream: true });
     install(remote);
     const capture = await start();
@@ -2010,9 +2097,10 @@ describe("workflow runs on the shared management surfaces", () => {
     remote.releaseStream();
     await pending;
 
-    // Wave 1 delivers no Nudge for workflow runs, so its status line stays honest.
+    // Wave 2 delivers a Nudge for a workflow run too, so the line states one rule for every kind and
+    // promises this run nothing.
     expect(text(status)).toContain("audit");
-    expect(text(status)).not.toMatch(/notif/i);
+    expect(text(status)).toMatch(/Don't poll/);
     expect(text(status)).not.toMatch(/you.ll (receive|get|be told)/i);
   });
 });
@@ -2051,7 +2139,7 @@ describe("workflow monitoring degradation", () => {
       const status = await run(executable(capture, "AgentStatus"), {});
       expect(text(status)).toContain("audit");
       expect(text(status)).toMatch(/running/i);
-      expect(text(status)).not.toMatch(/stopped/i);
+      expect(text(status)).not.toMatch(/\)\s+(stopped|error|completed|failed)\b/);
     } finally {
       await shutdownSession(capture);
       vi.useRealTimers();
@@ -2091,7 +2179,7 @@ describe("workflow monitoring degradation", () => {
 
       expect(requested.isError ?? false).toBe(false);
       expect(text(returned)).toMatch(/stop failed/i);
-      expect(text(returned)).toMatch(/unknown/i);
+      expect(text(returned), "a refused stop claims no unknown state").not.toMatch(/unknown/i);
       expect(stops(), "the refused stop was asked for once").toHaveLength(1);
 
       abort.abort();

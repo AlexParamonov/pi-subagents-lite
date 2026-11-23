@@ -789,6 +789,17 @@ export class AgentWidget {
     return blocks;
   }
 
+  /** A remote run has no live view, so its row carries what the run itself said: its note, else its
+   * newest progress line. Only its first non-empty line fits the row. The row's header carries no id,
+   * so a run's management id reaches this row only when the note's first line names it. */
+  private runningActivity(a: AgentRecord, bg: LiveView | undefined): string {
+    const said = (a.workflow?.note ?? a.workflow?.progress?.at(-1) ?? "")
+      .split("\n")
+      .find((line) => line.trim() !== "");
+    if (said) return said;
+    return bg ? describeActivity(bg.activeTools, bg.responseText, this.bashActivity(a, bg.activeTools)) : "thinking…";
+  }
+
   /** Colored spinner frame for an agent: uses agent color when configured, else theme accent. */
   private coloredFrame(frame: string, agentType: string | undefined, theme: Theme): string {
     return applyAgentColor(frame, agentColorAnsi(agentType), () => theme.fg("accent", frame));
@@ -801,9 +812,7 @@ export class AgentWidget {
       const name = recordDisplayName(a, getDisplayName(a.display.type));
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
-      const activity = bg
-        ? describeActivity(bg.activeTools, bg.responseText, this.bashActivity(a, bg.activeTools))
-        : "thinking…";
+      const activity = this.runningActivity(a, bg);
       const coloredFrame = this.coloredFrame(frame, a.display.type || undefined, theme);
 
       if (this.isCompact()) {

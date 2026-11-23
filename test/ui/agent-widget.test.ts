@@ -13,6 +13,7 @@ import {
   renderWidgetLines,
   makeRunningAgent,
   makeFinishedAgent,
+  makeWorkflowRun,
   makeActivity,
 } from "./widget-helpers.js";
 import { asAgentSession } from "../pi-boundaries.js";
@@ -695,6 +696,53 @@ describe("widget bash program sampling", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("workflow run row", () => {
+  const NOTE = [
+    "Workflow run w1w1w1w1 is still running remotely.",
+    "Check it later with AgentStatus using id w1w1w1w1.",
+  ].join("\n");
+
+  let manager: AgentManager;
+  let widget: AgentWidget;
+
+  beforeEach(() => {
+    manager = makeMockManager([]);
+    widget = new AgentWidget(manager, () => undefined);
+  });
+
+  it("shows the run's live note as its activity, on one physical row", () => {
+    manager.listAgents = () => [makeWorkflowRun("w1w1w1w1", { note: NOTE })];
+
+    const lines = renderWidgetLines(widget);
+
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toContain("audit workflow");
+    expect(lines[2]).toContain("Workflow run w1w1w1w1 is still running remotely.");
+    expect(lines.join("\n")).not.toContain("Check it later");
+  });
+
+  it("shows the newest progress line while the run has no note", () => {
+    manager.listAgents = () => [
+      makeWorkflowRun("w1w1w1w1", { progress: ["\u25b6 analysis dispatched", "\u2713 review done"] }),
+    ];
+
+    const lines = renderWidgetLines(widget);
+
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toContain("\u2713 review done");
+    expect(lines.join("\n")).not.toContain("analysis dispatched");
+  });
+
+  it("keeps the generic activity line for a run that has said nothing yet", () => {
+    manager.listAgents = () => [makeWorkflowRun("w1w1w1w1")];
+
+    const lines = renderWidgetLines(widget);
+
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toContain("thinking\u2026");
   });
 });
 

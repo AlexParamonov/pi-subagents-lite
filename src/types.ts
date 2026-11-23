@@ -74,9 +74,11 @@ export interface WorkflowRunInfo {
    */
   progress?: string[];
   /**
-   * The monitor's latest running-state note, not a lifecycle status. A `running` read clears an
-   * unknown-state note but not a stop-failure note. A later hand-back can replace either note;
-   * settlement clears it. A noted run remains stoppable.
+   * The monitor's latest running-state note, not a lifecycle status. Kinds and their clearing rules:
+   * `unknown` (reads failed) falls to an authoritative `running` read; `stop-failed` (the endpoint
+   * refused the stop) and `interrupted` (a parent interrupt's stop the endpoint did not confirm)
+   * stand until settlement, and a refused stop outranks a later note of either other kind. A later
+   * hand-back replaces a note of a lesser kind only. A noted run remains stoppable.
    */
   note?: string;
 }

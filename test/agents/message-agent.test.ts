@@ -167,4 +167,19 @@ describe("executeMessageAgentTool", () => {
 
     expect(mockSteer).toHaveBeenCalledWith(ID, MESSAGE);
   });
+
+  it("refuses a workflow run, queueing nothing and confirming nothing", async () => {
+    mockMatchAgents.mockReturnValue([
+      makeAgentRecord({
+        id: ID,
+        display: { type: "audit" },
+        lifecycle: { status: "running" },
+        execution: {},
+        workflow: { name: "audit", endpoint: "lab", url: "http://127.0.0.1:8099", remoteId: "wf-1", progress: [] },
+      }),
+    ]);
+
+    await expect(message()).rejects.toThrow(`Workflow run ${SHORT_ID} cannot be steered`);
+    expect(mockSteer).not.toHaveBeenCalled();
+  });
 });

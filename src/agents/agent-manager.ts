@@ -65,6 +65,8 @@ export interface ConcurrencyConfig {
 
 type OnAgentComplete = (record: AgentRecord) => void;
 type OnAgentStart = (record: AgentRecord) => void;
+/** A record's live view changed while no waiter owns the repaint (progress, a note written or cleared). */
+type OnRecordTouched = (record: AgentRecord) => void;
 
 interface ConcurrencySlot {
   limit: number;
@@ -94,6 +96,13 @@ export interface WorkflowRunRegistration {
   toolCallId?: string;
   /** Foreground call's abort signal: Esc reaches the record's stop path, like ADR-0005. */
   signal?: AbortSignal;
+  /**
+   * How the run was launched, recorded the way a subagent records its own. Only an explicit
+   * background launch sets it, and the tool row reads it to keep showing its launch receipt.
+   */
+  runInBackground?: boolean;
+  /** Kept for the record's lifetime so the UI-notify fallback reaches any later nudge. */
+  spawnCtx?: ExtensionContext;
 }
 
 /**
@@ -121,6 +130,7 @@ export class AgentManager {
   private watchdogInterval: ReturnType<typeof setInterval>;
   private onComplete?: OnAgentComplete;
   private onStart?: OnAgentStart;
+  private onRecordTouched?: OnRecordTouched;
 
   /** Completion-gate resolvers for every spawned record, keyed by agent id. The gate
    * (record.execution.promise) is created at spawn and opened exactly once at the record's
@@ -535,6 +545,19 @@ export class AgentManager {
     this.onComplete = cb;
   }
 
+  /**
+   * Wire the repaint a record's own writes need once no tool call is waiting on them. Mirrors
+   * `setOnComplete`: the host wiring owns the UI effect, the run owner only reports the change.
+   */
+  setOnRecordTouched(cb: OnRecordTouched): void {
+    this.onRecordTouched = cb;
+  }
+
+  /** Report that a record's live view changed, so the surfaces reading it repaint. */
+  notifyRecordTouched(record: AgentRecord): void {
+    this.onRecordTouched?.(record);
+  }
+
   /** Get the session-level cumulative agent cost. Survives record removal (Clear/dispose). */
   getTotalAgentCost(): number {
     return this.totalAgentCost;
@@ -738,8 +761,13 @@ export class AgentManager {
       id,
       workflow: args.workflow,
       lifecycle: { status: "running", startedAt: Date.now(), started: true },
-      display: { type: args.workflow.name, description: args.description, toolCallId: args.toolCallId },
-      execution: { settled: true, settlementCount: 0, endWorkflowRun: onEnd },
+      display: {
+        type: args.workflow.name,
+        description: args.description,
+        toolCallId: args.toolCallId,
+        ...(args.runInBackground ? { invocation: { runInBackground: true } } : {}),
+      },
+      execution: { settled: true, settlementCount: 0, endWorkflowRun: onEnd, spawnCtx: args.spawnCtx },
       stats: { lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 }, toolUses: 0, compactionCount: 0 },
     };
     this.agents.set(id, record);

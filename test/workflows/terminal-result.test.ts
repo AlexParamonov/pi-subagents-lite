@@ -46,13 +46,18 @@ describe("the answer a completed run delivers", () => {
     expect(formatTerminalResult(result)).toBe("A partial answer.");
   });
 
-  it("echoes a termination reason the wire delivered as a value, not a word", () => {
+  // A reason the wire delivered as a value is producer data, not provenance text: that slot can hold
+  // an earlier node's reasoning among it, which is exactly what spec §5 keeps out of the answer.
+  it("says nothing when the reason is an empty string, which says nothing either", () => {
+    expect(formatTerminalResult({ text: "A partial answer.", termination_reason: "" })).toBe("A partial answer.");
+  });
+
+  it("says nothing about a reason the wire delivered as a value, not a word", () => {
     expect(formatTerminalResult({ text: "A partial answer.", termination_reason: { cap: "turns" } })).toBe(
-      'A partial answer.\n\nTermination reason: {"cap":"turns"}',
+      "A partial answer.",
     );
-    expect(formatTerminalResult({ text: "A partial answer.", termination_reason: 42 })).toBe(
-      "A partial answer.\n\nTermination reason: 42",
-    );
+    expect(formatTerminalResult({ text: "A partial answer.", termination_reason: 42 })).toBe("A partial answer.");
+    expect(formatTerminalResult({ text: "A partial answer.", termination_reason: false })).toBe("A partial answer.");
   });
 
   it("strips terminal control sequences from the server's answer", () => {
@@ -104,6 +109,10 @@ describe("a result that declares no answer", () => {
     );
   });
 
+  it("keeps a value-shaped reason out of an undeclared output too", () => {
+    expect(formatTerminalResult({ chars: 22, termination_reason: { cap: "turns" } })).toBe(UNDECLARED);
+  });
+
   // `text` is the declared answer, and the rest of the value is never part of the published text -
   // a local handler's own payload, a Pi run's transcript, token counters.
   it("is the declared answer alone, whatever else the value carries", () => {
@@ -118,14 +127,17 @@ describe("a result that declares no answer", () => {
   });
 });
 
-describe("a completed run with nothing in the result slot", () => {
-  it("says there was no output rather than answering empty", () => {
+// The three completed outcomes the endpoint can leave in the slot are three facts, and the reader is
+// served by hearing which one it got: nothing stored, an empty answer delivered, or a stored output
+// that declares no answer.
+describe("a completed run with an empty result", () => {
+  it("says there was no output when the slot itself is empty", () => {
     expect(formatTerminalResult(null)).toBe("The workflow run completed with no output.");
   });
 
-  it("says so when the declared output was an empty answer", () => {
+  it("says the answer was empty when the producer declared one", () => {
     expect(formatTerminalResult({ text: "", termination_reason: "final_answer" })).toBe(
-      "The workflow run completed with no output.",
+      "The workflow run completed with an empty answer.",
     );
   });
 
@@ -133,11 +145,11 @@ describe("a completed run with nothing in the result slot", () => {
   // empty text, so an empty answer is a delivered value and its provenance is the only meaning left.
   it("keeps the provenance beside an answer the producer left empty", () => {
     expect(formatTerminalResult({ text: "", usage: { input_tokens: 5 }, termination_reason: "terminal_tool" })).toBe(
-      "The workflow run completed with no output.\n\nTermination reason: terminal_tool",
+      "The workflow run completed with an empty answer.\n\nTermination reason: terminal_tool",
     );
   });
 
   it("says no provenance when an empty answer carries no reason either", () => {
-    expect(formatTerminalResult({ text: "" })).toBe("The workflow run completed with no output.");
+    expect(formatTerminalResult({ text: "" })).toBe("The workflow run completed with an empty answer.");
   });
 });

@@ -36,9 +36,12 @@ export function ensureManagerAndWidget(): void {
 
   if (!currentManager) {
     // Coordinator needs the manager, so wire onComplete after creating it.
-    // Invalidate row when agent starts running (queued → running transition)
+    // Invalidate row when agent starts running (queued → running transition), and arm the widget's
+    // refresh: registering a record is the first thing a workflow-only session ever does, and with no
+    // interval armed its rows would never refresh and its finished row never expire while idle.
     const onStart = (record: AgentRecord) => {
       invalidateAgentRow(record.id);
+      getWidget()?.ensureTimer();
       getWidget()?.update();
     };
 
@@ -56,6 +59,12 @@ export function ensureManagerAndWidget(): void {
 
     newManager.setOnComplete((record) => {
       coordinator.onAgentComplete(record);
+      invalidateAgentRow(record.id);
+      getWidget()?.update();
+    });
+    // A run owner that has no waiter left paints nothing: its record writes are what the row and the
+    // widget read, so the same invalidation is the only repaint they get.
+    newManager.setOnRecordTouched((record) => {
       invalidateAgentRow(record.id);
       getWidget()?.update();
     });

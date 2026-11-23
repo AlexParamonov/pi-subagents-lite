@@ -14,13 +14,15 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { getManager, getPiInstance, getStore } from "../shell.ts";
+import { getCoordinator, getManager, getPiInstance, getStore } from "../shell.ts";
+import type { AgentRecord } from "../types.ts";
+import { notedRow } from "../ui/format.ts";
 import { plainText } from "../ui/sanitize.ts";
 import type { Theme } from "../ui/types.ts";
 import { registerAgentInvalidation } from "../ui/renderer.ts";
 import { resolveWorkflowEndpoint } from "./endpoints.ts";
 import { createWorkflowClient } from "./workflow-client.ts";
-import { runWorkflowForeground } from "./workflow-run.ts";
+import { runWorkflow } from "./workflow-run.ts";
 import { formatWorkflowListing, getWorkflowListing, resolveWorkflow } from "./workflow-registry.ts";
 import { workflowWarningSink } from "./workflow-notices.ts";
 
@@ -45,7 +47,11 @@ export function registerWorkflowTool(pi: ExtensionAPI): void {
           Type.String({ description: "Working directory for the run. Defaults to the session's current directory." }),
         ),
         run_in_background: Type.Optional(
-          Type.Boolean({ description: "Background runs are not supported yet; leave unset or pass false." }),
+          Type.Boolean({
+            description:
+              "Return the run's id immediately instead of waiting for the answer. " +
+              "The result arrives as a notification when the run settles.",
+          }),
         ),
       },
       { additionalProperties: false },
@@ -63,9 +69,6 @@ export async function executeWorkflowTool(
   onUpdate: AgentToolUpdateCallback<Record<string, unknown>> | undefined,
   ctx: ExtensionContext,
 ): Promise<AgentToolResult<Record<string, unknown>>> {
-  if (params.run_in_background === true) {
-    throw new Error("Background workflow runs are not supported yet; leave run_in_background unset or pass false.");
-  }
   const name = typeof params.workflow === "string" ? params.workflow.trim() : "";
   const resolution = await resolveWorkflow(name, workflowWarningSink(ctx));
   if (resolution.listingChanged) registerWorkflowTool(getPiInstance());
@@ -77,8 +80,10 @@ export async function executeWorkflowTool(
 
   const manager = getManager();
   if (!manager) throw new Error("Agent manager is unavailable");
+  const coordinator = getCoordinator();
+  if (!coordinator) throw new Error("Spawn coordinator is unavailable");
 
-  return runWorkflowForeground(
+  return runWorkflow(
     {
       name,
       endpoint: endpoint.endpoint,
@@ -86,10 +91,16 @@ export async function executeWorkflowTool(
       prompt: typeof params.prompt === "string" ? params.prompt : "",
       workingDir: workingDirOf(params.path, ctx.cwd),
       toolCallId,
+      runInBackground: params.run_in_background === true,
       signal,
       onUpdate,
+      ctx,
     },
-    { manager, client: createWorkflowClient(endpoint.endpoint, { endpointNames: Object.keys(workflows.endpoints) }) },
+    {
+      manager,
+      client: createWorkflowClient(endpoint.endpoint, { endpointNames: Object.keys(workflows.endpoints) }),
+      nudges: coordinator,
+    },
   );
 }
 
@@ -99,9 +110,9 @@ function workingDirOf(path: unknown, cwd: string): string {
 }
 
 /**
- * The call's result view: what this run's connection delivered, then the outcome. Once the record
- * has settled it is the source of the outcome text, so a call that returned early (a degraded read)
- * still shows what the run turned out to be when the invalidation repaints it.
+ * The call's result view: what this run's connection delivered, then the outcome. The record decides
+ * that outcome for as long as it lives, so a repaint after the call returned shows the run's live
+ * health, and a call that returned early still shows what the run turned out to be.
  */
 export function renderWorkflowResult(
   result: { content: Array<{ type: string; text?: string }>; details?: Record<string, unknown> },
@@ -113,18 +124,25 @@ export function renderWorkflowResult(
   const agentId = typeof details.agentId === "string" ? details.agentId : undefined;
   if (agentId && context?.invalidate) registerAgentInvalidation(agentId, context.invalidate);
   const record = agentId ? getManager()?.getRecord(agentId) : undefined;
-  const outcome =
-    record && record.lifecycle.status !== "running"
-      ? (record.error ?? record.result ?? "")
-      : (result.content.find((part) => part.type === "text")?.text ?? "");
+  const content = result.content.find((part) => part.type === "text")?.text ?? "";
   // The monitor keeps the record's snapshot current after this call returned; `details.progress`
   // is only what the wait had seen when it ended.
   const progress =
     record?.workflow?.progress ?? (Array.isArray(details.progress) ? (details.progress as string[]) : []);
-  const rows = [...progress, outcome].map((row) => plainText(row)).filter((row) => row !== "");
+  const rows = [...progress, ...outcomeRows(record, content)].map((row) => plainText(row)).filter((row) => row !== "");
   const mark = context?.isError ? theme.fg("error", "\u2717") : "";
   const body = rows.map((row) => `  ${theme.fg("toolOutput", row)}`).join("\n");
   return new Text(mark === "" ? body : `${mark} ${body.trimStart()}`, 0, 0);
+}
+
+/** A settled run shows the one text it ended with. A live one shows its own id, state and note, and
+ * never the text its call returned: for a foreground call that text is a note a later read retracted.
+ * A run launched in the background keeps its launch receipt beside that, as a launch fact, not health. */
+function outcomeRows(record: AgentRecord | undefined, content: string): string[] {
+  if (!record) return [content];
+  if (record.lifecycle.status !== "running") return [record.error ?? record.result ?? ""];
+  const rows = [notedRow(record, { oneLine: true })];
+  return record.display.invocation?.runInBackground ? [...rows, content] : rows;
 }
 
 /** The call line: the workflow name, then exactly the optional parameters the agent supplied. */
