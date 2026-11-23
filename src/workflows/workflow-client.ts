@@ -317,36 +317,35 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     },
   };
 
+  /**
+   * A stop the endpoint did not confirm, in its two forms: `error` names the endpoint it failed
+   * against, and `refusal` is the short reason a hand-back note can quote.
+   */
+  function stopFailure(what: string, detail: string, refusal: string): WorkflowStop {
+    return { ok: false, error: fault(what, detail), refusal };
+  }
+
   /** One stop request and its acknowledgement, or the reason it did not arrive. */
   async function sendStop(workflowId: string, signal?: AbortSignal): Promise<WorkflowStop> {
     if (segmentOf(workflowId) === null)
-      return {
-        ok: false,
-        error: fault("did not send the stop request", ROUTELESS),
-        refusal: "the run id names no request route",
-      };
+      return stopFailure("did not send the stop request", ROUTELESS, "the run id names no request route");
     // Any stop request takes the stream away: the run's own state after a stop is whatever the
     // next authoritative read says.
     lastKnown = "unknown";
     const sent = await answer("POST", runRoutes(workflowId).stop, undefined, signal);
     if (!sent.ok)
-      return {
-        ok: false,
-        error: fault("did not answer the stop request", sent.reason),
-        refusal: "the endpoint did not answer the request",
-      };
+      return stopFailure("did not answer the stop request", sent.reason, "the endpoint did not answer the request");
     if (sent.status < 200 || sent.status >= 300) {
       const refusal = `HTTP ${sent.status}: ${rejection(sent.body)}`;
-      return { ok: false, error: fault("refused the stop request", refusal), refusal };
+      return stopFailure("refused the stop request", refusal, refusal);
     }
     const status = stopStatus(sent.body);
-    if (!status) {
-      return {
-        ok: false,
-        error: fault("answered the stop request unreadably", `no stop status in ${published.bounded(sent.body)}`),
-        refusal: "the endpoint answered with no usable acknowledgement",
-      };
-    }
+    if (!status)
+      return stopFailure(
+        "answered the stop request unreadably",
+        `no stop status in ${published.bounded(sent.body)}`,
+        "the endpoint answered with no usable acknowledgement",
+      );
     // An acknowledgement that is not `stopped` says the run's own state must be read now: the
     // next entry skips its owed delay for exactly that one authoritative read.
     if (status !== "stopped") bypassNextDelay = true;
