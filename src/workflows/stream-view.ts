@@ -253,8 +253,11 @@ export function progressLines(items: readonly WorkflowDisplayItem[]): string[] {
   return items.map((item) => plainText(lineFor(item))).filter((line) => line !== "");
 }
 
+/** The theme roles a run's rows are painted with. */
+type RowRole = "accent" | "warning" | "dim" | "error" | "toolOutput";
+
 /** The theme role each node state is painted with, as the widget paints an agent status. */
-const NODE_STATE_COLOR: Record<WorkflowNodeStatus, "accent" | "warning" | "dim" | "error"> = {
+const NODE_STATE_COLOR: Record<WorkflowNodeStatus, RowRole> = {
   dispatched: "accent",
   retry: "warning",
   completed: "dim",
@@ -264,7 +267,8 @@ const NODE_STATE_COLOR: Record<WorkflowNodeStatus, "accent" | "warning" | "dim" 
 /**
  * The view's spelling of one entry: the tool call's line, plus the node named on a text entry too.
  * The flat spelling is the run's stored and published snapshot, whose wording is fixed, so only the
- * view adds the attribution a text row needs to carry on its own.
+ * view adds the attribution a text row needs to carry on its own. Every entry carries its mark or at
+ * least its indent, so no entry ever spells an empty line.
  */
 function displayLineFor(item: WorkflowDisplayItem): string {
   return item.type === "text" && item.node !== null ? `  ${item.node}  ${item.text}` : lineFor(item);
@@ -280,11 +284,12 @@ export function displayRows(items: readonly WorkflowDisplayItem[], theme: Theme)
   for (const item of items) {
     if (item.type === "node-status" && item.node !== null) states.set(item.node, item.status);
   }
-  return items
-    .map((item) => {
-      const line = plainText(displayLineFor(item));
-      const state = item.node === null ? undefined : states.get(item.node);
-      return line === "" ? "" : theme.fg(state === undefined ? "toolOutput" : NODE_STATE_COLOR[state], line);
-    })
-    .filter((row) => row !== "");
+  return items.map((item) => theme.fg(roleOf(item, states), plainText(displayLineFor(item))));
+}
+
+/** The role one entry is painted with: its node's latest state, or the flat tool-output role for an
+ * entry that names no node, or one whose node has reported no state. */
+function roleOf(item: WorkflowDisplayItem, states: Map<string, WorkflowNodeStatus>): RowRole {
+  const state = item.node === null ? undefined : states.get(item.node);
+  return state === undefined ? "toolOutput" : NODE_STATE_COLOR[state];
 }
