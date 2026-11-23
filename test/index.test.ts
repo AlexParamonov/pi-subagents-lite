@@ -156,6 +156,8 @@ const { mutableStore } = vi.hoisted(() => ({
       exposeDescriptions: false,
       showCompletionCards: true,
     },
+    // The Workflow tool is registered only when a file turns it on; a flip needs a pi restart.
+    workflows: { enabled: false },
     modelFor: () => "anthropic/claude-sonnet-4-6",
   },
 }));
@@ -275,9 +277,13 @@ describe("message renderer registration", () => {
 /* ------------------------------------------------------------------ */
 
 describe("tool registration", () => {
-  it("registers Agent, Workflow, StopAgent, MessageAgent, and AgentStatus tools", () => {
+  it("registers Agent, StopAgent, MessageAgent, and AgentStatus tools", () => {
     const names = api.tools.map((t) => t.name);
-    expect(names).toEqual(["Agent", "Workflow", "StopAgent", "MessageAgent", "AgentStatus"]);
+    expect(names).toEqual(["Agent", "StopAgent", "MessageAgent", "AgentStatus"]);
+  });
+
+  it("registers no Workflow tool while workflows are off", () => {
+    expect(findTool(api, "Workflow")).toBeUndefined();
   });
 
   it("registers the subagent tools with the dot description", () => {
@@ -288,7 +294,7 @@ describe("tool registration", () => {
 
   it("registers a result renderer on the tools that report one status line", () => {
     const withRenderResult = api.tools.filter((t) => t.renderResult).map((t) => t.name);
-    expect(withRenderResult).toEqual(["Agent", "Workflow", "StopAgent", "MessageAgent"]);
+    expect(withRenderResult).toEqual(["Agent", "StopAgent", "MessageAgent"]);
   });
 
   it("registers MessageAgent with no prompt snippet or guidelines and exactly its two required params", () => {
@@ -298,6 +304,26 @@ describe("tool registration", () => {
     expect(tool.parameters.required).toEqual(["agent_id", "message"]);
     expect(tool.promptSnippet).toBeUndefined();
     expect(tool.promptGuidelines).toBeUndefined();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Workflow tool — the niche flip                                    */
+/* ------------------------------------------------------------------ */
+
+describe("workflow tool registration — workflows.enabled", () => {
+  it("registers the Workflow tool once a file turns it on", async () => {
+    mutableStore.workflows.enabled = true;
+    try {
+      vi.resetModules();
+      const onApi = createMockExtensionAPI();
+      await loadExtension(onApi.api);
+
+      expect(onApi.tools.map((tool) => tool.name)).toContain("Workflow");
+    } finally {
+      mutableStore.workflows.enabled = false;
+      vi.resetModules();
+    }
   });
 });
 

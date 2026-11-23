@@ -30,6 +30,10 @@ import { workflowWarningSink } from "./workflow-notices.ts";
 const SUPPLIED_PARAMETERS = ["prompt", "path", "run_in_background"] as const;
 
 export function registerWorkflowTool(pi: ExtensionAPI): void {
+  // One guard for every caller: load-time registration, session_start, and the rescan re-register below.
+  // OFF means the tool never enters pi's registry, and only a pi start can change that - pi has no way to
+  // unregister a tool, so this setting is honest only as a restart-required flip.
+  if (!getStore().workflows.enabled) return;
   const listing = getWorkflowListing();
   const workflow = listing.length > 0 ? Type.String({ description: formatWorkflowListing(listing) }) : Type.String();
 

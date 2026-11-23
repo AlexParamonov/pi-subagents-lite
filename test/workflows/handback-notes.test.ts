@@ -33,6 +33,7 @@ import {
   mockAgentDir,
   renderedRows,
   runId,
+  setWorkflowsEnabled,
   startWorkflowSession,
   text,
   WORKFLOW_CALL,
@@ -97,6 +98,7 @@ afterEach(async () => {
  * and the endpoint config must be installed first: the session reads them as it starts.
  */
 async function start(options: { parentIdle?: boolean } = {}): Promise<WorkflowSession> {
+  setWorkflowsEnabled(ws.agentDir);
   session = await startWorkflowSession({ cwd: ws.project, parentIdle: options.parentIdle });
   return session;
 }

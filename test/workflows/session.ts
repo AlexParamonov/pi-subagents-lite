@@ -12,6 +12,8 @@
  */
 
 import type { AgentToolResult, AgentToolUpdateCallback, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, vi } from "vite-plus/test";
 import {
   createMockExtensionAPI,
@@ -152,6 +154,20 @@ export async function startWorkflowSession(options: WorkflowSessionOptions): Pro
       );
     },
   };
+}
+
+/**
+ * Set `workflows.enabled` in the global file the session is about to read, keeping every other key the
+ * test already wrote there: turning the tool on must never erase the endpoints that file configured.
+ * A test installs its endpoint config first, because this writes last before the session loads.
+ */
+export function setWorkflowsEnabled(agentDir: string, enabled = true): void {
+  const path = join(agentDir, "subagents-lite.json");
+  const stored: Record<string, unknown> = existsSync(path)
+    ? (JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>)
+    : {};
+  const workflows = (stored.workflows ?? {}) as Record<string, unknown>;
+  writeFileSync(path, JSON.stringify({ ...stored, workflows: { ...workflows, enabled } }));
 }
 
 /** Point the extension's agent directory at `ws`, the file Pi's session start then reads. */

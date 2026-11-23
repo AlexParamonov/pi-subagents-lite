@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { AgentToolResult, AgentToolUpdateCallback, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite-plus/test";
 import { renderWorkflowCall } from "../../src/workflows/workflow-tool.js";
 import {
   createMockExtensionAPI,
@@ -16,7 +16,8 @@ import {
   type MockExtensionAPI,
   type RegisteredTool,
 } from "../fixtures.js";
-import { defaultTheme } from "../mock-utils.js";
+import { defaultTheme, defaultUi } from "../mock-utils.js";
+import { setWorkflowsEnabled } from "./session.js";
 
 /** A graph-schema Workflow file, small enough to read in a test failure. */
 function workflowFile(name: string, description: string, endpoint?: string): string {
@@ -39,6 +40,8 @@ let agentDir: string;
 let project: string;
 let api: MockExtensionAPI | undefined;
 let ctx: ExtensionContext | undefined;
+/** Session notices shown during the session under test, so a skipped scan can be told from a silent file. */
+let notices: Mock;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "workflow-tool-"));
@@ -48,6 +51,7 @@ beforeEach(() => {
   mkdirSync(project, { recursive: true });
   api = undefined;
   ctx = undefined;
+  notices = vi.fn();
   vi.resetModules();
   vi.doMock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
     ...(await importOriginal<typeof import("@earendil-works/pi-coding-agent")>()),
@@ -67,11 +71,16 @@ function write(path: string, content: string): void {
   writeFileSync(path, content);
 }
 
-/** Load the extension and run its session start, which scans the Workflow folders. */
-async function startSession(files: Record<string, string>): Promise<void> {
+/** Load the extension and run its session start, which scans the Workflow folders when the setting is on. */
+async function startSession(files: Record<string, string>, enabled = true): Promise<void> {
+  setWorkflowsEnabled(agentDir, enabled);
   for (const [name, content] of Object.entries(files)) write(join(agentDir, "workflows", name), content);
   api = createMockExtensionAPI();
-  ctx = fakeCtx({ cwd: project, isProjectTrusted: () => true });
+  ctx = fakeCtx({
+    cwd: project,
+    isProjectTrusted: () => true,
+    ui: { ...defaultUi, notify: notices },
+  });
   await loadExtension(api.api);
   const listener = api.listeners.find((entry) => entry.event === "session_start");
   expect(listener, "the extension must handle session start").toBeDefined();
@@ -251,5 +260,24 @@ describe("Workflow schema refresh", () => {
     await expect(runTool({ workflow: "audti", prompt: "Review changes" })).rejects.toThrow(/Unknown workflow/i);
 
     expect(workflowRegistrations()).toHaveLength(registrations);
+  });
+});
+
+describe("workflows off — a flip that needs a pi restart", () => {
+  // Valid YAML with no name is what makes the scan speak, so the OFF arm can be told from a quiet file.
+  const nameless = "nodes: []\n";
+
+  it("scans no folder and registers no tool while the setting is off", async () => {
+    await startSession({ "nameless.yaml": nameless }, false);
+
+    expect(notices).not.toHaveBeenCalled();
+    expect(workflowRegistrations()).toHaveLength(0);
+  });
+
+  it("scans and registers that same folder once the setting is on", async () => {
+    await startSession({ "nameless.yaml": nameless });
+
+    expect(notices).toHaveBeenCalledWith(expect.stringContaining('Skipping workflow file "nameless.yaml"'), "warning");
+    expect(workflowRegistrations().length).toBeGreaterThan(0);
   });
 });

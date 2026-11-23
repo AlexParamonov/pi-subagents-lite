@@ -146,6 +146,8 @@ export interface RawWorkflowEndpoint {
  * the load warning names the rest.
  */
 export interface RawWorkflows {
+  /** Global-only: decides whether the `Workflow` tool is registered. A project layer cannot set it. */
+  enabled?: unknown;
   endpoints?: Record<string, RawWorkflowEndpoint>;
   defaultEndpoint?: unknown;
 }
@@ -339,6 +341,7 @@ function mergeRawWorkflows(global: RawWorkflows | undefined, project: RawWorkflo
   const merged: RawWorkflows = {
     endpoints: workflowEndpointTable([...Object.entries(global?.endpoints ?? {}), ...overridden]),
   };
+  if (global?.enabled !== undefined) merged.enabled = global.enabled;
   if (global?.defaultEndpoint !== undefined) merged.defaultEndpoint = global.defaultEndpoint;
   return merged;
 }
@@ -379,6 +382,9 @@ export function mergeDefaults(raw: RawConfig): SubagentsConfig {
     agent,
     concurrency,
     workflows: {
+      // A flip that needs a restart is read straight from the merged layer: nothing normalises it here,
+      // because validation already refused a non-boolean in the only layer allowed to carry it.
+      enabled: raw.workflows?.enabled === true,
       // A name the files configured keeps its own entry, usable or not: the built-ins are only for
       // a name nobody configured (US-34).
       endpoints: workflowEndpointTable([

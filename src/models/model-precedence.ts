@@ -101,6 +101,12 @@ export interface SubagentsConfig {
    * endpoint or sending it unauthenticated (US-34, US-8).
    */
   workflows: {
+    /**
+     * Whether the `Workflow` tool is registered at all. OFF by default: the feature needs a Workflow
+     * endpoint the typical consumer does not have. Read once when the extension registers its tools,
+     * so flipping it takes effect on the next pi start.
+     */
+    enabled: boolean;
     endpoints: Record<string, { url?: unknown; apiKey?: unknown }>;
     defaultEndpoint: unknown;
   };

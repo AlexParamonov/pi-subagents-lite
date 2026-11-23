@@ -418,6 +418,7 @@ describe("mergeLayers — a project layer may override a url only", () => {
 describe("mergeDefaults — the built-in local endpoint", () => {
   it("bakes the built-in endpoint and default when nothing is configured", () => {
     expect(mergeDefaults({}).workflows).toEqual({
+      enabled: false,
       endpoints: { "anagen-x.local": { url: "http://localhost:4001" } },
       defaultEndpoint: "anagen-x.local",
     });
@@ -429,6 +430,7 @@ describe("mergeDefaults — the built-in local endpoint", () => {
     });
 
     expect(config.workflows).toEqual({
+      enabled: false,
       endpoints: { "anagen-x.local": { url: "http://localhost:5000" } },
       defaultEndpoint: "other",
     });
@@ -447,10 +449,47 @@ describe("mergeDefaults — the built-in local endpoint", () => {
     const configured = mergeDefaults({ workflows: { endpoints: { "anagen-x.local": { url: "" } } } });
 
     expect(configured.workflows).toEqual({
+      enabled: false,
       endpoints: { "anagen-x.local": { url: "" } },
       defaultEndpoint: "anagen-x.local",
     });
     expect(mergeDefaults({ workflows: { defaultEndpoint: "" } }).workflows?.defaultEndpoint).toBe("");
+  });
+});
+
+describe("workflows.enabled — off until a file asks for the tool", () => {
+  it("is off when nothing is configured", () => {
+    expect(mergeDefaults({}).workflows.enabled).toBe(false);
+  });
+
+  it("is on when the global file turns it on", () => {
+    const { io } = memIO({ global: { workflows: { enabled: true } }, project: null, projectStatus: "absent" });
+
+    expect(new ConfigStore(io).workflows.enabled).toBe(true);
+  });
+
+  it("reads the flip from the global file on disk", () => {
+    writeGlobal({ workflows: { enabled: true } });
+
+    expect(mergeDefaults(createConfigIO(projectDir).load().global).workflows.enabled).toBe(true);
+  });
+
+  it("names a flip that is not true or false, and stays off", () => {
+    writeGlobal({ workflows: { enabled: "yes" } });
+    const io = createConfigIO(projectDir);
+    const warnings = warned(() => io.load());
+
+    expect(warnings).toContain("workflows.enabled");
+    expect(mergeDefaults(io.load().global).workflows.enabled).toBe(false);
+  });
+
+  it("keeps a project file from turning the tool on, and says so", () => {
+    writeGlobal(ENDPOINTS);
+    writeProject({ workflows: { enabled: true } });
+    const { warnings, merged } = warnedLoad(createConfigIO(projectDir));
+
+    expect(warnings).toContain("workflows.enabled");
+    expect(mergeDefaults(merged).workflows.enabled).toBe(false);
   });
 });
 
@@ -760,6 +799,7 @@ describe("ConfigStore — the effective workflows section", () => {
     });
 
     expect(new ConfigStore(io).workflows).toEqual({
+      enabled: false,
       endpoints: { "anagen-x.local": { url: "" } },
       defaultEndpoint: "anagen-x.local",
     });
@@ -775,6 +815,7 @@ describe("ConfigStore — the effective workflows section", () => {
     });
 
     expect(new ConfigStore(io).workflows).toEqual({
+      enabled: false,
       endpoints: {
         release: { url: "https://release.invalid:4001" },
         "anagen-x.local": { url: "http://localhost:4001" },

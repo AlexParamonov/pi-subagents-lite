@@ -98,6 +98,9 @@ export async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void
 
 /** Trust-gated Workflow scan plus the schema that lists what was found. */
 async function scanAndRegisterWorkflows(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+  // Nothing consumes the listing while the tool is unregistered, so off means the folders are not read and
+  // their warnings are not shown to a session that has no Workflow tool at all.
+  if (!getStore().workflows.enabled) return;
   const trusted = ctx.isProjectTrusted();
   setWorkflowScanDirs({
     global: path.join(getAgentDir(), "workflows"),

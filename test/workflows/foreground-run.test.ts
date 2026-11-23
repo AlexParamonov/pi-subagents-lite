@@ -73,7 +73,7 @@ import {
   type TestEndpoint,
   type Workspace,
 } from "./fixtures.js";
-import { rendered, renderedRows, text } from "./session.js";
+import { rendered, renderedRows, setWorkflowsEnabled, text } from "./session.js";
 
 let ws: Workspace;
 let api: MockExtensionAPI | undefined;
@@ -117,6 +117,7 @@ afterEach(async () => {
 });
 
 async function start(trusted = true, warnings?: string[]): Promise<MockExtensionAPI> {
+  setWorkflowsEnabled(ws.agentDir);
   api = createMockExtensionAPI();
   if (warnings) {
     vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => warnings.push(args.map(String).join(" ")));

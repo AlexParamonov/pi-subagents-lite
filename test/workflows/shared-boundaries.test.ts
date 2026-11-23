@@ -35,7 +35,7 @@ import {
   type TestEndpoint,
   type Workspace,
 } from "./fixtures.js";
-import { mockAgentDir, renderedRows, report, runId, text, tool } from "./session.js";
+import { mockAgentDir, renderedRows, report, runId, setWorkflowsEnabled, text, tool } from "./session.js";
 
 const TARGET = "release-gateway";
 const KEY = "fixture-api-token";
@@ -70,6 +70,7 @@ afterEach(async () => {
 });
 
 async function start(notices: string[] = [], ui: Partial<ExtensionContext["ui"]> = {}): Promise<MockExtensionAPI> {
+  setWorkflowsEnabled(ws.agentDir);
   api = createMockExtensionAPI();
   ctx = fakeCtx({ cwd: ws.project, ui: { ...defaultUi, notify: (message) => notices.push(message), ...ui } });
   await loadExtension(api.api);

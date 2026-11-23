@@ -239,6 +239,8 @@ export function workflowEndpointTable(
 
 /** Expected-shape label for JSON-object sections. */
 const EXPECTED_OBJECT = "object";
+/** What `workflows.enabled` must hold; anything else is dropped, so the flip stays at its default. */
+const EXPECTED_BOOLEAN = "true or false";
 
 /**
  * Check a value against one known key's rule. Never throws: TypeBox is an
@@ -350,6 +352,11 @@ function cleanGlobalWorkflows(workflows: unknown, reader: LayerReader, declaredB
   }
   const endpoints = cleanGlobalWorkflowEndpoints(workflows.endpoints, reader);
   if (endpoints) kept.endpoints = endpoints;
+  const enabled = workflows.enabled;
+  if (enabled !== undefined) {
+    if (typeof enabled === "boolean") kept.enabled = enabled;
+    else warnIncompatible(reader, "workflows.enabled", enabled, EXPECTED_BOOLEAN);
+  }
   const name = workflows.defaultEndpoint;
   if (name !== undefined) {
     if (typeof name !== "string" || name === "") {

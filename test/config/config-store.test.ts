@@ -399,14 +399,17 @@ describe("ConfigStore override layers", () => {
   });
 
   // Endpoint configuration is not model state: clear-all reaches layer.agent and nothing else, so a
-  // saved Workflow section - names, URLs, keys and the default - comes back out of every level intact.
+  // saved Workflow section - the flip, names, URLs, keys and the default - comes back out of every
+  // level intact.
   const WORKFLOWS_GLOBAL = {
+    enabled: true,
     endpoints: { "anagen-x.local": { url: "http://localhost:4001", apiKey: "global-key" } },
     defaultEndpoint: "anagen-x.local",
   };
   const WORKFLOWS_PROJECT = { endpoints: { "anagen-x.local": { url: "http://localhost:4101" } } };
   // The project URL wins over the global one, the global key and default are inherited (ADR-0008).
   const WORKFLOWS_EFFECTIVE = {
+    enabled: true,
     endpoints: { "anagen-x.local": { url: "http://localhost:4101", apiKey: "global-key" } },
     defaultEndpoint: "anagen-x.local",
   };

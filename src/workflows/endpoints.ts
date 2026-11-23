@@ -26,10 +26,13 @@ export interface WorkflowEndpoint {
 
 export type ResolvedEndpoint = { ok: true; endpoint: WorkflowEndpoint } | { ok: false; error: string };
 
-export function resolveWorkflowEndpoint(
-  workflows: SubagentsConfig["workflows"],
-  fileEndpoint?: unknown,
-): ResolvedEndpoint {
+/**
+ * The part of the Workflow settings a run resolves its target from. The `enabled` flip is deliberately
+ * absent: it decides whether the tool exists at all, and never which endpoint a run is sent to.
+ */
+type WorkflowTargets = Pick<SubagentsConfig["workflows"], "endpoints" | "defaultEndpoint">;
+
+export function resolveWorkflowEndpoint(workflows: WorkflowTargets, fileEndpoint?: unknown): ResolvedEndpoint {
   const configured = Object.keys(workflows.endpoints);
   const defaulted = fileEndpoint === undefined;
   // A Workflow file's `endpoint: null` is a configured-but-unusable selection, not an absent one.

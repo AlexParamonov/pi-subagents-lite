@@ -32,6 +32,7 @@ import {
   rendered,
   report,
   runId,
+  setWorkflowsEnabled,
   startWorkflowSession,
   text,
   WORKFLOW_CALL,
@@ -68,6 +69,7 @@ afterEach(async () => {
 /** Start the session, and count the repaints its widget asks for: the refresh timer's evidence. */
 async function start(options: { parentIdle?: boolean } = {}) {
   const repaints: number[] = [];
+  setWorkflowsEnabled(ws.agentDir);
   session = await startWorkflowSession({
     cwd: ws.project,
     parentIdle: options.parentIdle,
