@@ -149,7 +149,7 @@ export async function showSpawnOptionsMenu(ctx: ExtensionCommandContext): Promis
       label: "Completion cards",
       currentValue: store.agent.showCompletionCards ? "ON" : "OFF",
       values: ["ON", "OFF"],
-      description: "Show background-agent completion cards in the transcript; turn OFF to hide them.",
+      description: "Show subagent and Workflow run completion cards in the transcript; turn OFF to hide them.",
     },
     {
       id: "showAgentColors",
