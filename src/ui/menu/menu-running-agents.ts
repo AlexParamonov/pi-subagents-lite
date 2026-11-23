@@ -57,21 +57,29 @@ async function showTextViewer(
   const chromeLines = 5; // top border + title + sep + footer + bottom border
   let scrollOffset = 0;
   let autoScroll = true;
-  // The rows on screen: every render replaces these with `textLines` wrapped at the width that render had,
-  // so scrolling moves the rows the reader sees rather than the lines the text was written with.
+  // The rows on screen: `textLines` wrapped at the width of the frame they were last painted in, so
+  // scrolling moves the rows the reader sees rather than the lines the text was written with. The wrap
+  // covers the whole text (~16ms for 2,000 lines of it) and pi composites an open overlay on every
+  // ~16ms frame, so it is redone on a width change only.
   let rows = textLines;
+  let rowsInnerW = -1;
 
   await ctx.ui.custom<void>(
     (tui, theme, _kb, done) => {
       const border = theme.fg("border", "│");
 
       const viewportHeight = () => overlayViewportRows(tui.terminal.rows, chromeLines);
+      // How far the wrapped rows may scroll - the bound the painted frame and the scroll keys must agree on.
+      const scrollMax = () => Math.max(0, rows.length - viewportHeight());
 
       return {
         invalidate() {},
         render(width: number) {
           const innerW = width - 4;
-          rows = textLines.flatMap((line) => wrapTextWithAnsi(line, innerW));
+          if (innerW !== rowsInnerW) {
+            rowsInnerW = innerW;
+            rows = textLines.flatMap((line) => wrapTextWithAnsi(line, innerW));
+          }
           const out: string[] = [theme.fg("border", `\u256d${"\u2500".repeat(width - 2)}\u256e`)];
 
           // Title row: │ name · suffix pad │
@@ -84,7 +92,7 @@ async function showTextViewer(
 
           // Content with scrolling
           const vp = viewportHeight();
-          const maxScroll = Math.max(0, rows.length - vp);
+          const maxScroll = scrollMax();
           if (autoScroll) scrollOffset = maxScroll;
           const vs = Math.min(scrollOffset, maxScroll);
           const visible = rows.slice(vs, vs + vp);
@@ -112,7 +120,7 @@ async function showTextViewer(
           }
 
           const vp = viewportHeight();
-          const maxScroll = Math.max(0, rows.length - vp);
+          const maxScroll = scrollMax();
 
           if (matchesKey(data, "up")) {
             scrollOffset = Math.max(0, scrollOffset - 1);

@@ -529,18 +529,26 @@ describe("showTextViewer — component behavior", () => {
     return { component, done: doneFn };
   }
 
+  /** One frame row's own text: its border and the padding round it removed. */
+  function rowText(line: string): string {
+    return line
+      .replace(/^\u2502 /, "")
+      .replace(/ \u2502$/, "")
+      .trimEnd();
+  }
+
   /** The text this viewer shows: its content window, with the frame above it, its separator, its footer
    * and the blank viewport rows below the text removed. */
   function shownRows(frame: string[]): string[] {
     return frame
       .slice(3, -2)
-      .map((line) =>
-        line
-          .replace(/^\u2502 /, "")
-          .replace(/ \u2502$/, "")
-          .trimEnd(),
-      )
+      .map(rowText)
       .filter((line) => line !== "");
+  }
+
+  /** The viewer's own footer row, with the frame's borders removed. */
+  function footerRow(frame: string[]): string {
+    return rowText(frame.at(-2)!);
   }
 
   it("paints no terminal control from the text it shows", async () => {
@@ -606,6 +614,20 @@ describe("showTextViewer — component behavior", () => {
     component.handleInput!("\x1b[A"); // up
 
     expect(shownRows(component.render(40)).at(-1), "one row up uncovers the wrapped row above it").not.toBe("last");
+  });
+
+  it("re-wraps its rows and its row count when the frame width changes", async () => {
+    const long = "alpha beta gamma delta epsilon zeta eta theta";
+    const record = makeRecord({ result: long });
+    const { component } = await getComponent(record, "result", long);
+
+    // 40 columns of frame leaves 36 for the text, so the line breaks and the footer counts two rows.
+    expect(footerRow(component.render(40))).toMatch(/\b2 lines\b/);
+
+    const wide = component.render(80);
+
+    expect(shownRows(wide), "the same text whole where the wider frame fits it").toEqual([long]);
+    expect(footerRow(wide), "and counted as the one row it is").toMatch(/\b1 lines\b/);
   });
 
   it("renders error viewer with Error suffix", async () => {
