@@ -271,7 +271,18 @@ export async function runWorkflow(
     if (settled || sessionEnded) return;
     lines = progressLines(items).map((line) => published.shown(line));
     workflow.progress = lines;
+    workflow.items = shownItems(items);
     repaint();
+  }
+
+  /** The snapshot a viewer paints: the same items, with every endpoint string made safe to show. */
+  function shownItems(items: readonly WorkflowDisplayItem[]): WorkflowDisplayItem[] {
+    return items.map((item) => {
+      const node = item.node === null ? null : published.shown(item.node);
+      if (item.type === "node-status") return { ...item, node };
+      if (item.type === "activity") return { ...item, node, activity: published.shown(item.activity) };
+      return { ...item, node, text: published.shown(item.text) };
+    });
   }
 
   /** The live view changed: the waiter paints it while it holds, the record's owner after that. */

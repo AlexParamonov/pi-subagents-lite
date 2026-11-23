@@ -237,6 +237,7 @@ describe("a foreground run's record and result", () => {
       name: "audit",
       remoteId: REMOTE_ID,
       progress: ["\u2713 analysis completed"],
+      items: [{ type: "node-status", node: "analysis", status: "completed" }],
     });
     expect(shown.views.at(-1)).toBe("✓ analysis completed\nThe declared output");
   });
@@ -634,6 +635,69 @@ describe("the live view", () => {
     expect(manager.listAgents()[0]!.workflow?.progress).toEqual([
       "\u2713 analysis completed",
       "  Inspecting the repository",
+    ]);
+  });
+
+  it("keeps the items the stream produced on the record, so the details view gets each entry's node and state", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+
+    const pending = run(client, manager);
+    const view = await started(client);
+    view.onUpdate([
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "activity", node: "analysis", activity: "read_file" },
+      { type: "text", node: null, text: "Inspecting the repository" },
+    ]);
+
+    expect(manager.listAgents()[0]!.workflow?.items).toEqual([
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "activity", node: "analysis", activity: "read_file" },
+      { type: "text", node: null, text: "Inspecting the repository" },
+    ]);
+    client.settleMonitor({ status: "completed", result: DECLARED });
+    await pending;
+  });
+
+  it("keeps the endpoint's key and its control sequences out of the items it keeps", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+
+    const pending = run(client, manager, { endpoint: WITH_KEY });
+    const view = await started(client);
+    view.onUpdate([
+      { type: "node-status", node: `node-${KEY}`, status: "dispatched" },
+      { type: "activity", node: "analysis", activity: `read\u001b[?25l_file` },
+      { type: "text", node: "analysis", text: `echo of ${KEY}` },
+    ]);
+
+    expect(manager.listAgents()[0]!.workflow?.items).toEqual([
+      { type: "node-status", node: "node-[redacted]", status: "dispatched" },
+      { type: "activity", node: "analysis", activity: "read_file" },
+      { type: "text", node: "analysis", text: "echo of [redacted]" },
+    ]);
+    client.settleMonitor({ status: "completed", result: DECLARED });
+    await pending;
+  });
+
+  it("keeps the last snapshot on the settled record, so a run can be opened after it ended", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+
+    const pending = run(client, manager);
+    const view = await started(client);
+    view.onUpdate([
+      { type: "node-status", node: "analysis", status: "completed" },
+      { type: "text", node: "analysis", text: "Inspecting the repository" },
+    ]);
+    client.settleMonitor({ status: "completed", result: DECLARED });
+
+    await pending;
+
+    expect(manager.listAgents()[0]!.lifecycle.status).toBe("completed");
+    expect(manager.listAgents()[0]!.workflow?.items).toEqual([
+      { type: "node-status", node: "analysis", status: "completed" },
+      { type: "text", node: "analysis", text: "Inspecting the repository" },
     ]);
   });
 });
