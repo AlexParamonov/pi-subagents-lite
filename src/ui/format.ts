@@ -202,7 +202,7 @@ export function recordDisplayName(record: AgentRecord, name: string): string {
 
 /** The row one record paints for itself: its id, what it is, and its lifecycle status. Nothing else
  * may stand where the status is, because a live run's state is the record's, not a surface's guess. */
-export function recordRow(record: AgentRecord): string {
+function recordRow(record: AgentRecord): string {
   const shortId = record.id.slice(0, SHORT_ID_LENGTH);
   return `${shortId} (${recordDisplayName(record, record.display.type)}) ${record.lifecycle.status}`;
 }
