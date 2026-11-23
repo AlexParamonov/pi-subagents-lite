@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { AgentSession, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
-import type { AgentRecord } from "../../src/types.js";
+import type { AgentRecord, AgentStatus } from "../../src/types.js";
 import type { WorkflowDisplayItem } from "../../src/workflows/stream-view.js";
 import type { Theme } from "../../src/ui/types.js";
 import type { ConversationViewer } from "../../src/ui/conversation-viewer.js";
@@ -122,6 +122,12 @@ function liveRun(items: WorkflowDisplayItem[] = SNAPSHOT) {
       record.workflow!.items = next;
       for (const watch of watchers) watch();
     },
+    /** What the run's settlement writes, and tells. */
+    settle(status: AgentStatus = "completed"): void {
+      record.lifecycle.status = status;
+      record.lifecycle.completedAt = 9000;
+      for (const watch of watchers) watch();
+    },
   };
 }
 
@@ -158,10 +164,33 @@ describe("a Workflow run's details", () => {
     await opened;
   });
 
-  it("shows nothing but its empty line for a run whose connection delivered nothing", async () => {
+  it("shows the viewer's own waiting line for a running run that has shown nothing", async () => {
     const opened = openRecordDetails(uiWith(MARKING), liveRun([]).record);
 
     expect(contentRows()).toEqual(["dim:(waiting for first message...)"]);
+    await opened;
+  });
+
+  it("says in the record's own words that a settled run showed nothing, rather than waiting", async () => {
+    const run = liveRun([]);
+    run.settle();
+    const opened = openRecordDetails(uiWith(MARKING), run.record);
+
+    expect(contentRows()).toEqual(["dim:(this run delivered no entries)"]);
+    expect(frame()).not.toContain("waiting");
+    await opened;
+  });
+
+  it("says so when the run settles while the view is open on nothing", async () => {
+    const run = liveRun([]);
+    const opened = openRecordDetails(uiWith(MARKING), run.record);
+    expect(contentRows()).toEqual(["dim:(waiting for first message...)"]);
+    requestRender.mockClear();
+
+    run.settle();
+
+    await vi.waitFor(() => expect(requestRender).toHaveBeenCalled());
+    expect(contentRows()).toEqual(["dim:(this run delivered no entries)"]);
     await opened;
   });
 
@@ -211,8 +240,7 @@ describe("a Workflow run's details", () => {
 
   it("shows the settled run's entries, and no outcome of its own", async () => {
     const run = liveRun();
-    run.record.lifecycle.status = "completed";
-    run.record.lifecycle.completedAt = 9000;
+    run.settle();
     run.record.result = "two findings, one nit";
     const opened = openRecordDetails(uiWith(MARKING), run.record);
 

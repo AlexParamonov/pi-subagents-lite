@@ -96,5 +96,16 @@ function runTranscript(record: AgentRecord, theme: Theme): TranscriptSource {
 
 /** What the record has to show: one row per entry. */
 function rowsOf(record: AgentRecord, theme: Theme): TranscriptEntry[] {
-  return displayRows(record.workflow?.items ?? [], theme).map((text) => ({ role: "row", text }));
+  const rows: TranscriptEntry[] = displayRows(record.workflow?.items ?? [], theme).map((text) => ({
+    role: "row",
+    text,
+  }));
+  if (rows.length > 0 || isActive(record)) return rows;
+  // A settled run is waiting for nothing, so its empty view says so in the record's own words.
+  return [{ role: "row", text: theme.fg("dim", "(this run delivered no entries)") }];
+}
+
+/** Running or queued - the only non-terminal statuses (ADR-0006: active work is never cleared). */
+function isActive(record: AgentRecord): boolean {
+  return record.lifecycle.status === "running" || record.lifecycle.status === "queued";
 }
