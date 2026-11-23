@@ -936,3 +936,19 @@ reflex shortcuts (`checkout --`, `stash`) were the ones that could have dropped 
 **What worked:** Treating the dirty mainline as merge input, not noise - commit the stray edit as its own mainline commit first, then let the merge surface the real conflict and resolve an appended-section clash as the union of both sides. Proof that nothing was taken from either side: `git diff --stat <branch-tip> HEAD -- src test` empty (both trees byte-identical), and `git diff <base> <branch>` identical to `git diff <mainline-parent> <merge>` except for the hunk context of the one file both sides grew.
 
 **Next time:** Verify a tracking claim with `git check-ignore -v <path>` or `git ls-files <path>` before letting "it is gitignored" justify leaving a change uncommitted. And when a merge prompt's premise is about the working tree rather than the graph, check it first: `git status --porcelain` names the file that decides whether the merge runs at all.
+
+## A reported symptom names a surface, not a cause - reproduce it there before editing - 2026-11-23
+
+**What failed:** A follow-up asked to make a run's details view wrap long text, reporting it truncated at the row width. Every content row of that view already wrapped - the viewer's `row` entries and a node's body both go through `wrapTextWithAnsi` - so an edit aimed straight at the named surface would have rewritten working code, or worse, "fixed" it into a regression.
+
+**What worked:** Drove the real viewer through `openRecordDetails` at 80 and 160 columns with a colour-emitting theme and read the frame: every row kind wrapped, and each produced line re-opened the row's colour. Then grepped that domain for `truncate` and found the one genuine cut a record's details still had: the frozen `View result` / `View error` overlay, whose content rows went through `truncateToWidth(line, innerW, "...", true)`. Fixed there, and pinned the named surface anyway - two render widths against exact row arrays - then mutated the node body's wrap width (`width - 2` to a literal `100`) to reproduce the reported symptom verbatim and prove the pin bites.
+
+**Next time:** Before editing the surface a report names, reproduce the symptom there at two render widths and read the frame. If it does not reproduce, hunt the truncation call in the same domain instead of rewriting the reported code, and leave a pin plus a mutation behind so what was verified by eye stays verified.
+
+## A test helper that strips a frame's chrome must count it, not assume it - 2026-11-23
+
+**What failed:** A new content-row helper sliced `frame.slice(3, -3)`, assuming three trailing chrome rows (separator, footer, border). That view ends with footer and bottom border only, so the slice silently dropped the last content row, and a correct implementation read as a scroll-math bug.
+
+**What worked:** Printed the extracted array, counted the rows the component actually pushes (top border, title, separator above the text; footer and bottom border below it), re-sliced `slice(3, -2)`, and re-derived the expectation from that count.
+
+**Next time:** Derive a chrome-stripping slice from the rows that component pushes (or from its own `chromeLines` constant), and dump the extracted array once before trusting it. A dropped boundary row looks exactly like a product bug.
