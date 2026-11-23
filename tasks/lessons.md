@@ -883,3 +883,23 @@ Drive real keyboard input through the component returned by ui.custom before del
 **What worked:** Reuse the paint, not the model. The node entry carries a title, a state and body lines only, and the viewer maps that state onto the same three background roles `callBg` returns (`toolPendingBg`/`toolSuccessBg`/`toolErrorBg`), painting it through `callRows` plus the body fold extracted out of `resultLines` (bash's tail rule kept as a parameter, not duplicated). No call id means no `toolBlocks` entry, no per-call expansion and no timing row. That extraction is also what made the run's fold free: `C-o` already flips the flag, and `syncToolsExpanded` already drops the message cache when it flips. The same discipline fixed the footer - `C-t thinking` did nothing in a run view, so the hint and the key handler now share one predicate instead of the hint lying about the key.
 
 **Next time:** When dressing one subsystem's row in another's style, list what the host's model carries (ids, results, timings, click targets) and keep those out of the borrowed row; say in one comment which capabilities the borrowed row deliberately lacks. And treat every footer hint as an assertion the view can honour: guard the hint and the key with the same predicate, so neither can advertise a dead control.
+
+## A green suite after touching an uncovered line proves nothing - 2026-11-23
+
+**What failed:** Folding the "inset a line one cell and fill it on the block's background" expression out of
+`renderToolCall`'s expanded-timing footer into the round's new `bodyRows` helper looked safe: all 937 tests in
+`test/ui/` stayed green. They stayed green because nothing renders that footer - the calls in those tests reach
+the viewer through the compact layout (`appendCompactCall`, timing on the title row), and no test opens an
+ungrouped call with the output flag on and a recorded duration. Replacing that footer's text with `PROBE ...`
+went green too, suite-wide.
+
+**What worked:** Mutating the line instead of trusting the green run. Once the probe came back green the
+extraction was reverted, rather than shipped with a new test bolted onto untouched session-view code: the inset
+pad-and-fill is spelled inline at three sites in that class (`bodyRows`, the expanded-timing footer,
+`renderUserMessage`) with `callRows` as its full-width sibling, so a helper covering two of them is a fourth
+spelling, not a dedup. One pass over all three is its own change.
+
+**Next time:** Before believing a green suite covers a refactor, mutate the expression being extracted and read
+the `FAIL` lines. If nothing reddens, characterize first or leave the line alone. And when an idiom repeats at N
+sites, extract at all N or at none - a partial extraction adds a name to memorize and leaves the duplication in
+place for the next reader to trip on.
