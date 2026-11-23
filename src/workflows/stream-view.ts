@@ -5,7 +5,7 @@
  * replays its whole log per connection and this client never resumes by id), so nothing carries
  * over. Text is tracked per node, attempt and turn: one channel of a turn is shown, never
  * concatenated, and a full-turn frame closes the turn it arrives on. `progressLines` spells the
- * state for the tool call.
+ * state as the tool call's lines, `displayRows` as the details view's coloured rows.
  */
 
 import { plainText } from "../ui/sanitize.ts";
