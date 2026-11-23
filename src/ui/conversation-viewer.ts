@@ -226,13 +226,6 @@ function codemodeDuration(ms: number | undefined): string {
   return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
-/** A block's body text as display lines, without the blank lines a trailing newline leaves. */
-function wrapBody(text: string, width: number): string[] {
-  const lines = wrapTextWithAnsi(text, width);
-  while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
-  return lines;
-}
-
 /**
  * One position of the compact layout: non-call rows, a normal or compact call, or a collapsed run.
  * A normal call carries the whole block its message was cached with, wherever the cache holds one.
@@ -1297,7 +1290,9 @@ export class ConversationViewer implements Component {
    * the end), the rest keep the head.
    */
   private bodyLines(text: string, width: number, expanded: boolean, keepTail = false): string[] {
-    const all = wrapBody(text, width);
+    // Trailing newlines in a body are no lines to show: wrapping them leaves blank rows after it.
+    const all = wrapTextWithAnsi(text, width);
+    while (all.length > 0 && all[all.length - 1].trim() === "") all.pop();
     if (expanded || all.length <= COLLAPSED_RESULT_LINES) return all;
     const hidden = all.length - COLLAPSED_RESULT_LINES;
     if (keepTail) return [this.expandHintLine(`${hidden} earlier lines`), ...all.slice(-COLLAPSED_RESULT_LINES)];
