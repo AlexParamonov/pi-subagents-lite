@@ -112,6 +112,16 @@ describe("the Workflow row's outcome line", () => {
     ]);
   });
 
+  it("keeps the launch receipt of a background run whose note arrived later", () => {
+    mockGetRecord.mockReturnValue(liveRecord({ status: "running", launched: true, note: NOTE }));
+    const receipt = `Workflow ${SHORT_ID} is running remotely (server workflow_id wf-remote-1).`;
+
+    expect(rowRows({ content: [{ type: "text", text: receipt }] })).toEqual([
+      `a1b2c3d4 (audit workflow) running Workflow run ${SHORT_ID} is still running remotely. Check it later with AgentStatus using id ${SHORT_ID}.`,
+      receipt,
+    ]);
+  });
+
   it("shows the text a settled run ended with", () => {
     mockGetRecord.mockReturnValue(liveRecord({ status: "completed", result: "two findings, one nit" }));
 

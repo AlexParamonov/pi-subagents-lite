@@ -16,7 +16,7 @@ import type {
 import { Text } from "@earendil-works/pi-tui";
 import { getCoordinator, getManager, getPiInstance, getStore } from "../shell.ts";
 import type { AgentRecord } from "../types.ts";
-import { notedRow, recordRow } from "../ui/format.ts";
+import { notedRow } from "../ui/format.ts";
 import { plainText } from "../ui/sanitize.ts";
 import type { Theme } from "../ui/types.ts";
 import { registerAgentInvalidation } from "../ui/renderer.ts";
@@ -141,11 +141,8 @@ export function renderWorkflowResult(
 function outcomeRows(record: AgentRecord | undefined, content: string): string[] {
   if (!record) return [content];
   if (record.lifecycle.status !== "running") return [record.error ?? record.result ?? ""];
-  const note = record.workflow?.note;
-  if (!note) {
-    return record.display.invocation?.runInBackground ? [recordRow(record), content] : [recordRow(record)];
-  }
-  return [notedRow(record, { oneLine: true })];
+  const rows = [notedRow(record, { oneLine: true })];
+  return record.display.invocation?.runInBackground ? [...rows, content] : rows;
 }
 
 /** The call line: the workflow name, then exactly the optional parameters the agent supplied. */
