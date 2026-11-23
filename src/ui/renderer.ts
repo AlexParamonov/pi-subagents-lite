@@ -27,7 +27,7 @@ export function agentNameLabel(
   theme: Theme,
   modelDisplayStyle: "id" | "name" = "id",
 ): string {
-  const typeName = getDisplayName((d.type as string) || "");
+  const typeName = (d.displayName as string) || getDisplayName((d.type as string) || "");
   const tag = modelTag(d, theme, modelDisplayStyle);
   return tag ? `${theme.bold(typeName)} ${theme.fg("dim", tag)}` : theme.bold(typeName);
 }

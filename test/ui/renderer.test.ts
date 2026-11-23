@@ -532,10 +532,12 @@ describe("renderSubagentResult — a run with no usage accounting", () => {
   it("labels the card for the run, and shows its status and body", () => {
     renderSubagentResult(workflowNudge("completed"), { expanded: true }, defaultTheme, SHOW_COST);
 
+    // This file mocks getDisplayName, so a name here pins field pass-through, never the real
+    // registry's naming: model-thinking-tag.test.ts owns the production name.
     expect(cardLines()).toEqual([
       "Workflow Result",
       "",
-      "✓ Audit",
+      "✓ audit workflow",
       "  audit the diff",
       "",
       '  [Workflow "audit" aaaaaaaa completed]',
@@ -555,7 +557,7 @@ describe("renderSubagentResult — a run with no usage accounting", () => {
     );
 
     const card = cardLines().join("\n");
-    expect(card).toContain("■ Audit");
+    expect(card).toContain("■ audit workflow");
     expect(card).not.toMatch(/\d+ uses|\d+ turns/);
   });
 
