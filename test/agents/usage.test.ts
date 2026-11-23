@@ -65,13 +65,13 @@ describe("getLifetimeTotal", () => {
 /* ------------------------------------------------------------------ */
 
 describe("getSessionContextPercent", () => {
-  const legacyStats: ReturnType<SessionLike["getSessionStats"]> = {
+  const legacyStats: ReturnType<NonNullable<SessionLike["getSessionStats"]>> = {
     tokens: { input: 100, output: 50, cacheWrite: 10 },
     contextUsage: { percent: 75 },
   };
 
   it("prefers the direct getter without computing session stats", () => {
-    const getSessionStats = vi.fn<SessionLike["getSessionStats"]>(() => legacyStats);
+    const getSessionStats = vi.fn<NonNullable<SessionLike["getSessionStats"]>>(() => legacyStats);
     const getContextUsage = vi.fn<NonNullable<SessionLike["getContextUsage"]>>(() => ({ percent: 25 }));
 
     expect(getSessionContextPercent({ getSessionStats, getContextUsage })).toBe(25);
@@ -82,7 +82,7 @@ describe("getSessionContextPercent", () => {
   it("preserves the direct getter's session binding and reads fresh values", () => {
     const session = {
       percent: 0,
-      getSessionStats: vi.fn<SessionLike["getSessionStats"]>(() => legacyStats),
+      getSessionStats: vi.fn<NonNullable<SessionLike["getSessionStats"]>>(() => legacyStats),
       getContextUsage() {
         return { percent: this.percent };
       },
@@ -97,7 +97,7 @@ describe("getSessionContextPercent", () => {
   it.each([undefined, { percent: null }])(
     "returns null for unavailable direct usage (%j) without falling back",
     (usage) => {
-      const getSessionStats = vi.fn<SessionLike["getSessionStats"]>(() => legacyStats);
+      const getSessionStats = vi.fn<NonNullable<SessionLike["getSessionStats"]>>(() => legacyStats);
       const getContextUsage = vi.fn<NonNullable<SessionLike["getContextUsage"]>>(() => usage);
 
       expect(getSessionContextPercent({ getSessionStats, getContextUsage })).toBeNull();
@@ -107,7 +107,7 @@ describe("getSessionContextPercent", () => {
   );
 
   it("returns null when the direct getter throws without falling back", () => {
-    const getSessionStats = vi.fn<SessionLike["getSessionStats"]>(() => legacyStats);
+    const getSessionStats = vi.fn<NonNullable<SessionLike["getSessionStats"]>>(() => legacyStats);
     const getContextUsage = vi.fn<NonNullable<SessionLike["getContextUsage"]>>(() => {
       throw new Error("Context usage unavailable");
     });

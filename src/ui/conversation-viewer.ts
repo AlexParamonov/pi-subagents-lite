@@ -1,14 +1,14 @@
 /**
- * conversation-viewer.ts — Live conversation overlay for viewing agent sessions.
+ * conversation-viewer.ts — Live scrollable overlay over a transcript source.
  *
- * Displays a scrollable, live-updating view of an agent's conversation.
- * Subscribes to session events for real-time streaming updates.
+ * The source supplies the entries to show and reports when they change; a session supplies its own
+ * events for streaming, tool timing and context usage, a source without one reports a bare change.
  * Adapted for pi-subagents-lite type shapes.
  */
 
 import { getHideThinkingBlock } from "../pi-settings.ts";
 
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   type Component,
   Input,
@@ -22,7 +22,7 @@ import {
   wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../types.ts";
-import { getSessionContextPercent } from "../agents/usage.ts";
+import { getSessionContextPercent, type SessionLike } from "../agents/usage.ts";
 import { extractText } from "../prompt/context.ts";
 import type { Theme } from "./types.ts";
 import { makeMarkdownTheme } from "./markdown-theme.ts";
@@ -108,6 +108,25 @@ export interface ConversationViewerOptions {
   compactToolCalls?: boolean;
   /** Tool names that keep their normal call block, minus the result body, and split a run. Matched exactly, case-sensitively. Omitted means no exclusions: the caller passes the stored list. */
   ungroupedTools?: readonly string[];
+}
+
+/** One entry that is not a conversation message: a row its source already painted, shown as it stands. */
+export interface TranscriptRow {
+  role: "row";
+  text: string;
+}
+
+/** What the viewer shows: a conversation message, or one row a source contributes itself. */
+export type TranscriptEntry = AgentSession["messages"][number] | TranscriptRow;
+
+/**
+ * Everything the viewer reads from what it shows. An `AgentSession` satisfies it; so does a source
+ * with no session behind it, which reports a change with no event - the entries it holds now are its
+ * whole content, and it has no model whose context window could be reported.
+ */
+export interface TranscriptSource extends Partial<SessionLike> {
+  messages?: TranscriptEntry[];
+  subscribe(listener: (event?: AgentSessionEvent) => void): () => void;
 }
 
 /** A settled tool call's rows: lines [start, end) of a message or of the content. */
@@ -290,7 +309,7 @@ export class ConversationViewer implements Component {
 
   constructor(
     private tui: TUI,
-    private session: AgentSession,
+    private source: TranscriptSource,
     private record: AgentRecord,
     private theme: Theme,
     private done: (result: undefined) => void,
@@ -305,10 +324,17 @@ export class ConversationViewer implements Component {
     this.keys = createViewerKeys(options.keybindings);
     this.toolsExpanded = this.toolDisplay.isExpanded?.() ?? false;
     this.seedRunningToolCalls();
-    this.unsubscribe = session.subscribe((event) => {
+    this.unsubscribe = source.subscribe((event) => {
       try {
         if (this.closed) return;
-        if (event?.type === "message_update") {
+        if (event === undefined) {
+          // A source with no session says only that its entries changed: what it holds now replaces
+          // what it held, so nothing cached may survive the next frame.
+          this.invalidate();
+          this.scheduleRender();
+          return;
+        }
+        if (event.type === "message_update") {
           const me = event.assistantMessageEvent;
           const prevThinking = this.streamingThinking;
           const prevText = this.streamingText;
@@ -391,7 +417,7 @@ export class ConversationViewer implements Component {
    */
   private refreshToolCalls(toolCallIds: Iterable<string>): void {
     const ids = new Set(toolCallIds);
-    const messages = this.session.messages ?? [];
+    const messages = this.source.messages ?? [];
     messages.forEach((msg: any, index: number) => {
       if (msg?.role !== "assistant" || !Array.isArray(msg.content)) return;
       if (msg.content.some((c: any) => c?.type === "toolCall" && ids.has(c.id))) {
@@ -423,7 +449,7 @@ export class ConversationViewer implements Component {
   private seedRunningToolCalls(): void {
     const getToolStartedAt = this.toolDisplay.getToolStartedAt;
     if (!getToolStartedAt) return;
-    const messages: any[] = this.session.messages ?? [];
+    const messages: any[] = this.source.messages ?? [];
     const settled = new Set<string>();
     for (const msg of messages) {
       if (msg?.role === "toolResult" && msg.toolCallId) settled.add(msg.toolCallId);
@@ -506,7 +532,7 @@ export class ConversationViewer implements Component {
    * last `toolcall_end`, so args are complete before the tool even runs.
    */
   private refreshStreamingMessage(): void {
-    const messages = this.session.messages;
+    const messages = this.source.messages;
     if (!messages || messages.length === 0) return;
     const index = messages.length - 1;
     // Force the next render through the slow path so the streaming suffix is
@@ -560,6 +586,8 @@ export class ConversationViewer implements Component {
     switch (msg.role) {
       case "user":
         return this.renderUserMessage(msg, width);
+      case "row":
+        return wrapTextWithAnsi(msg.text, width);
       case "assistant":
         return this.renderAssistantMessage(msg, width, toolResults, blocks);
       case "toolResult":
@@ -721,7 +749,7 @@ export class ConversationViewer implements Component {
         maxTurns: this.record.stats.maxTurns,
         input: this.record.stats.lifetimeUsage.input,
         output: this.record.stats.lifetimeUsage.output,
-        contextPercent: getSessionContextPercent(this.session),
+        contextPercent: getSessionContextPercent(this.source),
         compactions: this.record.stats.compactionCount,
         cost: this.record.stats.lifetimeUsage.cost,
         durationMs,
@@ -1245,7 +1273,7 @@ export class ConversationViewer implements Component {
     if (width <= 0) return [];
 
     const th = this.theme;
-    const messages = this.session.messages ?? [];
+    const messages = this.source.messages ?? [];
 
     if (messages.length === 0) {
       this.cachedContentLines = undefined;

@@ -33,13 +33,13 @@ interface ContextUsageLike {
   percent: number | null;
 }
 
-/** Minimal shape we read from upstream `getSessionStats()`. */
+/** Minimal shape we read from upstream `getSessionStats()`; a source with no session has neither. */
 interface SessionStatsLike {
   tokens: { input: number; output: number; cacheWrite: number };
   contextUsage?: ContextUsageLike;
 }
 export interface SessionLike {
-  getSessionStats(): SessionStatsLike;
+  getSessionStats?(): SessionStatsLike;
   getContextUsage?(): ContextUsageLike | undefined;
 }
 
@@ -63,7 +63,7 @@ export function getSessionContextPercent(session: SessionLike | undefined): numb
   if (!session) return null;
   try {
     if (session.getContextUsage) return session.getContextUsage()?.percent ?? null;
-    return session.getSessionStats().contextUsage?.percent ?? null;
+    return session.getSessionStats?.().contextUsage?.percent ?? null;
   } catch {
     return null;
   }
