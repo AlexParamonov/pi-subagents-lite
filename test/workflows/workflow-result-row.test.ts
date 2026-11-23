@@ -4,7 +4,7 @@
  * The row is the only place a handed-back run is described after its call returned, so it reads the
  * record, never the call's own returned text, for a run that is still live. Its entries are the run's
  * own, one flat row each: the details view groups the same entries under each node's coloured row,
- * and this card paints its lines before pi knows their width.
+ * while this card stays flat inside the fill pi paints behind the whole call.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
