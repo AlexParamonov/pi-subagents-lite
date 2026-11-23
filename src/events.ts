@@ -183,7 +183,7 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
         if (matchesKey(data, "enter")) {
           const record = widget.navSelect();
           openViewer(ctx, record).catch((err) => {
-            ctx.ui.notify(`Failed to open agent viewer: ${String(err)}`, "error");
+            ctx.ui.notify(`Failed to open details: ${String(err)}`, "error");
           });
           return { consume: true };
         }

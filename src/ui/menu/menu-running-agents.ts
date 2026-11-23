@@ -93,7 +93,13 @@ export function buildAgentActionsList(
   const list = new SelectList(items, 10, buildSelectListTheme(theme));
   list.onSelect = async (item) => {
     if (item.value === "view-snapshot" || item.value === "view-conversation" || item.value === "view-details") {
-      await openRecordDetails(ctx.ui, record);
+      // pi never awaits a selection callback, so a rejection here would end the process: the session a
+      // record had when these items were built can be gone by the choice.
+      try {
+        await openRecordDetails(ctx.ui, record);
+      } catch (err) {
+        ctx.ui.notify(`Failed to open details: ${String(err)}`, "error");
+      }
     } else if (item.value === "view-result") {
       await showTextViewer(ctx, record, "result", record.result!);
     } else if (item.value === "view-error") {
