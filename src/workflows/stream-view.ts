@@ -13,7 +13,7 @@ import { field, parseRecord, record } from "./payload.ts";
 import type { SseFrame } from "./sse.ts";
 
 /** Status a node lifecycle frame reports. */
-export type WorkflowNodeStatus = "dispatched" | "retry" | "completed" | "failed";
+type WorkflowNodeStatus = "dispatched" | "retry" | "completed" | "failed";
 
 /** What one connection has to show, in the order the caller should render it. */
 export type WorkflowDisplayItem =
