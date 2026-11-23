@@ -38,6 +38,7 @@ import {
   type TestEndpoint,
   type Workspace,
 } from "./fixtures.js";
+import { claimsAStop } from "./note-words.js";
 
 type Result = AgentToolResult<Record<string, unknown>>;
 type Update = AgentToolUpdateCallback<Record<string, unknown>>;
@@ -89,18 +90,6 @@ const checkLater = (id: string): string => `Check it later with AgentStatus usin
 const readBudgetNote = (id: string): string =>
   `Workflow run ${id} is still running remotely. Its state is unknown after 5 observations: ` +
   `nothing was stopped, and observation was handed back.\n${checkLater(id)}`;
-/**
- * What no hand-back note may claim: that a stop was performed, or that it succeeded. The honest
- * denials a note is required to carry are removed first, so any stop wording left behind is a claim
- * about a stop the endpoint never confirmed - whether the run issued one whose landing is unknown,
- * or never issued one at all.
- */
-const HONEST_STOP_DENIALS = [/nothing(?: more)? was stopped/g, /stop failed/g];
-
-function claimsAStop(note: string): string[] {
-  const wording = HONEST_STOP_DENIALS.reduce((rest, denial) => rest.replace(denial, ""), note);
-  return wording.match(/\bstop(?:s|ped|ping)?\b/gi) ?? [];
-}
 /** A settlement the caller already holds reaches nobody else. */
 const NO_NUDGE: Nudge[] = [];
 

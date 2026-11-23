@@ -309,9 +309,12 @@ export async function runWorkflow(
     );
   }
 
-  /** A stop the endpoint refused: its own words, and the run it left running. */
+  /**
+   * A stop that did not happen: the client's short reason, and the run it left running. A refusal
+   * carries the endpoint's own words, so the note's word rule covers the wording composed here.
+   */
   function stopFailed(ack: Extract<WorkflowStop, { ok: false }>): string {
-    const reason = (ack.refusal ?? ack.error).replace(/\.$/, "");
+    const reason = ack.refusal.replace(/\.$/, "");
     return (
       `Workflow "${args.name}" ${shortId}: stop failed - ${reason}. ` +
       `The run is still running remotely; nothing more was stopped.\n${checkLater()}`

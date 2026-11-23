@@ -286,6 +286,7 @@ describe("create", () => {
       await expect(run.stop(id)).resolves.toEqual({
         ok: false,
         error: expect.stringContaining("did not send the stop request"),
+        refusal: "the run id names no request route",
       });
       expect(targets).toEqual([]);
     },
@@ -1599,7 +1600,28 @@ describe("stop", () => {
     await expect(waiting).resolves.toEqual({
       ok: false,
       error: expect.stringContaining("did not answer the stop request"),
+      refusal: "the endpoint did not answer the request",
     });
+  });
+
+  // Every failed stop carries the short form a hand-back note quotes, and it says no more than
+  // this: the note may deny a stop, never speak of one, and it quotes no endpoint detail.
+  it("reports a stop answered with no acknowledgement, in the short form the note carries", async () => {
+    const socket = fakeWorkflowFetch({
+      stream: (_push, close) => close(),
+      read: () => jsonResponse(200, readState()),
+      stop: () => jsonResponse(200, { workflow_id: REMOTE_ID }),
+    });
+    const run = await client(FAKED_URL, "example-private-key", socket.fetch);
+
+    const stop = await run.stop(REMOTE_ID);
+
+    expect(stop).toEqual({
+      ok: false,
+      error: expect.stringContaining("answered the stop request unreadably"),
+      refusal: "the endpoint answered with no usable acknowledgement",
+    });
+    expect((stop as { error: string }).error).toContain(FAKED_URL);
   });
 });
 

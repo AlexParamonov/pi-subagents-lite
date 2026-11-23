@@ -24,6 +24,7 @@ import type {
 } from "../../src/workflows/workflow-client.js";
 import { mintEndpoint } from "./fixtures.js";
 import { expectGatePending } from "./gate-assertions.js";
+import { claimsAStop } from "./note-words.js";
 
 const ENDPOINT = mintEndpoint("http://127.0.0.1:4100");
 const KEY = "sekrit-endpoint-value";
@@ -124,9 +125,16 @@ function fakeClient(options: FakeOptions = {}): FakeClient {
       // The transport ends a cancelled wait as a failed stop; the endpoint's late answer cannot.
       return new Promise<WorkflowStop>((resolve) => {
         heldStop = resolve;
-        signal?.addEventListener("abort", () => resolve({ ok: false, error: "the stop request was cancelled" }), {
-          once: true,
-        });
+        signal?.addEventListener(
+          "abort",
+          () =>
+            resolve({
+              ok: false,
+              error: "the stop request was cancelled",
+              refusal: "the endpoint did not answer the request",
+            }),
+          { once: true },
+        );
       });
     },
     settleMonitor(outcome) {
@@ -495,7 +503,13 @@ describe("stopping a foreground run", () => {
 
   it("reports a refused stop as failed with the run still remote", async () => {
     const manager = new AgentManager();
-    const client = fakeClient({ stop: { ok: false, error: "The endpoint refused the stop request." } });
+    const client = fakeClient({
+      stop: {
+        ok: false,
+        error: "The endpoint refused the stop request.",
+        refusal: "HTTP 409: workflow is not running",
+      },
+    });
     const abort = new AbortController();
 
     const pending = run(client, manager, { signal: abort.signal });
@@ -544,7 +558,13 @@ describe("stopping a foreground run", () => {
 
   it("ignores an interrupt that arrives after a failed stop handed the call back", async () => {
     const manager = new AgentManager();
-    const client = fakeClient({ stop: { ok: false, error: "The endpoint refused the stop request." } });
+    const client = fakeClient({
+      stop: {
+        ok: false,
+        error: "The endpoint refused the stop request.",
+        refusal: "HTTP 409: workflow is not running",
+      },
+    });
     const abort = new AbortController();
 
     const pending = run(client, manager, { signal: abort.signal });
@@ -688,7 +708,13 @@ describe("observation health on the record", () => {
 
   it("keeps the stop-failed note through an authoritative running read", async () => {
     const manager = new AgentManager();
-    const client = fakeClient({ stop: { ok: false, error: "The endpoint refused the stop request." } });
+    const client = fakeClient({
+      stop: {
+        ok: false,
+        error: "The endpoint refused the stop request.",
+        refusal: "HTTP 409: workflow is not running",
+      },
+    });
     const abort = new AbortController();
 
     const pending = run(client, manager, { signal: abort.signal });
@@ -1037,6 +1063,33 @@ describe("the note a hand-back leaves", () => {
       `Workflow "audit" ${id}: stop failed - HTTP 409: workflow is not running. ` +
         `The run is still running remotely; nothing more was stopped.\n${checkLater(id)}`,
     );
+  });
+
+  it("keeps the words of a stop diagnostic that never reached the endpoint out of the note", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient({
+      stop: {
+        ok: false,
+        error: `Workflow endpoint "local" (${ENDPOINT.url}) did not answer the stop request: socket hang up`,
+        refusal: "the endpoint did not answer the request",
+      },
+    });
+    const abort = new AbortController();
+
+    const pending = run(client, manager, { signal: abort.signal });
+    await started(client);
+    abort.abort();
+
+    const handed = await pending;
+    const id = shortId(manager.listAgents()[0]!);
+
+    expect(text(handed)).toBe(
+      `Workflow "audit" ${id}: stop failed - the endpoint did not answer the request. ` +
+        `The run is still running remotely; nothing more was stopped.\n${checkLater(id)}`,
+    );
+    expect(text(handed).split("\n"), "the state head, then the check-later line").toHaveLength(2);
+    expect(claimsAStop(text(handed))).toEqual([]);
+    expect(text(handed), "the diagnostic names the endpoint; the note quotes none of it").not.toContain(ENDPOINT.url);
   });
 
   it("keeps a standing stop failure ahead of a later unknown state and its recovery", async () => {
