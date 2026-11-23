@@ -77,9 +77,12 @@ function uiWith(theme: Theme): ExtensionUIContext {
   } as unknown as ExtensionUIContext;
 }
 
-/** The viewer's own content rows: border and padding removed, blank viewport rows dropped. */
-function contentRows(): string[] {
-  const frame = shown!.render(120).map((line) =>
+/**
+ * The viewer's own content rows at the width pi renders it at: border and padding removed, blank
+ * viewport rows dropped. 120 is the width most of these pins are read at.
+ */
+function contentRows(width = 120): string[] {
+  const frame = shown!.render(width).map((line) =>
     line
       .replace(/^\u2502 /, "")
       .replace(/ \u2502$/, "")
@@ -93,6 +96,21 @@ function contentRows(): string[] {
 }
 
 const frame = () => shown!.render(120).join("\n");
+
+/** A line wide enough for the wide overlay, yet long enough to break at 60 columns. */
+const LONG_LINE = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu";
+/** Where that line breaks: a node's body has 54 cells at 60 columns, a row nothing groups has 56. */
+const WRAP_HEAD = "alpha beta gamma delta epsilon zeta eta theta iota";
+const WRAP_TAIL = "kappa lambda mu";
+
+/** A theme that paints with real colour codes, so a row's colour is visible in the rows it wraps into. */
+const colouring = {
+  theme: {
+    fg: (_role: string, text: string) => `\u001b[32m${text}\u001b[39m`,
+    bg: (_role: string, text: string) => text,
+    bold: (text: string) => text,
+  } as Theme,
+};
 
 const SNAPSHOT: WorkflowDisplayItem[] = [
   { type: "node-status", node: "analysis", status: "dispatched" },
@@ -335,6 +353,58 @@ describe("a Workflow run's details", () => {
     await opened;
   });
 
+  it("wraps a long line at the width it is rendered at, on every row kind it paints", async () => {
+    const long: WorkflowDisplayItem[] = [
+      { type: "node-status", node: "report", status: "completed" },
+      { type: "text", node: "report", text: LONG_LINE },
+      { type: "text", node: null, text: LONG_LINE },
+    ];
+    const opened = openRecordDetails(uiWith(paint.theme), liveRun(long).record);
+
+    expect(contentRows(120), "one row each where the wide overlay fits the whole line").toEqual([
+      " ✓ report completed",
+      ` ${LONG_LINE}`,
+      `  ${LONG_LINE}`,
+    ]);
+
+    // 60 columns leaves 54 cells for a node's body and 56 for a row nothing groups, so both break at `kappa`.
+    expect(contentRows(60), "and both split at the word where the width runs out").toEqual([
+      " ✓ report completed",
+      ` ${WRAP_HEAD}`,
+      ` ${WRAP_TAIL}`,
+      `  ${WRAP_HEAD}`,
+      WRAP_TAIL,
+    ]);
+    await opened;
+  });
+
+  it("paints every wrapped row of a node's text in the colour that row is painted with", async () => {
+    const long: WorkflowDisplayItem[] = [
+      { type: "node-status", node: "report", status: "completed" },
+      { type: "text", node: "report", text: LONG_LINE },
+    ];
+    const opened = openRecordDetails(uiWith(paint.theme), liveRun(long).record);
+    paint.roles.length = 0;
+
+    shown!.render(60);
+
+    expect(paint.roles.filter((role) => role.startsWith("fg toolOutput"))).toEqual([
+      `fg toolOutput ${WRAP_HEAD}`,
+      `fg toolOutput ${WRAP_TAIL}`,
+    ]);
+    await opened;
+  });
+
+  it("keeps the colour on the continuation lines of a coloured row that wrapped", async () => {
+    const long: WorkflowDisplayItem[] = [{ type: "text", node: null, text: LONG_LINE }];
+    const opened = openRecordDetails(uiWith(colouring.theme), liveRun(long).record);
+
+    const continuation = shown!.render(60).find((line) => line.includes(WRAP_TAIL));
+
+    expect(continuation, "the wrapped continuation line carries the row's colour").toContain(`\u001b[32m${WRAP_TAIL}`);
+    await opened;
+  });
+
   it("unfolds through pi's own tool-output flag, so the transcript behind the view follows", async () => {
     const opened = openRecordDetails(uiWith(paint.theme), liveRun().record);
 
@@ -355,16 +425,6 @@ describe("a Workflow run's details", () => {
 
     expect(requestRender, "the thinking key answers nothing a run's view has").not.toHaveBeenCalled();
     await opened;
-  });
-
-  it("shows over the surface that asked for it, and in its place for the one that did not", async () => {
-    const inPlace = openRecordDetails(uiWith(paint.theme), liveRun().record);
-    expect(customOptions[1]).toBeUndefined();
-
-    const overMenu = openRecordDetails(uiWith(paint.theme), liveRun().record, { overlay: true });
-    expect(customOptions[1]).toEqual({ overlay: true });
-
-    await Promise.all([inPlace, overMenu]);
   });
 
   it("offers no steering and no local stop for a remote run", async () => {
@@ -407,5 +467,21 @@ describe("every other record", () => {
     const empty = makeAgentRecord({ execution: { settled: false, settlementCount: 0 } });
 
     await expect(openRecordDetails(uiWith(paint.theme), empty)).rejects.toThrow(/11111111 has nothing to show/);
+  });
+});
+
+describe("how a record is opened", () => {
+  it("opens every record as an overlay twice pi's default width, whichever surface asked", async () => {
+    // pi's own default is `min(80, terminal width)`; twice it is 160 columns, and pi clamps the
+    // result to the space a narrow terminal has, so no width rule is needed for that case.
+    const wide = { overlay: true, overlayOptions: { width: 160 } };
+
+    const fromWidget = openRecordDetails(uiWith(paint.theme), liveRun().record);
+    expect(customOptions[1], "a run opens over the conversation instead of in the editor's place").toEqual(wide);
+
+    const fromMenu = openRecordDetails(uiWith(paint.theme), sessionRecord());
+    expect(customOptions[1], "a session's own conversation opens the same way").toEqual(wide);
+
+    await Promise.all([fromWidget, fromMenu]);
   });
 });

@@ -23,6 +23,7 @@ import {
   SelectList,
   truncateToWidth,
   visibleWidth,
+  wrapTextWithAnsi,
   type Component,
   type SelectItem,
 } from "@earendil-works/pi-tui";
@@ -56,6 +57,9 @@ async function showTextViewer(
   const chromeLines = 5; // top border + title + sep + footer + bottom border
   let scrollOffset = 0;
   let autoScroll = true;
+  // The rows on screen: every render replaces these with `textLines` wrapped at the width that render had,
+  // so scrolling moves the rows the reader sees rather than the lines the text was written with.
+  let rows = textLines;
 
   await ctx.ui.custom<void>(
     (tui, theme, _kb, done) => {
@@ -67,6 +71,7 @@ async function showTextViewer(
         invalidate() {},
         render(width: number) {
           const innerW = width - 4;
+          rows = textLines.flatMap((line) => wrapTextWithAnsi(line, innerW));
           const out: string[] = [theme.fg("border", `\u256d${"\u2500".repeat(width - 2)}\u256e`)];
 
           // Title row: │ name · suffix pad │
@@ -79,21 +84,20 @@ async function showTextViewer(
 
           // Content with scrolling
           const vp = viewportHeight();
-          const maxScroll = Math.max(0, textLines.length - vp);
+          const maxScroll = Math.max(0, rows.length - vp);
           if (autoScroll) scrollOffset = maxScroll;
           const vs = Math.min(scrollOffset, maxScroll);
-          const visible = textLines.slice(vs, vs + vp);
+          const visible = rows.slice(vs, vs + vp);
 
           for (let i = 0; i < vp; i++) {
             const line = visible[i] ?? "";
-            const truncated = truncateToWidth(line, innerW, "...", true);
-            const padLen = Math.max(0, innerW - visibleWidth(truncated));
-            out.push(`${border} ${truncated}${" ".repeat(padLen)} ${border}`);
+            const padLen = Math.max(0, innerW - visibleWidth(line));
+            out.push(`${border} ${line}${" ".repeat(padLen)} ${border}`);
           }
 
           // Footer
-          const scrollPct = textLines.length <= vp ? "100%" : `${Math.round(((vs + vp) / textLines.length) * 100)}%`;
-          const count = theme.fg("dim", `${textLines.length} lines \u00b7 ${scrollPct}`);
+          const scrollPct = rows.length <= vp ? "100%" : `${Math.round(((vs + vp) / rows.length) * 100)}%`;
+          const count = theme.fg("dim", `${rows.length} lines \u00b7 ${scrollPct}`);
           const footerText = theme.fg("dim", "q/Esc close");
           const gap = Math.max(1, innerW - visibleWidth(count) - visibleWidth(footerText));
           out.push(`${border} ${count}${" ".repeat(gap)}${footerText} ${border}`);
@@ -108,7 +112,7 @@ async function showTextViewer(
           }
 
           const vp = viewportHeight();
-          const maxScroll = Math.max(0, textLines.length - vp);
+          const maxScroll = Math.max(0, rows.length - vp);
 
           if (matchesKey(data, "up")) {
             scrollOffset = Math.max(0, scrollOffset - 1);
@@ -195,7 +199,7 @@ export function buildAgentActionsList(
       // pi never awaits a selection callback, so a rejection here would end the process: the session a
       // record had when these items were built can be gone by the choice.
       try {
-        await openRecordDetails(ctx.ui, record, { overlay: true });
+        await openRecordDetails(ctx.ui, record);
       } catch (err) {
         ctx.ui.notify(`Failed to open details: ${String(err)}`, "error");
       }

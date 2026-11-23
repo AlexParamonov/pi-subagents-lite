@@ -1,9 +1,10 @@
 /**
  * record-details.ts — The one "open this record's details" entry point every surface calls.
  *
- * Both surfaces reach the same viewer: a session's own transcript, or a Workflow run's display
- * snapshot as rows. A run is read-only — nothing here steers it or aborts it — and it never gets a
- * session, so no session-keyed capability switches on for it.
+ * Both surfaces reach the same viewer, shown the same way: a wide overlay over whatever opened it. A
+ * session's own transcript, or a Workflow run's display snapshot as rows. A run is read-only — nothing
+ * here steers it or aborts it — and it never gets a session, so no session-keyed capability switches on
+ * for it.
  */
 
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
@@ -18,30 +19,22 @@ import {
   type TranscriptSource,
 } from "./conversation-viewer.ts";
 import { viewerExpandFlag, viewerPresentation, viewerToolDisplay } from "./tool-display.ts";
+import { DETAILS_OVERLAY_COLUMNS } from "./overlay.ts";
 import type { Theme } from "./types.ts";
 
-export interface RecordDetailsOptions {
-  /** Show the details over the surface that opened them, as `/agents` does, instead of in its place. */
-  overlay?: boolean;
-}
-
-/** Show this record's details, and answer when the reader closes them. */
-export async function openRecordDetails(
-  ui: ExtensionUIContext,
-  record: AgentRecord,
-  { overlay = false }: RecordDetailsOptions = {},
-): Promise<void> {
+/** Show this record's details over the surface that opened them, and answer when the reader closes them. */
+export async function openRecordDetails(ui: ExtensionUIContext, record: AgentRecord): Promise<void> {
   const run = record.workflow;
   if (run) {
     // A run's rows are folded by the reader's own tool-output flag, the key every tool row answers to.
     const wiring: ConversationViewerOptions = { toolDisplay: viewerExpandFlag({ ui }) };
-    return showTranscript(ui, record, (theme) => runTranscript(record, theme), wiring, overlay);
+    return showTranscript(ui, record, (theme) => runTranscript(record, theme), wiring);
   }
   const session = record.execution.session;
   if (!session) {
     throw new Error(`agent ${record.id.slice(0, SHORT_ID_LENGTH)} has nothing to show`);
   }
-  return showTranscript(ui, record, () => session, sessionWiring(ui, record), overlay);
+  return showTranscript(ui, record, () => session, sessionWiring(ui, record));
 }
 
 /** Hand the viewer this record's transcript source, with the presentation both surfaces share. */
@@ -50,10 +43,9 @@ function showTranscript(
   record: AgentRecord,
   makeSource: (theme: Theme) => TranscriptSource,
   wiring: ConversationViewerOptions,
-  overlay: boolean,
 ): Promise<void> {
   const store = getStore();
-  return ui.custom<void>(
+  return ui.custom(
     (tui, theme, keybindings, done) => {
       const viewer = new ConversationViewer(tui, makeSource(theme), record, theme, done, {
         keybindings,
@@ -63,7 +55,7 @@ function showTranscript(
       viewer.setModelDisplayStyle(store.agent.modelDisplayStyle);
       return viewer;
     },
-    overlay ? { overlay: true } : undefined,
+    { overlay: true, overlayOptions: { width: DETAILS_OVERLAY_COLUMNS } },
   );
 }
 
