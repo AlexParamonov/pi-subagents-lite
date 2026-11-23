@@ -1103,8 +1103,8 @@ describe("workflow monitor continuity", () => {
     // never the text its call returned (US-19, US-31).
     const liveRow = `${id} (audit workflow) running`;
     const notedRow =
-      `${liveRow} Workflow run ${id} is still running remotely. Its state is unknown after 5 ` +
-      `observations: nothing was stopped, and observation was handed back. ` +
+      `${liveRow} Workflow run ${id}: its state is unknown after 5 ` +
+      `observations; nothing was stopped, and observation was handed back. ` +
       `Check it later with AgentStatus using id ${id}.`;
     expect(before, "the paint the hand-back leaves behind carries the note on the run's own row").toBe(
       `▶ analysis dispatched\nProgress before the outage\n${notedRow}`,

@@ -1817,7 +1817,7 @@ describe("workflow cancellation and shutdown", () => {
     expect(text(status)).not.toMatch(/stopped|running/i);
   });
 
-  it("reports an honest unknown outcome when the endpoint refuses the stop", async () => {
+  it("reports the endpoint's own refusal when the stop is refused, and keeps the record running", async () => {
     // The captured refusal is the endpoint's own 404 body: a stop the endpoint did not
     // acknowledge says nothing about the run.
     const remote = await server({ holdStream: true, stopRejection: recordedResponse("stop-unknown") });
@@ -1837,8 +1837,9 @@ describe("workflow cancellation and shutdown", () => {
     // and the run keeps its running record for a manual retry.
     const report = `${stopped.text}\n${text(status)}`;
     expect(report).toMatch(/stop failed/i);
-    expect(report, "a refused stop claims the state the endpoint confirmed, not an unknown state").not.toMatch(
-      /unknown/i,
+    expect(report, "a refused stop names the endpoint's refusal, not an unknown state").not.toMatch(/unknown/i);
+    expect(report, "an endpoint that has no such run supplied no state, so nothing may claim it lives").not.toMatch(
+      /running remotely/i,
     );
     expect(text(status)).toContain("audit");
     expect(text(status)).toMatch(/running/i);

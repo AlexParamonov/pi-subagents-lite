@@ -300,24 +300,24 @@ export async function runWorkflow(
     return `Check it later with AgentStatus using id ${shortId}.`;
   }
 
-  /** The read budget spent: as far as this session can tell the run lives, and it is still watched. */
+  /** The read budget spent: these reads told this session nothing, and the watch goes on. */
   function readBudget(observations: number): string {
     const stop = stopRequested ? "" : "nothing was stopped, and ";
     return (
-      `Workflow run ${shortId} is still running remotely. Its state is unknown after ${observations} ` +
-      `observations: ${stop}observation was handed back.\n${checkLater()}`
+      `Workflow run ${shortId}: its state is unknown after ${observations} observations; ` +
+      `${stop}observation was handed back.\n${checkLater()}`
     );
   }
 
   /**
-   * A stop that did not happen: the client's short reason, and the run it left running. A refusal
-   * carries the endpoint's own words, so the note's word rule covers the wording composed here.
+   * A stop that did not happen: the client's short reason, and only what this session saw. A
+   * refusal's own words may deny that the run exists, so the note claims no remote state.
    */
   function stopFailed(ack: Extract<WorkflowStop, { ok: false }>): string {
     const reason = ack.refusal.replace(/\.$/, "");
     return (
       `Workflow "${args.name}" ${shortId}: stop failed - ${reason}. ` +
-      `The run is still running remotely; nothing more was stopped.\n${checkLater()}`
+      `Nothing was stopped, and this session has not seen the run end.\n${checkLater()}`
     );
   }
 

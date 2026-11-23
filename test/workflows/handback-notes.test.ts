@@ -88,7 +88,7 @@ const checkLater = (id: string): string => `Check it later with AgentStatus usin
  * says so, and it offers no handle the `Workflow` tool would reject.
  */
 const readBudgetNote = (id: string): string =>
-  `Workflow run ${id} is still running remotely. Its state is unknown after 5 observations: ` +
+  `Workflow run ${id}: its state is unknown after 5 observations; ` +
   `nothing was stopped, and observation was handed back.\n${checkLater(id)}`;
 /** A settlement the caller already holds reaches nobody else. */
 const NO_NUDGE: Nudge[] = [];
@@ -562,10 +562,13 @@ describe("a stop the endpoint did not confirm", () => {
     const id = runId(await status(capture));
     expect(text(handed)).toBe(
       `Workflow "${WORKFLOW}" ${id}: stop failed - HTTP 409: workflow is not running. ` +
-        `The run is still running remotely; nothing more was stopped.\n${checkLater(id)}`,
+        `Nothing was stopped, and this session has not seen the run end.\n${checkLater(id)}`,
     );
     expect(claimsAStop(text(handed)), "a stop the endpoint refused is never reported as done").toEqual([]);
     expect(text(handed), "the failure was the stop, not the state").not.toMatch(/unknown/i);
+    expect(text(handed), "an endpoint that refused the stop supplied no run state to publish").not.toMatch(
+      /running remotely/i,
+    );
     expect(row(lastPaint(paints)), "the row carries the stop failure").toContain("stop failed");
     expect(await status(capture)).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
     expect(await status(capture)).toContain("stop failed");

@@ -9,7 +9,7 @@
  * about a stop the endpoint never confirmed - whether the run issued one whose landing is unknown,
  * or never issued one at all.
  */
-const HONEST_STOP_DENIALS = [/nothing(?: more)? was stopped/g, /stop failed/g];
+const HONEST_STOP_DENIALS = [/nothing(?: more)? was stopped/gi, /stop failed/gi];
 
 export function claimsAStop(note: string): string[] {
   const wording = HONEST_STOP_DENIALS.reduce((rest, denial) => rest.replace(denial, ""), note);

@@ -391,7 +391,7 @@ describe("a foreground run's record and result", () => {
 
     expect(result.isError ?? false).toBe(false);
     expect(text(result)).toContain(
-      "Its state is unknown after 5 observations: nothing was stopped, and observation was handed back.",
+      "its state is unknown after 5 observations; nothing was stopped, and observation was handed back.",
     );
     expect(manager.listAgents()[0].lifecycle.status).toBe("running");
     // Observation carried on: the next wait belongs to the same run.
@@ -501,7 +501,7 @@ describe("stopping a foreground run", () => {
     expect(client.stops).toBe(1);
   });
 
-  it("reports a refused stop as failed with the run still remote", async () => {
+  it("reports a refused stop as failed and leaves the record running", async () => {
     const manager = new AgentManager();
     const client = fakeClient({
       stop: {
@@ -520,8 +520,11 @@ describe("stopping a foreground run", () => {
     const result = await pending;
 
     expect(text(result)).toMatch(/stop failed/i);
-    expect(text(result), "a refused stop reports the endpoint's reason, not an unknown state").toMatch(
-      /still running remotely/i,
+    expect(text(result), "a refused stop quotes the endpoint's own refusal").toContain(
+      "HTTP 409: workflow is not running",
+    );
+    expect(text(result), "a refusal the endpoint answered with 409 supplies no run state to publish").not.toMatch(
+      /running remotely/i,
     );
     expect(text(result)).not.toMatch(/unknown/i);
     expect(manager.listAgents()[0].lifecycle.status).toBe("running");
@@ -688,7 +691,7 @@ describe("observation health on the record", () => {
     expect(result.isError ?? false).toBe(false);
     expect(record.lifecycle.status).toBe("running");
     expect(record.workflow?.note).toContain(
-      "Its state is unknown after 5 observations: nothing was stopped, and observation was handed back.",
+      "its state is unknown after 5 observations; nothing was stopped, and observation was handed back.",
     );
     expect(manager.abort(record.id, "user"), "the handed-back run is still this session's to stop").toBe(true);
     await vi.waitFor(() => expect(client.stops).toBe(1));
@@ -1020,7 +1023,7 @@ describe("the note a hand-back leaves", () => {
     const id = shortId(manager.listAgents()[0]!);
 
     expect(text(handed)).toBe(
-      `Workflow run ${id} is still running remotely. Its state is unknown after 5 observations: ` +
+      `Workflow run ${id}: its state is unknown after 5 observations; ` +
         `nothing was stopped, and observation was handed back.\n${checkLater(id)}`,
     );
     expect(manager.listAgents()[0]!.workflow?.note).toBe(text(handed));
@@ -1041,8 +1044,8 @@ describe("the note a hand-back leaves", () => {
 
     const handed = await pending;
 
-    expect(text(handed)).toContain("observations: observation was handed back.");
-    expect(text(handed)).not.toMatch(/nothing(?: more)? was stopped/);
+    expect(text(handed)).toContain("observations; observation was handed back.");
+    expect(text(handed)).not.toMatch(/nothing(?: more)? was stopped/i);
   });
 
   it("reports a refused stop in the one line the row carries", async () => {
@@ -1061,7 +1064,7 @@ describe("the note a hand-back leaves", () => {
 
     expect(text(handed)).toBe(
       `Workflow "audit" ${id}: stop failed - HTTP 409: workflow is not running. ` +
-        `The run is still running remotely; nothing more was stopped.\n${checkLater(id)}`,
+        `Nothing was stopped, and this session has not seen the run end.\n${checkLater(id)}`,
     );
   });
 
@@ -1085,10 +1088,11 @@ describe("the note a hand-back leaves", () => {
 
     expect(text(handed)).toBe(
       `Workflow "audit" ${id}: stop failed - the endpoint did not answer the request. ` +
-        `The run is still running remotely; nothing more was stopped.\n${checkLater(id)}`,
+        `Nothing was stopped, and this session has not seen the run end.\n${checkLater(id)}`,
     );
     expect(text(handed).split("\n"), "the state head, then the check-later line").toHaveLength(2);
     expect(claimsAStop(text(handed))).toEqual([]);
+    expect(text(handed), "nothing answered, so no run state was confirmed").not.toMatch(/running remotely/i);
     expect(text(handed), "the diagnostic names the endpoint; the note quotes none of it").not.toContain(ENDPOINT.url);
   });
 
