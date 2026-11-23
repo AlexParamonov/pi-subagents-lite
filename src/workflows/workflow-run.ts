@@ -185,8 +185,8 @@ export async function runWorkflow(
         handBack(readBudget(outcome.observations), "unknown");
         continue;
       }
-      const [status, settlement] = settlementOf(outcome);
-      settle(status, settlement);
+      const [status, text] = settlementOf(outcome);
+      settle(status, text);
       return;
     }
   }
@@ -304,8 +304,7 @@ export async function runWorkflow(
 
   /** The read budget spent: these reads told this session nothing, and the watch goes on. */
   function readBudget(observations: number): string {
-    // A run that asked for a stop cannot claim nothing was stopped, so only a run that asked for
-    // none carries the denial.
+    // Only a run that asked for no stop may say that nothing was stopped.
     const stopDenial = stopRequested ? "" : "nothing was stopped, and ";
     return (
       `Workflow run ${shortId}: its state is unknown after ${observations} observations; ` +
