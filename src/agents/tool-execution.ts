@@ -22,7 +22,7 @@ import { parseModelKey, findModelInRegistry, parseThinkingChoice } from "../util
 import { resolveThinkingLevel } from "../models/thinking-resolution.ts";
 import { getPiModelThinkingLevel } from "../pi-settings.ts";
 import { getPiInstance, getStore, getCoordinator, getManager } from "../shell.ts";
-import { getDisplayName, recordDisplayName } from "../ui/format.ts";
+import { workflowDisplayName } from "../ui/format.ts";
 import { formatAgentStatusList } from "./agent-status.ts";
 
 // --- Tool result helpers ---
@@ -111,9 +111,7 @@ export function buildAgentDetails(
 
   // A workflow name is not a registered agent type, so the surfaces that resolve names through the
   // agent registry need the run's own name on the snapshot to avoid calling every run "Agent".
-  if (record.workflow) {
-    details.displayName = recordDisplayName(record, getDisplayName(record.display.type));
-  }
+  if (record.workflow) details.displayName = workflowDisplayName(record.workflow);
 
   const openingLine = record.result?.split("\n").find((line) => line.trim());
   if (openingLine) {

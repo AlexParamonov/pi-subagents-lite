@@ -15,7 +15,7 @@ import { getAgentConfig } from "../agents/agent-types.ts";
 import { agentColorAnsi } from "../agent-color.ts";
 import { getStore } from "../shell.ts";
 import type { SubagentType, AgentInvocation } from "../agents/types.ts";
-import type { AgentRecord, AgentStatus } from "../types.ts";
+import type { AgentRecord, AgentStatus, WorkflowRunInfo } from "../types.ts";
 import { SHORT_ID_LENGTH } from "../types.ts";
 import type { Theme } from "./types.ts";
 import { formatTokens, formatCost } from "../agents/usage.ts";
@@ -191,13 +191,18 @@ export function getDisplayName(type: SubagentType, fallback = "Agent"): string {
   return config?.displayName ?? config?.name ?? fallback;
 }
 
+/** What a Workflow run is called: its workflow's name, and the fact that it is a run of one. */
+export function workflowDisplayName(workflow: WorkflowRunInfo): string {
+  return `${workflow.name} workflow`;
+}
+
 /**
  * The name a record's row calls it. A Workflow run names its workflow and says what it is: no agent
  * config stands behind it, so the agent naming would call every run "Agent". Every other record
  * keeps the name the surface already used for it, passed in as `name`.
  */
 export function recordDisplayName(record: AgentRecord, name: string): string {
-  return record.workflow ? `${record.workflow.name} workflow` : name;
+  return record.workflow ? workflowDisplayName(record.workflow) : name;
 }
 
 /** The row one record paints for itself: its id, what it is, and its lifecycle status. Nothing else
