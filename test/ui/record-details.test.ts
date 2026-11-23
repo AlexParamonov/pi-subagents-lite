@@ -174,10 +174,11 @@ function liveRun(items: WorkflowDisplayItem[] = SNAPSHOT, description = "http://
       record.workflow!.items = next;
       for (const watch of watchers) watch();
     },
-    /** What the run's settlement writes, and tells. */
-    settle(status: AgentStatus = "completed"): void {
+    /** What the run's settlement writes, and tells: an error settlement carries its reason. */
+    settle(status: AgentStatus = "completed", reason?: string): void {
       record.lifecycle.status = status;
       record.lifecycle.completedAt = 9000;
+      if (status === "error") record.error = reason;
       for (const watch of watchers) watch();
     },
   };
@@ -231,6 +232,26 @@ describe("a Workflow run's details", () => {
 
     expect(contentRows()).toEqual(["(this run delivered no entries)"]);
     expect(frame()).not.toContain("waiting");
+    await opened;
+  });
+
+  it("shows the reason a run failed as its own row, after the rows its snapshot published", async () => {
+    const run = liveRun();
+    run.settle("error", "Workflow run failed: connection refused");
+    const opened = openRecordDetails(uiWith(paint.theme), run.record);
+
+    expect(contentRows()).toEqual([...SNAPSHOT_ROWS, "Workflow run failed: connection refused"]);
+    expect(paint.roles).toContain("fg error Workflow run failed: connection refused");
+    await opened;
+  });
+
+  it("shows the reason instead of the empty-run line when a failed run published nothing", async () => {
+    const run = liveRun([]);
+    run.settle("error", "Workflow run failed: Stream failed\ntransport: connection refused");
+    const opened = openRecordDetails(uiWith(paint.theme), run.record);
+
+    expect(contentRows()).toEqual(["Workflow run failed: Stream failed", "transport: connection refused"]);
+    expect(frame()).not.toContain("delivered no entries");
     await opened;
   });
 
@@ -516,6 +537,18 @@ describe("every other record", () => {
     const empty = makeAgentRecord({ execution: { settled: false, settlementCount: 0 } });
 
     await expect(openRecordDetails(uiWith(paint.theme), empty)).rejects.toThrow(/11111111 has nothing to show/);
+  });
+
+  it("shows the reason for a record that failed before it had a session", async () => {
+    const failed = makeAgentRecord({
+      lifecycle: { status: "error", startedAt: 1000, started: true, completedAt: 9000 },
+      execution: { settled: true, settlementCount: 0 },
+      error: "Agent failed: unknown model ai.lan/nope",
+    });
+    const opened = openRecordDetails(uiWith(paint.theme), failed);
+
+    expect(contentRows()).toEqual(["Agent failed: unknown model ai.lan/nope"]);
+    await opened;
   });
 });
 
