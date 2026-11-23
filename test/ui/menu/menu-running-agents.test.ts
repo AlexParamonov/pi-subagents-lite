@@ -29,53 +29,59 @@ interface SelectListCapture {
 // Capture SelectList constructor calls
 let selectListCalls: SelectListCapture[] = [];
 
-vi.mock("@earendil-works/pi-tui", () => ({
-  SettingsList: class MockSettingsList {
-    constructor() {}
-  },
-  SelectList: class MockSelectList {
-    items: SelectItem[];
-    maxVisible: number;
-    selectedIndex = 0;
-    onSelect?: (item: SelectItem) => void;
-    onCancel?: () => void;
-    constructor(items: SelectItem[], maxVisible: number, _theme: SelectListTheme) {
-      this.items = items;
-      this.maxVisible = maxVisible;
-      selectListCalls.push(this);
-    }
-    render() {
-      return [];
-    }
-    handleInput() {}
-  },
-  Input: class MockInput {
-    value = "";
-    onSubmit?: (v: string) => void;
-    onEscape?: () => void;
-    setValue(v: string) {
-      this.value = v;
-    }
-    getValue() {
-      return this.value;
-    }
-  },
-  matchesKey: vi.fn((data: string, key: string) => {
-    const map: Record<string, string[]> = {
-      up: ["\x1b[A", "k"],
-      down: ["\x1b[B", "j"],
-      pageUp: ["\x1b[5~"],
-      pageDown: ["\x1b[6~"],
-      home: ["\x1b[H"],
-      escape: ["\x1b"],
-      q: ["q"],
-      s: ["s"],
-    };
-    return (map[key] ?? [key]).includes(data);
-  }),
-  truncateToWidth: vi.fn((s: string, w: number) => (s.length > w ? s.slice(0, w - 3) + "..." : s)),
-  visibleWidth: vi.fn((s: string) => s.length),
-}));
+vi.mock("@earendil-works/pi-tui", async (importActual) => {
+  // The real wrap, not a stand-in: these tests pin how the text a record ends with is laid out at the
+  // width it is rendered at, so the wrapping itself must come from the library that does it in pi.
+  const actual = await importActual<typeof import("@earendil-works/pi-tui")>();
+  return {
+    SettingsList: class MockSettingsList {
+      constructor() {}
+    },
+    SelectList: class MockSelectList {
+      items: SelectItem[];
+      maxVisible: number;
+      selectedIndex = 0;
+      onSelect?: (item: SelectItem) => void;
+      onCancel?: () => void;
+      constructor(items: SelectItem[], maxVisible: number, _theme: SelectListTheme) {
+        this.items = items;
+        this.maxVisible = maxVisible;
+        selectListCalls.push(this);
+      }
+      render() {
+        return [];
+      }
+      handleInput() {}
+    },
+    Input: class MockInput {
+      value = "";
+      onSubmit?: (v: string) => void;
+      onEscape?: () => void;
+      setValue(v: string) {
+        this.value = v;
+      }
+      getValue() {
+        return this.value;
+      }
+    },
+    matchesKey: vi.fn((data: string, key: string) => {
+      const map: Record<string, string[]> = {
+        up: ["\x1b[A", "k"],
+        down: ["\x1b[B", "j"],
+        pageUp: ["\x1b[5~"],
+        pageDown: ["\x1b[6~"],
+        home: ["\x1b[H"],
+        escape: ["\x1b"],
+        q: ["q"],
+        s: ["s"],
+      };
+      return (map[key] ?? [key]).includes(data);
+    }),
+    truncateToWidth: vi.fn((s: string, w: number) => (s.length > w ? s.slice(0, w - 3) + "..." : s)),
+    visibleWidth: vi.fn((s: string) => s.length),
+    wrapTextWithAnsi: actual.wrapTextWithAnsi,
+  };
+});
 
 vi.mock("../../../src/ui/conversation-viewer.js", () => ({
   ConversationViewer: class MockConversationViewer {
@@ -523,6 +529,28 @@ describe("showTextViewer — component behavior", () => {
     return { component, done: doneFn };
   }
 
+  /** One frame row's own text: its border and the padding round it removed. */
+  function rowText(line: string): string {
+    return line
+      .replace(/^\u2502 /, "")
+      .replace(/ \u2502$/, "")
+      .trimEnd();
+  }
+
+  /** The text this viewer shows: its content window, with the frame above it, its separator, its footer
+   * and the blank viewport rows below the text removed. */
+  function shownRows(frame: string[]): string[] {
+    return frame
+      .slice(3, -2)
+      .map(rowText)
+      .filter((line) => line !== "");
+  }
+
+  /** The viewer's own footer row, with the frame's borders removed. */
+  function footerRow(frame: string[]): string {
+    return rowText(frame.at(-2)!);
+  }
+
   it("paints no terminal control from the text it shows", async () => {
     // One carrier per class the sanitizer claims to close: a DEC private mode
     // (alternate screen), a BEL-terminated string sequence, DEL, the 8-bit CSI
@@ -564,6 +592,42 @@ describe("showTextViewer — component behavior", () => {
     expect(text).toContain("line one");
     expect(text).toContain("line two");
     expect(text).toContain("line three");
+  });
+
+  it("wraps a long line at the width it renders at, instead of cutting it", async () => {
+    const long = "alpha beta gamma delta epsilon zeta eta theta";
+    const record = makeRecord({ result: long });
+    const { component } = await getComponent(record, "result", long);
+
+    // 40 columns of frame leaves 36 for the text, so the line breaks before `eta`.
+    expect(shownRows(component.render(40))).toEqual(["alpha beta gamma delta epsilon zeta", "eta theta"]);
+  });
+
+  it("scrolls the wrapped rows a long line becomes, not the source lines it came from", async () => {
+    // 20 source lines fit the viewport whole, so only the rows they wrap into can make this view scroll.
+    const wide = [...Array.from({ length: 20 }, () => "a".repeat(200)), "last"];
+    const record = makeRecord({ result: wide.join("\n") });
+    const { component } = await getComponent(record, "result", "");
+
+    expect(shownRows(component.render(40)).at(-1), "the view opens at the end of the text").toBe("last");
+
+    component.handleInput!("\x1b[A"); // up
+
+    expect(shownRows(component.render(40)).at(-1), "one row up uncovers the wrapped row above it").not.toBe("last");
+  });
+
+  it("re-wraps its rows and its row count when the frame width changes", async () => {
+    const long = "alpha beta gamma delta epsilon zeta eta theta";
+    const record = makeRecord({ result: long });
+    const { component } = await getComponent(record, "result", long);
+
+    // 40 columns of frame leaves 36 for the text, so the line breaks and the footer counts two rows.
+    expect(footerRow(component.render(40))).toMatch(/\b2 lines\b/);
+
+    const wide = component.render(80);
+
+    expect(shownRows(wide), "the same text whole where the wider frame fits it").toEqual([long]);
+    expect(footerRow(wide), "and counted as the one row it is").toMatch(/\b1 lines\b/);
   });
 
   it("renders error viewer with Error suffix", async () => {
@@ -870,7 +934,8 @@ describe("buildAgentActionsList — completed agent with session", () => {
     await list.onSelect!({ value: "view-conversation", label: "View conversation" });
 
     expect(capturedFactory).toBeDefined();
-    expect(ctx.ui.custom).toHaveBeenCalledWith(expect.any(Function), { overlay: true });
+    // The details open over the menu, at the width record-details asks pi for.
+    expect(ctx.ui.custom).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ overlay: true }));
   });
 
   it("reports a record whose session is gone by the time the row is chosen", async () => {

@@ -352,7 +352,7 @@ describe("navigation key handler (createNavInputHandler)", () => {
       createNavInputHandler(runCtx)("some_data");
       await vi.runAllTimersAsync();
 
-      expect(custom).toHaveBeenCalledWith(expect.any(Function), undefined);
+      expect(custom).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ overlay: true }));
     });
 
     it("opens a details view for a run that has already settled", async () => {
