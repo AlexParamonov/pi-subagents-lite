@@ -64,14 +64,13 @@ function definitionOf(resolution: WorkflowResolution): Record<string, unknown> {
 
 describe("Workflow resolution", () => {
   it("resolves a listed name to the definition read from its file", async () => {
-    const file = write("global", "audit.yaml", AUDIT);
+    write("global", "audit.yaml", AUDIT);
     await scanWorkflows(warn);
 
     const resolved = await resolveWorkflow("audit", warn);
 
     expect(resolved).toMatchObject({
       kind: "resolved",
-      filePath: file,
       definition: {
         name: "audit",
         description: "Inspect a repository",
@@ -107,11 +106,11 @@ describe("Workflow resolution", () => {
   it("resolves a Workflow file added after the session started", async () => {
     write("global", "audit.yaml", AUDIT);
     await scanWorkflows(warn);
-    const added = write("global", "release.yml", AUDIT.replace(/audit/g, "release-review"));
+    write("global", "release.yml", AUDIT.replace(/audit/g, "release-review"));
 
     const resolved = await resolveWorkflow("release-review", warn);
 
-    expect(resolved).toMatchObject({ kind: "resolved", filePath: added, listingChanged: true });
+    expect(resolved).toMatchObject({ kind: "resolved", listingChanged: true });
     expect(getWorkflowListing().map((entry) => entry.name)).toEqual(["audit", "release-review"]);
   });
 

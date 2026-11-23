@@ -16,7 +16,7 @@ import type {
 
 /** Where a resolution landed. `listingChanged` says whether the tool schema needs re-registering. */
 export type WorkflowResolution =
-  | { kind: "resolved"; filePath: string; definition: Record<string, unknown>; listingChanged: boolean }
+  | { kind: "resolved"; definition: Record<string, unknown>; listingChanged: boolean }
   | { kind: "not-found"; available: string[]; listingChanged: boolean };
 
 let folders: WorkflowFolders = { global: "", shared: "", project: "" };
@@ -54,7 +54,7 @@ export function formatWorkflowListing(entries: WorkflowListingEntry[]): string {
 export async function resolveWorkflow(name: string, warn: WorkflowWarning): Promise<WorkflowResolution> {
   const listed = await readListedFile(name);
   if (listed) {
-    return { kind: "resolved", filePath: listed.filePath, definition: listed.definition, listingChanged: false };
+    return { kind: "resolved", definition: listed.definition, listingChanged: false };
   }
 
   // Exactly one rescan per unknown-name call, never a per-call scan: registering the tool with a
@@ -65,7 +65,7 @@ export async function resolveWorkflow(name: string, warn: WorkflowWarning): Prom
 
   const found = await readListedFile(name);
   if (found) {
-    return { kind: "resolved", filePath: found.filePath, definition: found.definition, listingChanged };
+    return { kind: "resolved", definition: found.definition, listingChanged };
   }
   return { kind: "not-found", available: [...listing.keys()], listingChanged };
 }
