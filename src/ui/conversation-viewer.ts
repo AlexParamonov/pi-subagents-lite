@@ -363,16 +363,16 @@ export class ConversationViewer implements Component {
           if (this.streamingThinking !== prevThinking || this.streamingText !== prevText) {
             this.scheduleRender();
           }
-        } else if (event?.type === "tool_execution_start") {
+        } else if (event.type === "tool_execution_start") {
           this.toolStartedAt.set(event.toolCallId, Date.now());
           if (event.toolName === "codemode") this.toolPartialCalls.delete(event.toolCallId);
           this.refreshToolCalls([event.toolCallId]);
-        } else if (event?.type === "tool_execution_update") {
+        } else if (event.type === "tool_execution_update") {
           if (event.toolName === "codemode") {
             this.toolPartialCalls.set(event.toolCallId, codemodeCallsFrom(event.partialResult?.details));
             this.refreshToolCalls([event.toolCallId]);
           }
-        } else if (event?.type === "tool_execution_end") {
+        } else if (event.type === "tool_execution_end") {
           const startedAt = this.toolStartedAt.get(event.toolCallId);
           this.toolStartedAt.delete(event.toolCallId);
           // pi >= 1.4 reports the monotonic duration on the event; older typings lack the field.
@@ -380,7 +380,7 @@ export class ConversationViewer implements Component {
           const durationMs = reportedMs ?? (startedAt === undefined ? undefined : Date.now() - startedAt);
           if (durationMs !== undefined) this.toolFinishedMs.set(event.toolCallId, durationMs);
           this.refreshToolCalls([event.toolCallId]);
-        } else if (event?.type === "message_end") {
+        } else if (event.type === "message_end") {
           if (event.message.role === "toolResult") this.toolPartialCalls.delete(event.message.toolCallId);
           // Session-level end-of-message (pi swaps the final message object
           // into the last slot at "done") — same refresh as the boundaries.
