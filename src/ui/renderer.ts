@@ -8,13 +8,14 @@ import { Box, Container, Markdown, Spacer, Text, TruncatedText, type Component }
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import type { TextContent, ImageContent } from "@earendil-works/pi-ai";
 import type { SubagentMessageDetails } from "../agents/parent-message.ts";
-import type { Theme } from "./types.ts";
+import type { Theme, ToolBg } from "./types.ts";
 import {
   buildStatsParts,
   formatMs,
   getDisplayName,
   buildModelThinkingTag,
   resolveModelLabel,
+  statusColor,
   statusIcon,
 } from "./format.ts";
 import { getManager } from "../shell.ts";
@@ -292,6 +293,13 @@ function pathRows(d: Record<string, unknown> | undefined, theme: Theme): string 
   return rows.join("\n");
 }
 
+/** The card's fill. It is injected when a run settles, so nothing here is in flight: only a status the
+ * status table marks as an error claims a failure, as pi's rule for a settled call, and the glyph still
+ * says which status it was. */
+function cardBackground(status: string | undefined): ToolBg {
+  return statusColor(status) === "error" ? "toolErrorBg" : "toolSuccessBg";
+}
+
 /** Render a subagent-result message injected after background agent completion. */
 export function renderSubagentResult(
   message: { content?: string; details?: Record<string, unknown> },
@@ -309,14 +317,15 @@ export function renderSubagentResult(
 
   const inner = new Container();
   const label = d?.kind === "workflow" ? "Workflow Result" : "Subagent Result";
-  inner.addChild(new Text(theme.fg("customMessageLabel", label), 0, 0));
+  inner.addChild(new Text(theme.fg("toolTitle", theme.bold(label)), 0, 0));
   inner.addChild(new Spacer(1));
 
   // One card for every settlement message. The stats row is the only part a message may not carry:
   // a remote run has no usage accounting, so its details ask for none and its card says nothing about
   // turns, tokens or cost rather than inventing zeros.
   const statsLine = d && d.turnCount != null ? buildStatsLine(d, theme, showCost) : "";
-  const icon = statusIcon((d?.status as string) ?? "completed", theme, (d?.type as string) || undefined);
+  const status = (d?.status as string | undefined) ?? "completed";
+  const icon = statusIcon(status, theme, (d?.type as string) || undefined);
   const namePart = d ? agentNameLabel(d, theme, modelDisplayStyle) : "";
   const description = typeof d?.description === "string" ? d.description : "";
   const head = [
@@ -340,7 +349,7 @@ export function renderSubagentResult(
     inner.addChild(new Text(indentedBody(text), 0, 0));
   }
 
-  const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
+  const box = new Box(1, 1, (t) => theme.bg(cardBackground(status), t));
   box.addChild(inner);
 
   const outer = new Container();

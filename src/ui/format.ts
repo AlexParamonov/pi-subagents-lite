@@ -35,9 +35,12 @@ export function applyAgentColor(text: string, ansiColor: string, fallback: () =>
 
 // ---- Status icons ----
 
+/** The theme color a status is marked with. */
+export type StatusColor = "accent" | "success" | "warning" | "error" | "dim";
+
 /** Single source of truth for per-agent status icons, shared by the tool call lines,
  * the subagent status widget, and the conversation viewer. */
-const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "success" | "warning" | "error" | "dim" }> = {
+const STATUS_ICON: Record<AgentStatus, { icon: string; color: StatusColor }> = {
   queued: { icon: "◆", color: "accent" },
   running: { icon: "◈", color: "accent" },
   completed: { icon: "✓", color: "success" },
@@ -46,6 +49,11 @@ const STATUS_ICON: Record<AgentStatus, { icon: string; color: "accent" | "succes
   aborted: { icon: "✗", color: "error" },
   stopped: { icon: "■", color: "dim" },
 };
+
+/** The color a status is marked with, or undefined for a status this table does not know. */
+export function statusColor(status: string | undefined): StatusColor | undefined {
+  return STATUS_ICON[status as AgentStatus]?.color;
+}
 
 /** Colored icon for an agent status, or a plain ▸ when no status is known yet.
  * When agentType has a configured color, the icon is tinted with that color

@@ -24,7 +24,7 @@ import {
 import type { AgentRecord } from "../types.ts";
 import { getSessionContextPercent, type SessionLike } from "../agents/usage.ts";
 import { extractText } from "../prompt/context.ts";
-import type { Theme } from "./types.ts";
+import type { Theme, ToolBg } from "./types.ts";
 import { makeMarkdownTheme } from "./markdown-theme.ts";
 import {
   buildInvocationTags,
@@ -119,7 +119,7 @@ export interface TranscriptRow {
 /** What the viewer shows: a conversation message, or one entry a source contributes itself. */
 export type TranscriptEntry = AgentSession["messages"][number] | TranscriptRow | TranscriptNode;
 
-/** The three treatments a tool call's own row gets, named for the state they stand for. */
+/** What a node's own row reports about the node: in flight, done, or failed. */
 export type TranscriptNodeState = "running" | "done" | "failed";
 
 /**
@@ -151,9 +151,6 @@ interface ToolBlock {
   start: number;
   end: number;
 }
-
-/** Background a call row is painted on while it runs and once its result lands. */
-type ToolBg = "toolPendingBg" | "toolSuccessBg" | "toolErrorBg";
 
 /** The background a node's row gets: the same three a call row is painted on. */
 const NODE_STATE_BG: Record<TranscriptNodeState, ToolBg> = {
