@@ -180,7 +180,6 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     );
     const abort = () => controller.abort(new Error("cancelled"));
     signal?.addEventListener("abort", abort, { once: true });
-    let established = false;
     try {
       const response = await transport(url(path), {
         method,
@@ -192,12 +191,11 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
         },
         ...(body ? { body } : {}),
       });
-      established = true;
       return { ok: true, response, finish, close };
     } catch (reason) {
+      // Nothing was established, so there is no handle to hand back and nothing to keep open.
+      close();
       return { ok: false, kind: signal?.aborted ? "cancelled" : "transport", reason: failureReason(reason) };
-    } finally {
-      if (!established) close();
     }
 
     function finish(): void {
