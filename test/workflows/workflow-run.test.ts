@@ -700,6 +700,65 @@ describe("the live view", () => {
       { type: "text", node: "analysis", text: "Inspecting the repository" },
     ]);
   });
+
+  it("tells a watcher each snapshot it publishes, and the settlement it ends on", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+
+    const pending = run(client, manager);
+    const view = await started(client);
+    const record = manager.listAgents()[0]!;
+    const seen: string[] = [];
+    record.execution.watchSnapshot!(() => seen.push(record.lifecycle.status));
+
+    view.onUpdate([{ type: "node-status", node: "analysis", status: "dispatched" }]);
+
+    expect(seen).toEqual(["running"]);
+
+    client.settleMonitor({ status: "completed", result: DECLARED });
+    await pending;
+
+    expect(seen, "an open view is told the run it shows has settled").toEqual(["running", "completed"]);
+  });
+
+  it("tells a watcher each snapshot a detached run publishes", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+
+    await run(client, manager, { runInBackground: true });
+    const record = manager.listAgents()[0]!;
+    const seen: number[] = [];
+    record.execution.watchSnapshot!(() => seen.push(record.workflow!.progress?.length ?? 0));
+
+    const view = await started(client);
+    view.onUpdate([{ type: "node-status", node: "analysis", status: "dispatched" }]);
+    view.onUpdate([
+      { type: "node-status", node: "analysis", status: "completed" },
+      { type: "text", node: "analysis", text: "Inspected 12 files" },
+    ]);
+
+    expect(seen).toEqual([1, 2]);
+    client.settleMonitor({ status: "completed", result: DECLARED });
+  });
+
+  it("tells a watcher nothing once it has left", async () => {
+    const manager = new AgentManager();
+    const client = fakeClient();
+
+    const pending = run(client, manager);
+    const view = await started(client);
+    const record = manager.listAgents()[0]!;
+    const seen = vi.fn();
+    const leave = record.execution.watchSnapshot!(seen);
+
+    view.onUpdate([{ type: "node-status", node: "analysis", status: "dispatched" }]);
+    leave();
+    view.onUpdate([{ type: "node-status", node: "analysis", status: "completed" }]);
+
+    expect(seen).toHaveBeenCalledTimes(1);
+    client.settleMonitor({ status: "completed", result: DECLARED });
+    await pending;
+  });
 });
 
 describe("observation health on the record", () => {

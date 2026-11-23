@@ -255,6 +255,11 @@ export interface AgentExecutionState {
    * a remote run's status follows the endpoint's answer.
    */
   endWorkflowRun?: (reason: "stop" | "shutdown") => void;
+  /**
+   * Be told this record's own display changed, by whoever is watching it live (a Workflow run's
+   * details view). Attached by the run next to its record; the returned function stops the watching.
+   */
+  watchSnapshot?: (onChange: () => void) => () => void;
 }
 
 /**
