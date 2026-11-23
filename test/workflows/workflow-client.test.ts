@@ -149,7 +149,7 @@ describe("create", () => {
 
     const run = await (await client(server.url)).create(request());
 
-    expect(run).toEqual({ ok: true, workflowId: server.run, taskId: server.run });
+    expect(run).toEqual({ ok: true, workflowId: server.run });
     expect(createBody(server)).toEqual({
       prompt: "Review the repository",
       workflow_config: {
@@ -484,7 +484,7 @@ describe("create", () => {
         ),
     }).create(request());
 
-    expect(run).toEqual({ ok: true, workflowId: COMPLETED_RUN, taskId: COMPLETED_RUN });
+    expect(run).toEqual({ ok: true, workflowId: COMPLETED_RUN });
   });
 });
 

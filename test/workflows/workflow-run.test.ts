@@ -56,7 +56,7 @@ interface FakeClient extends WorkflowClient {
 }
 
 interface FakeOptions {
-  create?: { ok: true; workflowId: string; taskId: string } | { ok: false; error: string };
+  create?: WorkflowCreate;
   /** Hold the create answer until `releaseCreate`, so a shutdown can overtake it. */
   holdCreate?: boolean;
   /** Hold the stop answer until `releaseStop`, so a shutdown can overtake that too. */
@@ -81,12 +81,12 @@ function fakeClient(options: FakeOptions = {}): FakeClient {
     stopSignals,
     async create(request) {
       creates.push({ prompt: request.prompt, definition: request.definition, workingDir: request.workingDir });
-      if (!options.holdCreate) return options.create ?? { ok: true, workflowId: REMOTE_ID, taskId: REMOTE_ID };
+      if (!options.holdCreate) return options.create ?? { ok: true, workflowId: REMOTE_ID };
       return new Promise<WorkflowCreate>((resolve) => {
         heldCreate = resolve;
       });
     },
-    releaseCreate(create = { ok: true, workflowId: REMOTE_ID, taskId: REMOTE_ID }) {
+    releaseCreate(create: WorkflowCreate = { ok: true, workflowId: REMOTE_ID }) {
       const answer = heldCreate;
       heldCreate = undefined;
       answer?.(create);

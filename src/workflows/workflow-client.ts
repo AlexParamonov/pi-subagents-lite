@@ -25,7 +25,7 @@ export interface WorkflowRunRequest {
   workingDir: string;
 }
 
-export type WorkflowCreate = { ok: true; workflowId: string; taskId: string } | { ok: false; error: string };
+export type WorkflowCreate = { ok: true; workflowId: string } | { ok: false; error: string };
 
 /** UTF-8 byte cap the endpoint enforces with a 422; checked before anything is sent. */
 const PROMPT_MAX_BYTES = 10_000;
@@ -241,13 +241,13 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
       if (sent.status < 200 || sent.status >= 300) {
         return { ok: false, error: fault("rejected the run", `HTTP ${sent.status}: ${rejection(sent.body)}`) };
       }
-      const ids = runIds(sent.body);
-      if (!ids)
+      const workflowId = runId(sent.body);
+      if (workflowId === null)
         return { ok: false, error: fault("created a run it did not identify", "the response carried no workflow id") };
-      const unusable = unusableId(ids.workflowId);
+      const unusable = unusableId(workflowId);
       if (unusable) return unknownOutcome(unusable);
       lastKnown = "running";
-      return { ok: true, ...ids };
+      return { ok: true, workflowId };
     },
 
     async monitor(workflowId, view): Promise<WorkflowOutcome> {
@@ -535,10 +535,9 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-function runIds(body: string): { workflowId: string; taskId: string } | null {
-  const ids = parseRecord(body);
-  const workflowId = field(ids, "workflow_id");
-  return workflowId === undefined ? null : { workflowId, taskId: field(ids, "task_id") ?? "" };
+/** The id the endpoint created the run under, or nothing when its answer named none. */
+function runId(body: string): string | null {
+  return field(parseRecord(body), "workflow_id") ?? null;
 }
 
 /**
