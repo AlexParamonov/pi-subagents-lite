@@ -947,7 +947,10 @@ describe("workflow stream event admission", () => {
     await beforeEnd(followup.promise, remote.streamSocketClosed(), "a later chunk rendered on the same open stream");
     const later = await followup.promise;
 
-    expect(later.split("\n")).toEqual(["▶ analysis dispatched", "analysis tool read_file", "Inspecting the diff."]);
+    const rows = later.split("\n");
+    // The run's own row closes the view: the row reads the record, so it names the run and its state.
+    expect(rows.slice(0, -1)).toEqual(["▶ analysis dispatched", "analysis tool read_file", "Inspecting the diff."]);
+    expect(rows.at(-1)).toMatch(/^[0-9a-f]{8} \(audit workflow\) running$/);
     expect(views.every((view) => !view.includes("foreign-node"))).toBe(true);
     expect(remote.streamSocketsOpen()).toBe(1);
 

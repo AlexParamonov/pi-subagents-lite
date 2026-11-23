@@ -22,6 +22,7 @@ import { parseModelKey, findModelInRegistry, parseThinkingChoice } from "../util
 import { resolveThinkingLevel } from "../models/thinking-resolution.ts";
 import { getPiModelThinkingLevel } from "../pi-settings.ts";
 import { getPiInstance, getStore, getCoordinator, getManager } from "../shell.ts";
+import { getDisplayName, recordDisplayName } from "../ui/format.ts";
 import { formatAgentStatusList } from "./agent-status.ts";
 
 // --- Tool result helpers ---
@@ -96,6 +97,8 @@ async function resolveWorktree(
  * Build a details record from an AgentRecord. Always includes type, description
  * and the reply's opening line for the collapsed result rows; includeStatus adds
  * status/outputFile/stopReason, includeStats adds turn/token/cost/context/compaction/model fields.
+ * A Workflow run's snapshot also carries displayName, the name agent-registry surfaces cannot
+ * derive from the type.
  */
 export function buildAgentDetails(
   record: AgentRecord,
@@ -105,6 +108,12 @@ export function buildAgentDetails(
     type: record.display.type,
     description: record.display.description,
   };
+
+  // A workflow name is not a registered agent type, so the surfaces that resolve names through the
+  // agent registry need the run's own name on the snapshot to avoid calling every run "Agent".
+  if (record.workflow) {
+    details.displayName = recordDisplayName(record, getDisplayName(record.display.type));
+  }
 
   const openingLine = record.result?.split("\n").find((line) => line.trim());
   if (openingLine) {

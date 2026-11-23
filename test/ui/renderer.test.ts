@@ -85,7 +85,7 @@ vi.mock("../../src/ui/format.js", async (importOriginal) => {
 });
 
 // Import after mocks are set up
-import type { AgentLifecycle } from "../../src/types.js";
+import type { AgentLifecycle, AgentRecord } from "../../src/types.js";
 import { SHORT_ID_LENGTH } from "../../src/types.js";
 import type { Theme } from "../../src/ui/types.js";
 import { buildAgentDetails, formatResultContent } from "../../src/agents/tool-execution.js";
@@ -462,7 +462,7 @@ describe("renderSubagentResult — collapsed reply preview row", () => {
     ]);
   });
 
-  it("keeps the fallback line unchanged for a nudge without stats", () => {
+  it("shows the reply body a nudge without stats carries", () => {
     const message = nudge("Line one.\n\nLine two.", { status: "completed" });
     const { turnCount: _turnCount, ...detailsWithoutStats } = message.details;
 
@@ -476,10 +476,114 @@ describe("renderSubagentResult — collapsed reply preview row", () => {
     expect(renderedRows).toEqual([
       { kind: "Text", text: "Subagent Result" },
       { kind: "Spacer", text: "" },
-      { kind: "Text", text: "✓ Builder\n  Fix the flaky fetch test\n  tail -f /tmp/pi-out.log" },
+      { kind: "Text", text: "✓ Builder\n  Fix the flaky fetch test" },
+      { kind: "TruncatedText", text: "  Line one." },
+      { kind: "Text", text: "  tail -f /tmp/pi-out.log" },
       { kind: "Spacer", text: "" },
       { kind: "Spacer", text: "" },
     ]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  The card a settlement message with no usage accounting gets        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A Workflow run's settlement message exactly as the Nudge batch sends it: the run's own header over
+ * the one text it published, details from the snapshot built without stats.
+ */
+function workflowNudge(status: AgentLifecycle["status"], text = "two findings, one nit") {
+  const record = makeAgentRecord({
+    id: "aaaaaaaa1111",
+    ...(status === "completed" ? { result: text } : { error: text }),
+    display: { type: "audit" as AgentRecord["display"]["type"], description: "audit the diff" },
+    lifecycle: { status, startedAt: 1000, completedAt: 61_000, started: true },
+    workflow: { name: "audit", endpoint: "lab", url: "http://127.0.0.1:8099", remoteId: "wf-1", progress: [] },
+  });
+  return {
+    content: `[Workflow "audit" ${record.id.slice(0, SHORT_ID_LENGTH)} ${status}]\n\n${text}`,
+    details: { ...buildAgentDetails(record, { includeStatus: true, includeStats: false }), kind: "workflow" },
+  };
+}
+
+describe("renderSubagentResult — a run with no usage accounting", () => {
+  it.each([
+    ["error", "✗"],
+    ["stopped", "■"],
+    ["aborted", "✗"],
+  ] as [AgentLifecycle["status"], string][])(
+    "shows the %s icon and the message body for a subagent message that reaches this branch",
+    (status, icon) => {
+      const { turnCount: _turnCount, ...detailsWithoutStats } = nudge("The run did not finish cleanly.", {
+        status,
+      }).details;
+      const content = `[Subagent "builder" 11111111 ${status}]\n\nThe run did not finish cleanly.`;
+
+      renderSubagentResult({ content, details: detailsWithoutStats }, { expanded: true }, defaultTheme, SHOW_COST);
+
+      const card = cardLines();
+      expect(card[2]).toContain(icon);
+      expect(card).toContain("  The run did not finish cleanly.");
+      expect(card.join("\n")).not.toMatch(/\d+ uses|\d+ turns/);
+    },
+  );
+
+  it("labels the card for the run, and shows its status and body", () => {
+    renderSubagentResult(workflowNudge("completed"), { expanded: true }, defaultTheme, SHOW_COST);
+
+    // This file mocks getDisplayName, so a name here pins field pass-through, never the real
+    // registry's naming: model-thinking-tag.test.ts owns the production name.
+    expect(cardLines()).toEqual([
+      "Workflow Result",
+      "",
+      "✓ audit workflow",
+      "  audit the diff",
+      "",
+      '  [Workflow "audit" aaaaaaaa completed]',
+      "  ",
+      "  two findings, one nit",
+      "",
+      "",
+    ]);
+  });
+
+  it("paints the icon the run's own status names, and invents no stats", () => {
+    renderSubagentResult(
+      workflowNudge("stopped", "the caller stopped the run"),
+      { expanded: false },
+      defaultTheme,
+      SHOW_COST,
+    );
+
+    const card = cardLines().join("\n");
+    expect(card).toContain("■ audit workflow");
+    expect(card).not.toMatch(/\d+ uses|\d+ turns/);
+  });
+
+  it("collapses to the reply preview the snapshot carries", () => {
+    renderSubagentResult(workflowNudge("completed"), { expanded: false }, defaultTheme, SHOW_COST);
+
+    expect(truncatedRows()).toEqual(["  two findings, one nit"]);
+  });
+
+  it("moves only the label between a workflow message and a subagent one", () => {
+    const message = workflowNudge("completed");
+    renderSubagentResult(message, { expanded: true }, defaultTheme, SHOW_COST);
+    const workflowCard = cardLines();
+
+    renderedRows.length = 0;
+    renderSubagentResult(
+      { content: message.content, details: { ...message.details, kind: "agent" } },
+      { expanded: true },
+      defaultTheme,
+      SHOW_COST,
+    );
+    const agentCard = cardLines();
+
+    expect(workflowCard[0]).toBe("Workflow Result");
+    expect(agentCard[0]).toBe("Subagent Result");
+    expect(agentCard.slice(1)).toEqual(workflowCard.slice(1));
   });
 });
 

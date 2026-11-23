@@ -14,6 +14,7 @@ import { expectNoTerminalControls } from "../../fixtures.js";
 import { defaultTheme } from "../../mock-utils.js";
 import type { AgentRecord, AgentDisplayInfo, AgentExecutionState, AgentLifecycle } from "../../../src/types.js";
 import type { Component, Input, SelectItem, SelectListTheme } from "@earendil-works/pi-tui";
+import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 
 /** The mocked SelectList surface the tests drive: the items the menu built
  * plus the selection state the navigation tests step by hand. */
@@ -101,6 +102,7 @@ interface RecordOverrides {
   execution?: Partial<AgentExecutionState>;
   result?: string;
   error?: string;
+  workflow?: AgentRecord["workflow"];
 }
 
 /** A session handle the menu only checks for truthiness; the mocked
@@ -281,6 +283,67 @@ describe("buildAgentActionsList — actions submenu", () => {
     const values = selectListView(list).items.map((i) => i.value);
     expect(values).not.toContain("steer");
     expect(values).not.toContain("stop");
+  });
+});
+
+describe("buildAgentActionsList — a workflow run", () => {
+  /** A live remote run whose note says its state is unknown: no session, and still the caller's to stop. */
+  function remoteRun(): AgentRecord {
+    return makeRecord({
+      display: { type: "audit", description: "audit the diff" },
+      lifecycle: { status: "running", startedAt: Date.now() - 20000, started: true },
+      execution: {},
+      result: "",
+      error: "",
+      workflow: {
+        name: "audit",
+        endpoint: "lab",
+        url: "http://127.0.0.1:8099",
+        remoteId: "wf-1",
+        progress: [],
+        note: "Workflow run test-id-1 is still running remotely. Its state is unknown after 5 observations.",
+      },
+    });
+  }
+
+  beforeEach(() => {
+    selectListCalls = [];
+    vi.clearAllMocks();
+  });
+
+  it("offers exactly Stop: no Steer and no conversation viewer for a run with no session", () => {
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      remoteRun(),
+      defaultTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+
+    expect(selectListView(list).items.map((item) => item.value)).toEqual(["stop"]);
+  });
+
+  it("requests the stop, and reports the request rather than an outcome", async () => {
+    const notify = vi.fn<ExtensionUIContext["notify"]>();
+    const ctx = createMockCtx([], [], [], { ui: { notify } });
+    const onClose = vi.fn();
+    mockModules.mockManager.abort.mockReset();
+
+    const list = buildAgentActionsList(
+      ctx,
+      remoteRun(),
+      defaultTheme,
+      () => {},
+      () => {},
+      onClose,
+    );
+    await list.onSelect!({ value: "stop", label: "Stop" });
+
+    expect(mockModules.mockManager.abort).toHaveBeenCalledWith("test-id-123", "user");
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("Stop requested"), "info");
+    expect(notify.mock.calls[0]![0], "the endpoint's answer decides, not this menu").not.toMatch(/\bstopp?ed\b/i);
+    expect(onClose).toHaveBeenCalled();
   });
 });
 

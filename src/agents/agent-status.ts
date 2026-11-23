@@ -12,13 +12,13 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { SubagentAgentManager } from "./subagent-context.ts";
 import type { AgentRecord } from "../types.ts";
-import { SHORT_ID_LENGTH } from "../types.ts";
-import { recordDisplayName } from "../ui/format.ts";
+import { recordRow } from "../ui/format.ts";
 import { getManager, getStore } from "../shell.ts";
 
+/** The listing's entry for one record. Its live note rides the entry: the note is the record's own
+ * health, already publisher-sanitized at write time. */
 function formatAgent(record: AgentRecord): string {
-  const shortId = record.id.slice(0, SHORT_ID_LENGTH);
-  return `${shortId} (${recordDisplayName(record, record.display.type)}) ${record.lifecycle.status}`;
+  return record.workflow?.note ? `${recordRow(record)} ${record.workflow.note}` : recordRow(record);
 }
 
 /** In-progress agents are always shown; every other status is settled (issue constraints). */
@@ -53,7 +53,7 @@ export function formatAgentStatusList(agents: AgentRecord[], limit: number): str
   const shownSettled = settled.slice(0, limit);
   const hidden = settled.length - shownSettled.length;
 
-  const lines = [...active, ...shownSettled].map(formatAgent).join(", ");
+  const lines = [...active, ...shownSettled].map(formatAgent).join("\n");
   return hidden > 0 ? `${lines}\nand ${hidden} more settled agents` : lines;
 }
 
@@ -72,7 +72,7 @@ export async function executeAgentStatusTool(
   if (!manager) throw new Error("Agent manager is unavailable");
   const agents = manager.listAgents();
 
-  const nudge = notificationLine(agents, receivesCompletionNotifications);
+  const nudge = notificationLine(receivesCompletionNotifications);
 
   if (agents.length === 0) {
     return {
@@ -87,15 +87,11 @@ export async function executeAgentStatusTool(
 }
 
 /**
- * What the session really does when the list settles. A Workflow run answers inside the tool call
- * that started it (wave 2 is what brings a Nudge for one), so a list of nothing else is never
- * promised a notification.
+ * How this session delivers outcomes, stated as a rule and never as a promise about one record: no
+ * kind is named, because which of the two answers a record gives is its own posture, not its kind.
  */
-function notificationLine(agents: AgentRecord[], receivesCompletionNotifications: boolean): string {
-  if (agents.length > 0 && agents.every((record) => record.workflow)) {
-    return "Don't poll \u2014 a workflow run returns its result in the tool call that started it.";
-  }
+function notificationLine(receivesCompletionNotifications: boolean): string {
   return receivesCompletionNotifications
-    ? "Don't poll \u2014 you'll receive notifications when agents complete."
+    ? "Don't poll \u2014 a run answers inside the call that started it, or as a notification when it ends."
     : "Don't poll \u2014 completion notifications are delivered to the parent agent.";
 }

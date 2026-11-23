@@ -39,7 +39,7 @@ import type { AgentWidget } from "../src/ui/agent-widget.js";
 /* ------------------------------------------------------------------ */
 
 /** Partial overrides for makeAgentRecord; each sub-object merges into the base. */
-export interface AgentRecordOverrides extends Partial<Pick<AgentRecord, "id" | "result" | "error">> {
+export interface AgentRecordOverrides extends Partial<Pick<AgentRecord, "id" | "result" | "error" | "workflow">> {
   lifecycle?: Partial<AgentLifecycle>;
   display?: Partial<AgentDisplayInfo>;
   execution?: Partial<AgentExecutionState>;

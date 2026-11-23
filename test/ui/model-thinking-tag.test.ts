@@ -9,6 +9,8 @@ import { describe, it, expect } from "vite-plus/test";
 import type { Theme } from "../../src/ui/types.js";
 import { buildModelThinkingTag } from "../../src/ui/format.js";
 import { agentNameLabel } from "../../src/ui/renderer.js";
+import { buildAgentDetails } from "../../src/agents/tool-execution.js";
+import { makeAgentRecord } from "../fixtures.js";
 
 describe("buildModelThinkingTag", () => {
   const defaultVisible = { showModel: true, showThinking: true };
@@ -113,5 +115,15 @@ describe("agentNameLabel", () => {
   it("trims whitespace from values", () => {
     const d = { type: "builder", modelName: "  haiku  ", modelId: "  haiku  ", thinkingLevel: "  low  " };
     expect(agentNameLabel(d, theme)).toBe("Agent (haiku • low)");
+  });
+
+  it("names a Workflow run's settlement card by the run, through the real registry", () => {
+    const record = makeAgentRecord({
+      display: { type: "audit", description: "audit the diff" },
+      workflow: { name: "audit", endpoint: "lab", url: "http://127.0.0.1:8099", remoteId: "wf-1", progress: [] },
+    });
+    const details = buildAgentDetails(record, { includeStatus: true });
+
+    expect(agentNameLabel(details, theme)).toBe("audit workflow");
   });
 });

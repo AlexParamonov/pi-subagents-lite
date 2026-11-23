@@ -33,6 +33,23 @@ function agent(status: AgentStatus, id = ID, type = "builder"): AgentRecord {
   return makeAgentRecord({ id, display: { type }, lifecycle: { status } });
 }
 
+/** A remote run: `workflow` presence is the kind tag, and a note is the state the endpoint left unclear. */
+function workflowRun(status: AgentStatus, note?: string): AgentRecord {
+  return makeAgentRecord({
+    id: ID,
+    display: { type: "audit" },
+    lifecycle: { status },
+    workflow: {
+      name: "audit",
+      endpoint: "lab",
+      url: "http://127.0.0.1:8099",
+      remoteId: "wf-1",
+      progress: [],
+      ...(note ? { note } : {}),
+    },
+  });
+}
+
 function stop(params: Record<string, unknown>) {
   return executeStopAgentTool("call_1", params, undefined, undefined, asExtensionContext({}));
 }
@@ -154,5 +171,59 @@ describe("executeStopAgentTool", () => {
     expect(result.content[0].text).toContain("r2222222 (reviewer)");
     expect(result.content[0].text).not.toContain("r3333333 (explore)");
     expect(result.content[0].text).not.toContain("r4444444 (code)");
+  });
+});
+
+describe("executeStopAgentTool on a workflow run", () => {
+  const UNKNOWN_NOTE = `Workflow run ${SHORT_ID} is still running remotely. Its state is unknown after 5 observations.`;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockListAgents.mockReturnValue([]);
+  });
+
+  it("reports the request and no outcome", async () => {
+    mockMatchAgents.mockReturnValue([workflowRun("running")]);
+    mockAbort.mockReturnValue(true);
+
+    const result = await stop({ agent_id: ID });
+
+    expect(mockAbort).toHaveBeenCalledWith(ID, "agent");
+    expect(result.content[0].text).toContain(`Stop requested for workflow run ${SHORT_ID}`);
+    expect(result.content[0].text, "the endpoint's answer, not this call, decides the status").not.toMatch(
+      /\bstopp?ed\b/i,
+    );
+  });
+
+  it("stops a run whose state the endpoint left unclear instead of refusing it", async () => {
+    mockMatchAgents.mockReturnValue([workflowRun("running", UNKNOWN_NOTE)]);
+    mockAbort.mockReturnValue(true);
+
+    const result = await stop({ agent_id: ID });
+
+    expect(mockAbort).toHaveBeenCalledTimes(1);
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain(`Stop requested for workflow run ${SHORT_ID}`);
+  });
+
+  it("takes a second request for a run whose first stop the endpoint refused", async () => {
+    const refused = workflowRun("running", `Workflow "audit" ${SHORT_ID}: stop failed - HTTP 409: not running.`);
+    mockMatchAgents.mockReturnValue([refused]);
+    mockAbort.mockReturnValue(true);
+
+    const first = await stop({ agent_id: ID });
+    const retry = await stop({ agent_id: ID });
+
+    expect(mockAbort).toHaveBeenCalledTimes(2);
+    expect(retry.content[0].text).toBe(first.content[0].text);
+  });
+
+  it("names the settled record as the run it is", async () => {
+    mockMatchAgents.mockReturnValue([workflowRun("stopped")]);
+
+    const result = await stop({ agent_id: ID });
+
+    expect(result.content[0].text).toContain(`Workflow run ${SHORT_ID} is already stopped`);
+    expect(mockAbort).not.toHaveBeenCalled();
   });
 });
