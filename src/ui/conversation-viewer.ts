@@ -619,6 +619,8 @@ export class ConversationViewer implements Component {
    */
   private renderNodeRow(node: TranscriptNode, width: number): string[] {
     const bg = NODE_STATE_BG[node.state];
+    // compactToolCalls deliberately does not fold a node's body: a run's view holds no call to summarise,
+    // so the only fold it offers is the tool-output one its own hint names.
     return [
       ...this.callRows(` ${node.title} `, bg, width),
       ...this.bodyRows(this.bodyLines(node.body.join("\n"), width - 2, this.toolsExpanded), bg, width),
