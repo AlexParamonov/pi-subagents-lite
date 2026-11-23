@@ -909,3 +909,13 @@ spelling, not a dedup. One pass over all three is its own change.
 the `FAIL` lines. If nothing reddens, characterize first or leave the line alone. And when an idiom repeats at N
 sites, extract at all N or at none - a partial extraction adds a name to memorize and leaves the duplication in
 place for the next reader to trip on.
+
+## A file a report calls gitignored may be the tracked one that carries the change - 2026-11-23
+
+**What failed:** A round listed `tasks/lessons.md` among the files whose correction "is not carried by the commits" because it is gitignored, and so left that round's lesson as an uncommitted edit in the main checkout while its sibling commits on the branch committed theirs. `tasks/lessons.md` is tracked (`.gitignore` reads `tasks/*` + `!tasks/lessons.md`), so the merge that closed
+the round found the mainline dirty in the exact file the branch appended to: `git merge` refused, and the
+reflex shortcuts (`checkout --`, `stash`) were the ones that could have dropped it.
+
+**What worked:** Treating the dirty mainline as merge input, not noise - commit the stray edit as its own mainline commit first, then let the merge surface the real conflict and resolve an appended-section clash as the union of both sides. Proof that nothing was taken from either side: `git diff --stat <branch-tip> HEAD -- src test` empty (both trees byte-identical), and `git diff <base> <branch>` identical to `git diff <mainline-parent> <merge>` except for the hunk context of the one file both sides grew.
+
+**Next time:** Verify a tracking claim with `git check-ignore -v <path>` or `git ls-files <path>` before letting "it is gitignored" justify leaving a change uncommitted. And when a merge prompt's premise is about the working tree rather than the graph, check it first: `git status --porcelain` names the file that decides whether the merge runs at all.
