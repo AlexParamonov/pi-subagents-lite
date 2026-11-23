@@ -276,19 +276,21 @@ const NODE_STATE_COLOR: Record<WorkflowNodeStatus, RowRole> = {
 
 /**
  * One entry's parts, each painted in one role: a node's status row and its label carry that node's
- * state colour, and everything the node produced is ordinary tool output. Joining the parts spells the
- * row `progressLines` spells, so the two surfaces show the same text.
+ * state colour, and everything the node produced is ordinary tool output.
  */
 function partsFor(item: WorkflowDisplayItem, state?: WorkflowNodeStatus): RowPart[] {
   const role = state === undefined ? "toolOutput" : NODE_STATE_COLOR[state];
   if (item.type === "node-status" || item.node === null) return [{ text: lineFor(item), role }];
   const label = item.type === "text" ? `  ${item.node}  ` : `  ${item.node} `;
-  return [{ text: label, role }, { text: producedFor(item), role: "toolOutput" }];
+  return [
+    { text: label, role },
+    { text: producedFor(item), role: "toolOutput" },
+  ];
 }
 
 /**
- * What an entry produced, spelled the way the row under its node's own row spells it: no node name
- * and no indent, because that row names the node above and insets every line it paints.
+ * What an entry produced, on its own: no node label and no indent. A flat row adds its label, and a
+ * node's own row names the node above the lines it holds and insets every one of them.
  */
 function producedFor(item: Exclude<WorkflowDisplayItem, { type: "node-status" }>): string {
   return item.type === "activity" ? `tool ${item.activity}` : item.text;
