@@ -2,8 +2,9 @@
  * workflow-result-row.test.ts — The Workflow call's row: which text a record of each state puts on it.
  *
  * The row is the only place a handed-back run is described after its call returned, so it reads the
- * record, never the call's own returned text, for a run that is still live. Its entries are the rows
- * the run's details view paints, so one snapshot is not spelled two ways.
+ * record, never the call's own returned text, for a run that is still live. Its entries are the run's
+ * own, one flat row each: the details view groups the same entries under each node's coloured row,
+ * and this card paints its lines before pi knows their width.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
@@ -182,8 +183,8 @@ describe("the Workflow row's outcome line", () => {
 
     expect(rowRows({ content: [], theme: MARKING })).toEqual([
       "accent:\u25b6 analysis dispatched",
-      "accent:  analysis tool read_file",
-      "accent:  analysis  Inspecting the diff.",
+      "accent:  analysis toolOutput:tool read_file",
+      "accent:  analysis  toolOutput:Inspecting the diff.",
       "toolOutput:  a chunk naming no node",
       "toolOutput:two findings, one nit",
     ]);

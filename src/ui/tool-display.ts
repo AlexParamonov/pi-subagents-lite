@@ -29,6 +29,18 @@ export function viewerToolDisplay(
   return {
     // Calls already running when the viewer opened: their start was recorded by the watchdog.
     getToolStartedAt: (toolCallId: string) => manager?.getToolStartedAt(agentId, toolCallId),
+    ...viewerExpandFlag(ctx),
+  };
+}
+
+/**
+ * pi's global tool-output flag, read live and flipped through pi's own setter. The viewer holds
+ * keyboard focus, so this is the only way its expand key reaches pi's rows and the widgets.
+ */
+export function viewerExpandFlag(
+  ctx: Pick<ExtensionContext, "ui">,
+): Pick<ToolDisplayOptions, "isExpanded" | "toggleExpanded"> {
+  return {
     isExpanded: () => ctx.ui.getToolsExpanded(),
     toggleExpanded: () => {
       const expanded = !ctx.ui.getToolsExpanded();

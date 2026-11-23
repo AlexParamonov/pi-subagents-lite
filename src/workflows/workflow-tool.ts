@@ -140,10 +140,12 @@ export function renderWorkflowResult(
 }
 
 /**
- * The run's entries, painted as the run's details view paints them: one row per entry, each naming
- * its node and coloured by that node's state. The monitor keeps the record's snapshot current after
- * this call returned; `details.progress` is only the flat lines the wait had seen when it ended, and
- * is all that is left to show once the record is gone.
+ * The run's entries, one flat row per entry, each naming its node and coloured by that node's state.
+ * The details view shows these same entries grouped under each node's own row; this card cannot carry
+ * that row's fill, because it composes its lines before pi knows how wide the row will be. The
+ * monitor keeps the record's snapshot current after this call returned; `details.progress` is only
+ * the flat lines the wait had seen when it ended, and is all that is left to show once the record
+ * is gone.
  */
 function entryRows(record: AgentRecord | undefined, details: Record<string, unknown>, theme: Theme): string[] {
   const items = record?.workflow?.items;

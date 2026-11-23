@@ -5,8 +5,8 @@
  * replays its whole log per connection and this client never resumes by id), so nothing carries
  * over. Text is tracked per node, attempt and turn: one channel of a turn is shown, never
  * concatenated, and a full-turn frame closes the turn it arrives on. `progressLines` spells the
- * state as the run's stored and published snapshot, `displayRows` as the rows its card and its
- * details view both paint.
+ * state as the run's stored and published snapshot, `displayRows` as the flat rows its tool-result
+ * card paints, `detailRows` as the rows its details view paints.
  */
 
 import { plainText } from "../ui/sanitize.ts";
@@ -15,7 +15,7 @@ import { field, parseRecord, record } from "./payload.ts";
 import type { SseFrame } from "./sse.ts";
 
 /** Status a node lifecycle frame reports. */
-type WorkflowNodeStatus = "dispatched" | "retry" | "completed" | "failed";
+export type WorkflowNodeStatus = "dispatched" | "retry" | "completed" | "failed";
 
 /** What one connection has to show, in the order the caller should render it. */
 export type WorkflowDisplayItem =
@@ -250,14 +250,21 @@ function lineFor(item: WorkflowDisplayItem): string {
 }
 
 /** The lines of one connection's display state as the run stores and publishes them (its record's
- * `progress` and the tool payload's), control sequences removed. Display surfaces paint `displayRows`,
- * which names the node a text entry came from; this spelling is the fixed wording they must not change. */
+ * `progress` and the tool payload's), control sequences removed. The display surfaces are
+ * `displayRows` (the call's card) and `detailRows` (its details view); this spelling is the fixed
+ * wording their text must not change. */
 export function progressLines(items: readonly WorkflowDisplayItem[]): string[] {
   return items.map((item) => plainText(lineFor(item))).filter((line) => line !== "");
 }
 
 /** The theme roles a run's rows are painted with. */
 type RowRole = "accent" | "warning" | "dim" | "error" | "toolOutput";
+
+/** One colour's stretch of a painted row. */
+interface RowPart {
+  text: string;
+  role: RowRole;
+}
 
 /** The theme role each node state is painted with, as the widget paints an agent status. */
 const NODE_STATE_COLOR: Record<WorkflowNodeStatus, RowRole> = {
@@ -268,13 +275,26 @@ const NODE_STATE_COLOR: Record<WorkflowNodeStatus, RowRole> = {
 };
 
 /**
- * One entry as every display surface shows it: the stored line, plus the node named on a text entry
- * too. The stored spelling is the run's published snapshot, whose wording is fixed, so only the
- * display line adds the attribution a text row needs to carry on its own. Every entry carries its
- * mark or at least its indent, so no entry ever spells an empty line.
+ * One entry's parts, each painted in one role: a node's status row and its label carry that node's
+ * state colour, and everything the node produced is ordinary tool output. Joining the parts spells the
+ * row `progressLines` spells, so the two surfaces show the same text.
  */
+function partsFor(item: WorkflowDisplayItem, state?: WorkflowNodeStatus): RowPart[] {
+  const role = state === undefined ? "toolOutput" : NODE_STATE_COLOR[state];
+  if (item.type === "node-status" || item.node === null) return [{ text: lineFor(item), role }];
+  const label = item.type === "text" ? `  ${item.node}  ` : `  ${item.node} `;
+  const produced = item.type === "text" ? item.text : `tool ${item.activity}`;
+  return [
+    { text: label, role },
+    { text: produced, role: "toolOutput" },
+  ];
+}
+
+/** The entry's row as a display surface spells it: the stored line, its text entry naming its node too. */
 function displayLineFor(item: WorkflowDisplayItem): string {
-  return item.type === "text" && item.node !== null ? `  ${item.node}  ${item.text}` : lineFor(item);
+  return partsFor(item)
+    .map((part) => part.text)
+    .join("");
 }
 
 /**
@@ -287,12 +307,49 @@ export function displayRows(items: readonly WorkflowDisplayItem[], theme: Theme)
   for (const item of items) {
     if (item.type === "node-status" && item.node !== null) states.set(item.node, item.status);
   }
-  return items.map((item) => theme.fg(roleOf(item, states), plainText(displayLineFor(item))));
+  return items.map((item) =>
+    partsFor(item, item.node === null ? undefined : states.get(item.node))
+      .map((part) => theme.fg(part.role, plainText(part.text)))
+      .join(""),
+  );
 }
 
-/** The role one entry is painted with: its node's latest state, or the flat tool-output role for an
- * entry that names no node, or one whose node has reported no state. */
-function roleOf(item: WorkflowDisplayItem, states: Map<string, WorkflowNodeStatus>): RowRole {
-  const state = item.node === null ? undefined : states.get(item.node);
-  return state === undefined ? "toolOutput" : NODE_STATE_COLOR[state];
+/** One row of a run's details view: a node's own row and the lines it produced, or one entry. */
+export type WorkflowDetailRow =
+  | { kind: "node"; state: WorkflowNodeStatus; title: string; body: string[] }
+  | { kind: "entry"; line: string };
+
+/**
+ * The rows a run's details view shows: one per node that reported a state, holding the activity and
+ * text it produced as its body (the node is named once, by its own row), plus a row of its own for
+ * every entry nothing groups. Text is sanitised here, so the surface painting these rows owns colour.
+ */
+export function detailRows(items: readonly WorkflowDisplayItem[]): WorkflowDetailRow[] {
+  const rows: WorkflowDetailRow[] = [];
+  const groups = new Map<string, Extract<WorkflowDetailRow, { kind: "node" }>>();
+  for (const item of items) {
+    if (item.type === "node-status") {
+      const row: WorkflowDetailRow = {
+        kind: "node",
+        state: item.status,
+        title: plainText(displayLineFor(item)),
+        body: [],
+      };
+      if (item.node !== null) groups.set(item.node, row);
+      rows.push(row);
+      continue;
+    }
+    const group = item.node === null ? undefined : groups.get(item.node);
+    if (group === undefined) rows.push({ kind: "entry", line: plainText(displayLineFor(item)) });
+    else group.body.push(plainText(bodyLineFor(item)));
+  }
+  return rows;
+}
+
+/**
+ * The entry's line inside its node's own rows: what it produced, with no node name and no indent -
+ * the row painting it names the node above, and insets every line it paints.
+ */
+function bodyLineFor(item: Exclude<WorkflowDisplayItem, { type: "node-status" }>): string {
+  return item.type === "activity" ? `tool ${item.activity}` : item.text;
 }
