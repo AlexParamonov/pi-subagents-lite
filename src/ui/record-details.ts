@@ -1,70 +1,100 @@
 /**
  * record-details.ts — The one "open this record's details" entry point every surface calls.
  *
- * A Workflow run has no session, so its details are the display snapshot the monitor last published:
- * one entry per node status, activity line and text chunk, followed while the run is live. A run's
- * pane is read-only: it offers no steering and no stop, because a remote run is neither steered nor
- * aborted here. Every other record has a session, and its conversation is the viewer's.
+ * Both surfaces reach the same viewer: a session's own transcript, or a Workflow run's display
+ * snapshot as rows. A run is read-only — nothing here steers it or aborts it — and it never gets a
+ * session, so no session-keyed capability switches on for it.
  */
 
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { getManager, getStore } from "../shell.ts";
 import { SHORT_ID_LENGTH, type AgentRecord } from "../types.ts";
 import { displayRows } from "../workflows/stream-view.ts";
-import { ConversationViewer } from "./conversation-viewer.ts";
-import { getDisplayName, recordDisplayName } from "./format.ts";
+import type { WorkflowDisplayItem } from "../workflows/stream-view.ts";
+import {
+  ConversationViewer,
+  type ConversationViewerOptions,
+  type TranscriptEntry,
+  type TranscriptSource,
+} from "./conversation-viewer.ts";
 import { viewerPresentation, viewerToolDisplay } from "./tool-display.ts";
-import { showTextPane } from "./text-pane.ts";
+import type { Theme } from "./types.ts";
 
-/** How often a run's pane re-reads the record. The run writes its snapshot whenever its stream says
- * anything, and a node takes seconds to change, so this is a repaint cadence, not a data source. */
-const RUN_REFRESH_MS = 250;
+export interface RecordDetailsOptions {
+  /** Show the details over the surface that opened them, as `/agents` does, instead of in its place. */
+  overlay?: boolean;
+}
 
-/** Show this record's details over the conversation, and answer when the reader closes them. */
-export async function openRecordDetails(ui: ExtensionUIContext, record: AgentRecord): Promise<void> {
+/** Show this record's details, and answer when the reader closes them. */
+export async function openRecordDetails(
+  ui: ExtensionUIContext,
+  record: AgentRecord,
+  { overlay = false }: RecordDetailsOptions = {},
+): Promise<void> {
   const run = record.workflow;
   if (run) {
-    return showRunDetails(ui, record, run);
+    return openViewer(ui, record, (theme) => runTranscript(record, theme), {}, overlay);
   }
   const session = record.execution.session;
   if (!session) {
-    throw new Error(`agent ${record.id.slice(0, SHORT_ID_LENGTH)} has no session to show`);
+    throw new Error(`agent ${record.id.slice(0, SHORT_ID_LENGTH)} has nothing to show`);
   }
-  return showConversation(ui, record, session);
+  return openViewer(ui, record, () => session, sessionWiring(ui, record), overlay);
 }
 
-/** The run's own entries, read from the record on every frame: what this client saw, and no more. */
-function showRunDetails(
+function openViewer(
   ui: ExtensionUIContext,
   record: AgentRecord,
-  run: NonNullable<AgentRecord["workflow"]>,
+  makeSource: (theme: Theme) => TranscriptSource,
+  wiring: ConversationViewerOptions,
+  overlay: boolean,
 ): Promise<void> {
-  const name = recordDisplayName(record, getDisplayName(record.display.type));
-  return showTextPane(ui, {
-    title: `${name} \u00b7 ${record.id.slice(0, SHORT_ID_LENGTH)}`,
-    rows: (theme) => displayRows(run.items ?? [], theme),
-    refreshMs: RUN_REFRESH_MS,
-  });
-}
-
-function showConversation(
-  ui: ExtensionUIContext,
-  record: AgentRecord,
-  session: NonNullable<AgentRecord["execution"]["session"]>,
-): Promise<void> {
-  const manager = getManager();
+  const store = getStore();
   return ui.custom<void>(
     (tui, theme, keybindings, done) => {
-      const viewer = new ConversationViewer(tui, session, record, theme, done, {
-        onStop: () => manager?.abort(record.id, "user"),
+      const viewer = new ConversationViewer(tui, makeSource(theme), record, theme, done, {
         keybindings,
-        onSteer: (message: string) => manager?.steer(record.id, message),
-        toolDisplay: viewerToolDisplay({ ui }, manager, record.id),
-        ...viewerPresentation(getStore()),
+        ...viewerPresentation(store),
+        ...wiring,
       });
-      viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
+      viewer.setModelDisplayStyle(store.agent.modelDisplayStyle);
       return viewer;
     },
-    { overlay: true },
+    overlay ? { overlay: true } : undefined,
   );
+}
+
+/** The record's own agent is this session's to steer and to stop; a remote run is nobody's here. */
+function sessionWiring(ui: ExtensionUIContext, record: AgentRecord): ConversationViewerOptions {
+  const manager = getManager();
+  return {
+    onStop: () => manager?.abort(record.id, "user"),
+    onSteer: (message: string) => manager?.steer(record.id, message),
+    toolDisplay: viewerToolDisplay({ ui }, manager, record.id),
+  };
+}
+
+/**
+ * A run's display snapshot as a transcript: one row per entry, each naming its node and coloured by
+ * that node's state. A new snapshot replaces the rows whole, so a reconnect replaces what is shown
+ * rather than appending to it; the run's publish path is what says a snapshot arrived.
+ */
+function runTranscript(record: AgentRecord, theme: Theme): TranscriptSource {
+  let shown = record.workflow?.items;
+  let rows = rowsOf(shown, theme);
+  return {
+    get messages() {
+      if (record.workflow?.items !== shown) {
+        shown = record.workflow?.items;
+        rows = rowsOf(shown, theme);
+      }
+      return rows;
+    },
+    // A record left by a session that ended has no run left to watch it.
+    subscribe: (listener) => record.execution.watchSnapshot?.(listener) ?? (() => {}),
+  };
+}
+
+function rowsOf(items: WorkflowDisplayItem[] | undefined, theme: Theme): TranscriptEntry[] {
+  return displayRows(items ?? [], theme).map((text) => ({ role: "row", text }));
 }

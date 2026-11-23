@@ -896,7 +896,7 @@ describe("buildAgentActionsList — completed agent with session", () => {
 
     await list.onSelect!({ value: "view-conversation", label: "View conversation" });
 
-    expect(notify).toHaveBeenCalledWith(expect.stringContaining("no session to show"), "error");
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("nothing to show"), "error");
     expect(custom).not.toHaveBeenCalled();
   });
 

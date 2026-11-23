@@ -1,19 +1,38 @@
 /**
  * menu-running-agents.ts — Running agents menu concern.
  *
- * SelectList from @earendil-works/pi-tui, via ctx.ui.custom: the agent list, then a per-agent action
- * submenu. The panes its actions open live in record-details.ts and text-pane.ts.
+ * Uses SelectList from @earendil-works/pi-tui via ctx.ui.custom.
+ * Agent list is a snapshot at construction time (stale until re-entry is acceptable).
+ * Selecting an agent opens an actions submenu (SelectList).
+ *
+ * Exports:
+ *   - showRunningAgentsMenu: list running/queued/completed agents
+ *   - buildAgentActionsList: per-agent action sub-menu (view details/result, steer, stop, clear)
+ *
+ * Private helpers (single-consumer, co-located):
+ *   - showTextViewer: show simple text viewer for result/error
+ *
+ * What a record's own details are - its conversation, a Workflow run's entries - is one open path in
+ * record-details.ts, shared with the widget.
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { Input, SelectList, type Component, type SelectItem } from "@earendil-works/pi-tui";
+import {
+  Input,
+  matchesKey,
+  SelectList,
+  truncateToWidth,
+  visibleWidth,
+  type Component,
+  type SelectItem,
+} from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../types.ts";
 import { SHORT_ID_LENGTH } from "../../types.ts";
 import { openRecordDetails } from "../record-details.ts";
-import { showTextPane } from "../text-pane.ts";
 import { getDisplayName, recordDisplayName, agentBulletPrefix, formatMs } from "../format.ts";
 import { plainText } from "../sanitize.ts";
 import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.ts";
+import { overlayViewportRows } from "../overlay.ts";
 import { getManager } from "../../shell.ts";
 import type { Theme } from "../types.ts";
 
@@ -22,19 +41,99 @@ function isActive(record: AgentRecord): boolean {
   return record.lifecycle.status === "running" || record.lifecycle.status === "queued";
 }
 
-/** The frozen text a record ends with, shown the way every pane here shows a text. */
-function showTextViewer(
+/** The frozen text a record ends with, in a scrolling overlay of its own. */
+async function showTextViewer(
   ctx: ExtensionCommandContext,
   record: AgentRecord,
   kind: "result" | "error",
   text: string,
 ): Promise<void> {
+  const titleSuffix = kind === "result" ? record.id.slice(0, SHORT_ID_LENGTH) : "Error";
   // Error text carries provider bodies and child stderr, result text carries whatever the
   // agent echoed back: neither may reach the terminal with a control sequence intact.
-  const lines = text.split("\n").map((line) => plainText(line));
-  const suffix = kind === "result" ? record.id.slice(0, SHORT_ID_LENGTH) : "Error";
-  const name = recordDisplayName(record, getDisplayName(record.display.type));
-  return showTextPane(ctx.ui, { title: `${name} \u00b7 ${suffix}`, rows: () => lines });
+  const textLines = text.split("\n").map((line) => plainText(line));
+  const displayName = recordDisplayName(record, getDisplayName(record.display.type));
+  const chromeLines = 5; // top border + title + sep + footer + bottom border
+  let scrollOffset = 0;
+  let autoScroll = true;
+
+  await ctx.ui.custom<void>(
+    (tui, theme, _kb, done) => {
+      const border = theme.fg("border", "│");
+
+      const viewportHeight = () => overlayViewportRows(tui.terminal.rows, chromeLines);
+
+      return {
+        invalidate() {},
+        render(width: number) {
+          const innerW = width - 4;
+          const out: string[] = [theme.fg("border", `\u256d${"\u2500".repeat(width - 2)}\u256e`)];
+
+          // Title row: │ name · suffix pad │
+          const titleStr = theme.bold(theme.fg("accent", `${displayName} \u00b7 ${titleSuffix}`));
+          const titlePad = Math.max(0, innerW - visibleWidth(titleStr));
+          out.push(`${border} ${truncateToWidth(titleStr + " ".repeat(titlePad), innerW, "...", true)} ${border}`);
+
+          // Separator
+          out.push(`${border} ${theme.fg("dim", "\u2500".repeat(innerW))} ${border}`);
+
+          // Content with scrolling
+          const vp = viewportHeight();
+          const maxScroll = Math.max(0, textLines.length - vp);
+          if (autoScroll) scrollOffset = maxScroll;
+          const vs = Math.min(scrollOffset, maxScroll);
+          const visible = textLines.slice(vs, vs + vp);
+
+          for (let i = 0; i < vp; i++) {
+            const line = visible[i] ?? "";
+            const truncated = truncateToWidth(line, innerW, "...", true);
+            const padLen = Math.max(0, innerW - visibleWidth(truncated));
+            out.push(`${border} ${truncated}${" ".repeat(padLen)} ${border}`);
+          }
+
+          // Footer
+          const scrollPct = textLines.length <= vp ? "100%" : `${Math.round(((vs + vp) / textLines.length) * 100)}%`;
+          const count = theme.fg("dim", `${textLines.length} lines \u00b7 ${scrollPct}`);
+          const footerText = theme.fg("dim", "q/Esc close");
+          const gap = Math.max(1, innerW - visibleWidth(count) - visibleWidth(footerText));
+          out.push(`${border} ${count}${" ".repeat(gap)}${footerText} ${border}`);
+
+          out.push(theme.fg("border", `\u2570${"\u2500".repeat(width - 2)}\u256f`));
+          return out;
+        },
+        handleInput(data: string) {
+          if (matchesKey(data, "q") || matchesKey(data, "escape")) {
+            done();
+            return;
+          }
+
+          const vp = viewportHeight();
+          const maxScroll = Math.max(0, textLines.length - vp);
+
+          if (matchesKey(data, "up")) {
+            scrollOffset = Math.max(0, scrollOffset - 1);
+            autoScroll = scrollOffset >= maxScroll;
+          } else if (matchesKey(data, "down")) {
+            scrollOffset = Math.min(maxScroll, scrollOffset + 1);
+            autoScroll = scrollOffset >= maxScroll;
+          } else if (matchesKey(data, "pageUp")) {
+            scrollOffset = Math.max(0, scrollOffset - vp);
+            autoScroll = false;
+          } else if (matchesKey(data, "pageDown")) {
+            scrollOffset = Math.min(maxScroll, scrollOffset + vp);
+            autoScroll = scrollOffset >= maxScroll;
+          } else if (matchesKey(data, "home") || data === "g") {
+            scrollOffset = 0;
+            autoScroll = false;
+          } else if (data === "G") {
+            scrollOffset = maxScroll;
+            autoScroll = true;
+          }
+        },
+      };
+    },
+    { overlay: true },
+  );
 }
 
 /**
@@ -96,7 +195,7 @@ export function buildAgentActionsList(
       // pi never awaits a selection callback, so a rejection here would end the process: the session a
       // record had when these items were built can be gone by the choice.
       try {
-        await openRecordDetails(ctx.ui, record);
+        await openRecordDetails(ctx.ui, record, { overlay: true });
       } catch (err) {
         ctx.ui.notify(`Failed to open details: ${String(err)}`, "error");
       }
