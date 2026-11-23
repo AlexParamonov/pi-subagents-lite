@@ -40,8 +40,6 @@ function makeRecord(fixture: FixtureRecord): AgentRecord {
       : {
           workflow: {
             name: fixture.type,
-            endpoint: "lab",
-            url: "http://127.0.0.1:8099",
             remoteId: `wf-${fixture.id.slice(0, 8)}`,
             progress: [],
             ...(fixture.note ? { note: fixture.note } : {}),

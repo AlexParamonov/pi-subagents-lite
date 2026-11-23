@@ -296,7 +296,7 @@ describe("buildAgentDetails", () => {
   it("names a Workflow run's snapshot by the workflow, not by the agent naming", () => {
     const record = makeRecord({
       display: { type: "audit", description: "audit the diff" },
-      workflow: { name: "audit", endpoint: "lab", url: "http://127.0.0.1:8099", remoteId: "wf-1", progress: [] },
+      workflow: { name: "audit", remoteId: "wf-1", progress: [] },
     });
 
     expect(buildAgentDetails(record, { includeStatus: true }).displayName).toBe("audit workflow");

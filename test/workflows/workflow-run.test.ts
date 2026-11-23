@@ -235,42 +235,29 @@ describe("a foreground run's record and result", () => {
     expect(record.error).toBeUndefined();
     expect(record.workflow).toEqual({
       name: "audit",
-      endpoint: "local",
-      url: "http://127.0.0.1:4100",
       remoteId: REMOTE_ID,
       progress: ["\u2713 analysis completed"],
     });
     expect(shown.views.at(-1)).toBe("✓ analysis completed\nThe declared output");
   });
 
-  // The record's two URL copies are what the widget, the running-agents menu, the conversation viewer
-  // and the details export show, and none of them holds this run's publisher: they are written already
+  // The record's URL copy is what the widget, the running-agents menu, the conversation viewer and
+  // the details export show, and none of them holds this run's publisher: it is written already
   // safe, as one display value shared with the fault text (US-35). A prefix that carries the run's
   // credential never reaches here - resolution refuses that configuration outright.
-  for (const { name, url, apiKey, expectedUrl, hidden } of [
-    {
-      name: "records a prefix that carries no credential whole in both display copies",
-      url: "http://127.0.0.1:4100/gateway/v1",
-      apiKey: KEY,
-      expectedUrl: "http://127.0.0.1:4100/gateway/v1",
-      hidden: [KEY],
-    },
-  ]) {
-    it(name, async () => {
-      const manager = new AgentManager();
-      const client = fakeClient();
-      const pending = run(client, manager, { endpoint: mintEndpoint(url, apiKey) });
-      await started(client);
-      client.settleMonitor({ status: "completed", result: DECLARED });
-      await pending;
+  it("records a prefix that carries no credential whole in its display copy", async () => {
+    const prefixed = "http://127.0.0.1:4100/gateway/v1";
+    const manager = new AgentManager();
+    const client = fakeClient();
+    const pending = run(client, manager, { endpoint: mintEndpoint(prefixed, KEY) });
+    await started(client);
+    client.settleMonitor({ status: "completed", result: DECLARED });
+    await pending;
 
-      const record = manager.listAgents()[0];
-      expect(record.workflow?.url).toBe(expectedUrl);
-      expect(record.display.description).toBe(expectedUrl);
-      const serialized = JSON.stringify(record);
-      for (const secret of hidden) expect(serialized).not.toContain(secret);
-    });
-  }
+    const record = manager.listAgents()[0];
+    expect(record.display.description).toBe(prefixed);
+    expect(JSON.stringify(record)).not.toContain(KEY);
+  });
 
   it("settles a failed run as an error record carrying the endpoint's reason", async () => {
     const manager = new AgentManager();

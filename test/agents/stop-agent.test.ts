@@ -41,8 +41,6 @@ function workflowRun(status: AgentStatus, note?: string): AgentRecord {
     lifecycle: { status },
     workflow: {
       name: "audit",
-      endpoint: "lab",
-      url: "http://127.0.0.1:8099",
       remoteId: "wf-1",
       progress: [],
       ...(note ? { note } : {}),

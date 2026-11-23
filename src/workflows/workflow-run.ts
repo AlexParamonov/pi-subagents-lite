@@ -118,8 +118,6 @@ export async function runWorkflow(
 
   const workflow: WorkflowRunInfo = {
     name: args.name,
-    endpoint: args.endpoint.name,
-    url: shownUrl,
     remoteId: created.workflowId,
   };
   // A detached run is never bound to an interrupt: the turn that launched it is over, and that

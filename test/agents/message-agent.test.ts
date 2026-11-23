@@ -175,7 +175,7 @@ describe("executeMessageAgentTool", () => {
         display: { type: "audit" },
         lifecycle: { status: "running" },
         execution: {},
-        workflow: { name: "audit", endpoint: "lab", url: "http://127.0.0.1:8099", remoteId: "wf-1", progress: [] },
+        workflow: { name: "audit", remoteId: "wf-1", progress: [] },
       }),
     ]);
 

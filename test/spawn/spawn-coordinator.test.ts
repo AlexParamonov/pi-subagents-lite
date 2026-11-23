@@ -136,7 +136,7 @@ function makeMockCtx() {
 function workflowRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
   return {
     id: "01234567-89abc-01",
-    workflow: { name: "audit", endpoint: "local", url: "http://127.0.0.1:4100", remoteId: "wf-remote-1" },
+    workflow: { name: "audit", remoteId: "wf-remote-1" },
     result: "The declared output",
     lifecycle: { status: "completed", startedAt: 1, completedAt: 2, started: true },
     display: { type: "audit", description: "http://127.0.0.1:4100" },

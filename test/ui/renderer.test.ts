@@ -499,7 +499,7 @@ function workflowNudge(status: AgentLifecycle["status"], text = "two findings, o
     ...(status === "completed" ? { result: text } : { error: text }),
     display: { type: "audit" as AgentRecord["display"]["type"], description: "audit the diff" },
     lifecycle: { status, startedAt: 1000, completedAt: 61_000, started: true },
-    workflow: { name: "audit", endpoint: "lab", url: "http://127.0.0.1:8099", remoteId: "wf-1", progress: [] },
+    workflow: { name: "audit", remoteId: "wf-1", progress: [] },
   });
   return {
     content: `[Workflow "audit" ${record.id.slice(0, SHORT_ID_LENGTH)} ${status}]\n\n${text}`,

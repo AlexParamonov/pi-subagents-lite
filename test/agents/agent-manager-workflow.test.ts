@@ -13,8 +13,6 @@ import { expectGatePending } from "../workflows/gate-assertions.js";
 
 const WORKFLOW: WorkflowRunInfo = {
   name: "audit",
-  endpoint: "local",
-  url: "http://127.0.0.1:4001",
   remoteId: "wf-remote-1",
 };
 
@@ -34,7 +32,7 @@ function registered(manager: AgentManager, onEnd = vi.fn(), overrides: Record<st
 }
 
 describe("a workflow run in the record store", () => {
-  it("is a running record tagged with the workflow, its endpoint and its remote id", () => {
+  it("is a running record tagged with the workflow and its remote id", () => {
     const manager = new AgentManager();
 
     const record = registered(manager);

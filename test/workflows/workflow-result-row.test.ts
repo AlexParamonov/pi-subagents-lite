@@ -45,8 +45,6 @@ function liveRecord(fixture: RunFixture): AgentRecord {
     execution: { settled: false, settlementCount: 0 },
     workflow: {
       name: "audit",
-      endpoint: "lab",
-      url: "http://127.0.0.1:8099",
       remoteId: "wf-remote-1",
       progress: fixture.progress ?? [],
       ...(fixture.note ? { note: fixture.note } : {}),

@@ -297,8 +297,6 @@ describe("buildAgentActionsList — a workflow run", () => {
       error: "",
       workflow: {
         name: "audit",
-        endpoint: "lab",
-        url: "http://127.0.0.1:8099",
         remoteId: "wf-1",
         progress: [],
         note: "Workflow run test-id-1 is still running remotely. Its state is unknown after 5 observations.",

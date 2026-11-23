@@ -55,17 +55,11 @@ export interface AgentRecord {
   stats: AgentAccumulatedStats;
 }
 
-/** One remote Workflow run, as the record has to remember it. */
+/** One remote Workflow run, as the record has to remember it. The endpoint it went to is the
+ * record's `display.description`, written already safe. */
 export interface WorkflowRunInfo {
   /** Workflow file name, as the agent selected it. */
   name: string;
-  /** Configured endpoint name the run went to. No message names it today: an error carries the
-   * endpoint its own client was built with, not the record's copy. */
-  endpoint: string;
-  /** The run's request base, frozen at create: endpoints are re-read per call, so this is what still
-   * says which server the run went to after they change. Resolution refuses a base that could carry
-   * the run's credential, so a surface may print this one. */
-  url: string;
   /** The server's own run id (`workflow_id`). */
   remoteId: string;
   /**

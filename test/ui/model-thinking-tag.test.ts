@@ -120,7 +120,7 @@ describe("agentNameLabel", () => {
   it("names a Workflow run's settlement card by the run, through the real registry", () => {
     const record = makeAgentRecord({
       display: { type: "audit", description: "audit the diff" },
-      workflow: { name: "audit", endpoint: "lab", url: "http://127.0.0.1:8099", remoteId: "wf-1", progress: [] },
+      workflow: { name: "audit", remoteId: "wf-1", progress: [] },
     });
     const details = buildAgentDetails(record, { includeStatus: true });
 

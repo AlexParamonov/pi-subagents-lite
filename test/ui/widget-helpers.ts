@@ -147,8 +147,6 @@ export function makeWorkflowRun(id: string, opts?: { note?: string; progress?: s
     execution: { settled: false, settlementCount: 0 },
     workflow: {
       name: "audit",
-      endpoint: "lab",
-      url: "http://127.0.0.1:8099",
       remoteId: `wf-${id}`,
       progress: opts?.progress ?? [],
       ...(opts?.note ? { note: opts.note } : {}),
