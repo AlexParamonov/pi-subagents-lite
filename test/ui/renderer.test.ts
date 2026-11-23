@@ -13,6 +13,9 @@ interface RenderedRow {
 }
 const renderedRows: RenderedRow[] = [];
 
+/** Every Box's background, in build order, spelled by the theme that painted it. */
+const boxFills: string[] = [];
+
 vi.mock("@earendil-works/pi-tui", () => ({
   Container: class {
     children: Component[] = [];
@@ -39,6 +42,9 @@ vi.mock("@earendil-works/pi-tui", () => ({
     }
   },
   Box: class {
+    constructor(_paddingX?: number, _paddingY?: number, bgFn?: (text: string) => string) {
+      boxFills.push(bgFn ? bgFn("") : "");
+    }
     children: Component[] = [];
     addChild(c: Component) {
       this.children.push(c);
@@ -49,6 +55,7 @@ vi.mock("@earendil-works/pi-tui", () => ({
 
 beforeEach(() => {
   renderedRows.length = 0;
+  boxFills.length = 0;
 });
 
 vi.mock("../../src/shell.js", () => ({
@@ -227,7 +234,7 @@ describe("renderSubagentResult — status icon", () => {
 /** Marks the color of every span, so a test can see which color a row carries. */
 const markingTheme: Theme = {
   fg: (color: string, text: string) => `[${color}:${text}]`,
-  bg: (_color: string, text: string) => text,
+  bg: (color: string, text: string) => `[${color}:${text}]`,
   bold: (text: string) => `*${text}*`,
   italic: (text: string) => text,
 };
@@ -281,6 +288,58 @@ function withoutPreview(details: Record<string, unknown>): Record<string, unknow
   const { replyPreview: _preview, ...stored } = details;
   return stored;
 }
+
+describe("renderSubagentResult — the tool call's row treatment", () => {
+  it.each([
+    ["completed", "toolSuccessBg"],
+    ["turn_limited", "toolPendingBg"],
+    ["stopped", "toolPendingBg"],
+    ["error", "toolErrorBg"],
+    ["aborted", "toolErrorBg"],
+    ["running", "toolPendingBg"],
+  ] as [AgentLifecycle["status"], string][])(
+    "shows status %s on the %s fill a tool call's own row gets",
+    (status, fill) => {
+      renderSubagentResult(nudge("Done.", { status }), { expanded: false }, markingTheme, SHOW_COST);
+
+      expect(boxFills).toEqual([`[${fill}:]`]);
+    },
+  );
+
+  it("paints a settled run's card on the fill its own status names", () => {
+    renderSubagentResult(workflowNudge("error"), { expanded: false }, markingTheme, SHOW_COST);
+
+    expect(boxFills).toEqual(["[toolErrorBg:]"]);
+  });
+
+  it("paints a message with no status on the completed fill its own icon claims", () => {
+    renderSubagentResult(
+      { content: "Done.", details: { type: "builder" } },
+      { expanded: false },
+      markingTheme,
+      SHOW_COST,
+    );
+
+    expect(boxFills).toEqual(["[toolSuccessBg:]"]);
+  });
+
+  it("paints a status it does not know on the fill that claims no outcome", () => {
+    renderSubagentResult(
+      { content: "Done.", details: { type: "builder", status: "no-such-status" } },
+      { expanded: false },
+      markingTheme,
+      SHOW_COST,
+    );
+
+    expect(boxFills).toEqual(["[toolPendingBg:]"]);
+  });
+
+  it("paints the card's title with the tool-call title role", () => {
+    renderSubagentResult(nudge("Done.", { status: "completed" }), { expanded: false }, markingTheme, SHOW_COST);
+
+    expect(renderedRows[0]).toEqual({ kind: "Text", text: "[toolTitle:*Subagent Result*]" });
+  });
+});
 
 describe("renderSubagentResult — collapsed reply preview row", () => {
   it("shows the reply's opening line between the description and the path rows", () => {
