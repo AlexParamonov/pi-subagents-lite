@@ -111,7 +111,7 @@ describe("a Workflow run's details", () => {
     expect(shownRows()).toEqual([
       "accent:\u25b6 analysis dispatched",
       "accent:  analysis tool read_file",
-      "accent:  Inspecting the diff.",
+      "accent:  analysis  Inspecting the diff.",
       "warning:\u25b6 report retrying",
       "toolOutput:  a chunk naming no node",
     ]);
@@ -140,7 +140,7 @@ describe("a Workflow run's details", () => {
     expect(shownRows()).toEqual([
       "accent:\u25b6 analysis dispatched",
       "accent:  analysis tool read_file",
-      "accent:  Inspecting the diff.",
+      "accent:  analysis  Inspecting the diff.",
       "warning:\u25b6 report retrying",
       "toolOutput:  a chunk naming no node",
     ]);
@@ -164,7 +164,7 @@ describe("a Workflow run's details", () => {
     expect(shownRows()).toEqual([
       "\u25b6 analysis dispatched",
       "  analysis tool read_file",
-      "  Inspecting the diff.",
+      "  analysis  Inspecting the diff.",
       "\u25b6 report retrying",
       "  a chunk naming no node",
     ]);

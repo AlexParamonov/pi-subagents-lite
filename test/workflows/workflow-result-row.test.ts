@@ -149,7 +149,7 @@ describe("the Workflow row's outcome line", () => {
     items: [
       { type: "node-status", node: "analysis", status: "dispatched" },
       { type: "activity", node: "analysis", activity: "read_file" },
-      { type: "text", node: null, text: "Inspecting the diff." },
+      { type: "text", node: "analysis", text: "Inspecting the diff." },
     ] as WorkflowDisplayItem[],
     progress: ["\u25b6 analysis dispatched", "  analysis tool read_file", "  Inspecting the diff."],
   };
@@ -167,7 +167,11 @@ describe("the Workflow row's outcome line", () => {
     const rows = rowRows({ content: [] });
 
     expect(rows.slice(0, 3)).toEqual(SNAPSHOT.progress.map((line) => line.trim()));
-    expect(rows.slice(0, 3)).toEqual(displayRows(SNAPSHOT.items, defaultTheme).map((row) => row.trim()));
+    expect(displayRows(SNAPSHOT.items, defaultTheme)).toEqual([
+      "\u25b6 analysis dispatched",
+      "  analysis tool read_file",
+      "  analysis  Inspecting the diff.",
+    ]);
     expect(rows.at(-1)).toBe("two findings, one nit");
   });
 });

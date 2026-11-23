@@ -241,9 +241,18 @@ const NODE_STATE_COLOR: Record<WorkflowNodeStatus, "accent" | "warning" | "dim" 
 };
 
 /**
- * The rows one connection's display state is shown as, each coloured by the state of the node it
- * names. An entry whose node reported no state, and one naming no node at all, carry no state colour.
- * Colour is applied here, after the text was sanitised, so the stored and published text is unchanged.
+ * The view's spelling of one entry: the tool call's line, plus the node named on a text entry too.
+ * The flat spelling is the run's stored and published snapshot, whose wording is fixed, so only the
+ * view adds the attribution a text row needs to carry on its own.
+ */
+function displayLineFor(item: WorkflowDisplayItem): string {
+  return item.type === "text" && item.node !== null ? `  ${item.node}  ${item.text}` : lineFor(item);
+}
+
+/**
+ * The rows one connection's display state is shown as, each naming its node and coloured by that
+ * node's state. An entry whose node reported no state, and one naming no node at all, carry no state
+ * colour. Colour is applied here, after the text was sanitised, so the stored text is unchanged.
  */
 export function displayRows(items: readonly WorkflowDisplayItem[], theme: Theme): string[] {
   const states = new Map<string, WorkflowNodeStatus>();
@@ -252,7 +261,7 @@ export function displayRows(items: readonly WorkflowDisplayItem[], theme: Theme)
   }
   return items
     .map((item) => {
-      const line = plainText(lineFor(item));
+      const line = plainText(displayLineFor(item));
       const state = item.node === null ? undefined : states.get(item.node);
       return line === "" ? "" : theme.fg(state === undefined ? "toolOutput" : NODE_STATE_COLOR[state], line);
     })

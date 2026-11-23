@@ -74,9 +74,9 @@ describe("displayRows", () => {
     expect(displayRows(items, markingTheme)).toEqual([
       "accent:\u25b6 analysis dispatched",
       "accent:  analysis tool read_file",
-      "accent:  Inspecting the repository",
+      "accent:  analysis  Inspecting the repository",
       "warning:\u25b6 report retrying",
-      "warning:  Reading it again",
+      "warning:  report  Reading it again",
       "error:\u2717 writer failed",
       "dim:\u2713 index completed",
     ]);
@@ -94,15 +94,27 @@ describe("displayRows", () => {
     ]);
   });
 
-  it("paints the same lines progressLines spells, so the card and the view agree", () => {
+  it("spells every entry as progressLines does, the view's text row naming its node as well", () => {
     const items: WorkflowDisplayItem[] = [
       { type: "node-status", node: "analysis", status: "dispatched" },
       { type: "activity", node: "analysis", activity: "read_file" },
+      { type: "text", node: "analysis", text: "Inspecting the diff." },
       { type: "text", node: null, text: "a chunk naming no node" },
     ];
     const plain: Theme = { fg: (_color, text) => text, bg: (_color, text) => text, bold: (text) => text };
 
-    expect(displayRows(items, plain)).toEqual(progressLines(items));
+    expect(progressLines(items)).toEqual([
+      "\u25b6 analysis dispatched",
+      "  analysis tool read_file",
+      "  Inspecting the diff.",
+      "  a chunk naming no node",
+    ]);
+    expect(displayRows(items, plain)).toEqual([
+      "\u25b6 analysis dispatched",
+      "  analysis tool read_file",
+      "  analysis  Inspecting the diff.",
+      "  a chunk naming no node",
+    ]);
   });
 });
 
