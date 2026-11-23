@@ -1084,7 +1084,6 @@ describe("workflow monitor continuity", () => {
     const handed = await handBack(exchanges, remote, pending);
     expect(text(handed)).toMatch(/unknown/i);
     const before = row.paint(handed);
-    expect(before).toContain("Progress before the outage");
     expect(streamRequests(remote), "the stream must not reopen before recovery GET answers running").toHaveLength(1);
 
     await vi.advanceTimersByTimeAsync(30_000);
@@ -1099,14 +1098,22 @@ describe("workflow monitor continuity", () => {
     const listing = await status(capture);
     expect(listing).toMatch(/audit workflow\) completed/);
     const id = runId(listing);
+    // The hand-back note rides the record's own row for as long as the record holds it, and the
+    // authoritative `running` read deletes it: a live record with no note paints that bare row and
+    // never the text its call returned (US-19, US-31).
+    const liveRow = `${id} (audit workflow) running`;
+    const notedRow =
+      `${liveRow} Workflow run ${id} is still running remotely. Its state is unknown after 5 ` +
+      `observations: nothing was stopped, and observation was handed back. ` +
+      `Check it later with AgentStatus using id ${id}.`;
+    expect(before, "the paint the hand-back leaves behind carries the note on the run's own row").toBe(
+      `▶ analysis dispatched\nProgress before the outage\n${notedRow}`,
+    );
     // The cleared note and the new connection's progress each repaint on their own, before the
-    // settlement does, and the row keeps painting the handed-back note until then (US-19, US-31).
-    const handedNote =
-      `Workflow run ${id} is still running remotely. Its state is unknown after 5 observations: ` +
-      `nothing was stopped, and observation was handed back.\nCheck it later with AgentStatus using id ${id}.`;
+    // settlement does.
     expect(row.repaints).toEqual([
-      `▶ analysis dispatched\nProgress before the outage\n${handedNote}`,
-      `▶ recovery dispatched\nProgress on the new connection\n${handedNote}`,
+      `▶ analysis dispatched\nProgress before the outage\n${liveRow}`,
+      `▶ recovery dispatched\nProgress on the new connection\n${liveRow}`,
       `▶ recovery dispatched\nProgress on the new connection\n${ANSWER}`,
     ]);
   });
