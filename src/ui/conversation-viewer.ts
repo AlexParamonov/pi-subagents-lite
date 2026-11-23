@@ -125,7 +125,7 @@ export type TranscriptEntry = AgentSession["messages"][number] | TranscriptRow;
  * whole content, and it has no model whose context window could be reported.
  */
 export interface TranscriptSource extends Partial<SessionLike> {
-  messages?: TranscriptEntry[];
+  messages: TranscriptEntry[];
   subscribe(listener: (event?: AgentSessionEvent) => void): () => void;
 }
 
@@ -423,7 +423,7 @@ export class ConversationViewer implements Component {
    */
   private refreshToolCalls(toolCallIds: Iterable<string>): void {
     const ids = new Set(toolCallIds);
-    const messages = this.source.messages ?? [];
+    const messages = this.source.messages;
     messages.forEach((msg: any, index: number) => {
       if (msg?.role !== "assistant" || !Array.isArray(msg.content)) return;
       if (msg.content.some((c: any) => c?.type === "toolCall" && ids.has(c.id))) {
@@ -455,7 +455,7 @@ export class ConversationViewer implements Component {
   private seedRunningToolCalls(): void {
     const getToolStartedAt = this.toolDisplay.getToolStartedAt;
     if (!getToolStartedAt) return;
-    const messages: any[] = this.source.messages ?? [];
+    const messages: any[] = this.source.messages;
     const settled = new Set<string>();
     for (const msg of messages) {
       if (msg?.role === "toolResult" && msg.toolCallId) settled.add(msg.toolCallId);
@@ -539,7 +539,7 @@ export class ConversationViewer implements Component {
    */
   private refreshStreamingMessage(): void {
     const messages = this.source.messages;
-    if (!messages || messages.length === 0) return;
+    if (messages.length === 0) return;
     const index = messages.length - 1;
     // Force the next render through the slow path so the streaming suffix is
     // re-spliced behind the refreshed entry.
@@ -1279,7 +1279,7 @@ export class ConversationViewer implements Component {
     if (width <= 0) return [];
 
     const th = this.theme;
-    const messages = this.source.messages ?? [];
+    const messages = this.source.messages;
 
     if (messages.length === 0) {
       this.cachedContentLines = undefined;

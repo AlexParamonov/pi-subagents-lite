@@ -13,7 +13,7 @@ import { displayRows } from "../workflows/stream-view.ts";
 import {
   ConversationViewer,
   type ConversationViewerOptions,
-  type TranscriptEntry,
+  type TranscriptRow,
   type TranscriptSource,
 } from "./conversation-viewer.ts";
 import { viewerPresentation, viewerToolDisplay } from "./tool-display.ts";
@@ -96,8 +96,8 @@ function runTranscript(record: AgentRecord, theme: Theme): TranscriptSource {
 }
 
 /** What the record has to show: one row per entry. */
-function rowsOf(record: AgentRecord, theme: Theme): TranscriptEntry[] {
-  const rows: TranscriptEntry[] = displayRows(record.workflow?.items ?? [], theme).map((text) => ({
+function rowsOf(record: AgentRecord, theme: Theme): TranscriptRow[] {
+  const rows: TranscriptRow[] = displayRows(record.workflow?.items ?? [], theme).map((text) => ({
     role: "row",
     text,
   }));
