@@ -952,3 +952,11 @@ reflex shortcuts (`checkout --`, `stash`) were the ones that could have dropped 
 **What worked:** Printed the extracted array, counted the rows the component actually pushes (top border, title, separator above the text; footer and bottom border below it), re-sliced `slice(3, -2)`, and re-derived the expectation from that count.
 
 **Next time:** Derive a chrome-stripping slice from the rows that component pushes (or from its own `chromeLines` constant), and dump the extracted array once before trusting it. A dropped boundary row looks exactly like a product bug.
+
+## Work inside an open overlay's `render()` is paid once per frame - cache it on the width - 2026-11-23
+
+**What failed:** A wrap was added to the frozen-text viewer's content rows as `rows = textLines.flatMap(line => wrapTextWithAnsi(line, innerW))` inside `render()`. Correct, and a per-frame cost: pi composites every visible overlay's `component.render(width)` on each frame, throttled only by `TuiBase.MIN_RENDER_INTERVAL_MS = 16`, and the wrap covers the whole text. Measured through the real component on a 2,000-line error body: 40,000 `wrapTextWithAnsi` calls, 19.6 ms per frame on average - over the frame budget before the reader pressed a key. The rows had come from a `slice()` of the viewport, so the frame's cost had been O(rows shown).
+
+**What worked:** Cached the rows against the inner width they were wrapped for and re-wrapped only when that changed: 2,000 calls, 1.5 ms per frame, one re-wrap on resize. The conversation viewer already does this (`cacheMeta.width` invalidates its per-message cache), so the fix followed the house pattern rather than inventing one. Then pinned the resize path the cache makes load-bearing - render at 40, render at 80, assert the rows and the footer's row count follow the width - and mutated the cache key (`innerW !== rowsInnerW` to `rowsInnerW === -1`) to check that pin goes red alone.
+
+**Next time:** Before adding work to an overlay's `render()`, ask what it costs per frame at the 16ms cadence on the largest input that surface can be handed (an error body carries child stderr). Anything O(all text) belongs behind a key on the inputs it depends on, and the invalidation key needs its own pin, because no scroll or wrap test can see a stale cache.
