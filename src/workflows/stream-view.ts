@@ -5,7 +5,8 @@
  * replays its whole log per connection and this client never resumes by id), so nothing carries
  * over. Text is tracked per node, attempt and turn: one channel of a turn is shown, never
  * concatenated, and a full-turn frame closes the turn it arrives on. `progressLines` spells the
- * state as the tool call's lines, `displayRows` as the details view's coloured rows.
+ * state as the run's stored and published snapshot, `displayRows` as the rows its card and its
+ * details view both paint.
  */
 
 import { plainText } from "../ui/sanitize.ts";
@@ -248,7 +249,9 @@ function lineFor(item: WorkflowDisplayItem): string {
   return item.type === "activity" ? `  ${node}tool ${item.activity}` : `  ${item.text}`;
 }
 
-/** The lines a tool call shows for one connection's display state, control sequences removed. */
+/** The lines of one connection's display state as the run stores and publishes them (its record's
+ * `progress` and the tool payload's), control sequences removed. Display surfaces paint `displayRows`,
+ * which names the node a text entry came from; this spelling is the fixed wording they must not change. */
 export function progressLines(items: readonly WorkflowDisplayItem[]): string[] {
   return items.map((item) => plainText(lineFor(item))).filter((line) => line !== "");
 }
@@ -265,10 +268,10 @@ const NODE_STATE_COLOR: Record<WorkflowNodeStatus, RowRole> = {
 };
 
 /**
- * The view's spelling of one entry: the tool call's line, plus the node named on a text entry too.
- * The flat spelling is the run's stored and published snapshot, whose wording is fixed, so only the
- * view adds the attribution a text row needs to carry on its own. Every entry carries its mark or at
- * least its indent, so no entry ever spells an empty line.
+ * One entry as every display surface shows it: the stored line, plus the node named on a text entry
+ * too. The stored spelling is the run's published snapshot, whose wording is fixed, so only the
+ * display line adds the attribution a text row needs to carry on its own. Every entry carries its
+ * mark or at least its indent, so no entry ever spells an empty line.
  */
 function displayLineFor(item: WorkflowDisplayItem): string {
   return item.type === "text" && item.node !== null ? `  ${item.node}  ${item.text}` : lineFor(item);

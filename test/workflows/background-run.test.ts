@@ -327,6 +327,32 @@ describe("the settlement notification", () => {
   });
 });
 
+describe("the settled background run's card", () => {
+  it("keeps the rows it painted before this issue, and gains one row per node's delivered text", async () => {
+    // The captured live connection: a chunk naming no node, then a node that completes without ever
+    // streaming. Everything but that node's delivered-text row is the card this issue started from -
+    // same rows, same words, same order, same sanitising.
+    const remote = await server();
+    installWorkflow(ws, remote);
+    const { session } = await start();
+    const row = resultRow(session, { workflow: "audit", prompt: "Review changes", run_in_background: true });
+
+    row.paint(await launch(session));
+    await settled(session);
+
+    expect(row.repaints.at(-1)).toBe(
+      [
+        "    Inspecting the repository",
+        "",
+        "Reporting three findings after a blank line",
+        "  \u2713 analysis completed",
+        "    analysis  Inspected 12 files",
+        "  The declared output",
+      ].join("\n"),
+    );
+  });
+});
+
 describe("a workflow-only session watches its own runs", () => {
   it("refreshes a workflow row without any other driver", async () => {
     const remote = await server({ holdStream: true, streams: [DISPATCH] });
