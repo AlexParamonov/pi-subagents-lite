@@ -866,10 +866,12 @@ export class ConversationViewer implements Component {
       if (this.isStoppable()) {
         actions.push(this.stopArmed ? th.fg("error", "s again to STOP") : th.fg("dim", "s stop"));
       }
-      if (this.sessionBacked()) actions.push(th.fg("dim", "C-t thinking"));
+      const sessionBacked = this.sessionBacked();
+      if (sessionBacked) actions.push(th.fg("dim", "C-t thinking"));
+      // The expand key's verb names what it unfolds here: a session's call results, a run's node text.
       const expandKey = this.keys.expandHint();
       if (expandKey !== undefined) {
-        actions.push(th.fg("dim", `${keyLabel(expandKey)} ${this.sessionBacked() ? "tools" : "text"}`));
+        actions.push(th.fg("dim", `${keyLabel(expandKey)} ${sessionBacked ? "tools" : "text"}`));
       }
       const footerRight = th.fg("dim", "↑↓ scroll · g/G top/bottom · PgUp/PgDn · Esc/q close");
 
