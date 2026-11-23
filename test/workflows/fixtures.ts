@@ -595,6 +595,16 @@ export function stopRequests(server: TestEndpoint): TestEndpoint["requests"] {
   );
 }
 
+/** Every request the endpoint served, as `METHOD /path` in the order it arrived. */
+export function wire(server: TestEndpoint): string[] {
+  return server.requests.map(({ method, path }) => `${method} ${path}`);
+}
+
+/** The route one created run is read and stopped on, under the endpoint's own prefix. */
+export function runPath(server: TestEndpoint): string {
+  return `${server.prefix}/api/workflows/${server.segment}`;
+}
+
 /**
  * Await a remote milestone, but fail with a named reason if the run ends first: without this a
  * broken settle path shows up as a bare test timeout.

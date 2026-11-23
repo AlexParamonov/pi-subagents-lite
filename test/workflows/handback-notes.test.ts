@@ -260,10 +260,13 @@ describe("a run whose monitoring fails", () => {
     );
     // The listing prints the note as its writer left it, routing line last: that last line is the
     // whole routing a note gives, and a listing that carried only the note's head would strand the
-    // caller with no way back to the run.
-    expect(listing.split("\n").slice(0, 2), "the listing carries both lines of the note").toEqual([
+    // caller with no way back to the run. The footer copy is agent-status' own, so it is pinned as
+    // the line that follows, not restated here.
+    expect(listing.split("\n"), "the listing is the note's two lines, the blank, then the footer").toEqual([
       `${id} (${WORKFLOW} workflow) running ${readBudgetNote(id).split("\n")[0]}`,
       checkLater(id),
+      "",
+      expect.stringMatching(/^Don't poll/),
     ]);
     expect(stopRequests(remote), "a failed read stops nothing").toHaveLength(0);
     expect(session.nudges(), "a run whose state is unknown has settled for no reason").toEqual(NO_NUDGE);

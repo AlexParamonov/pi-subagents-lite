@@ -53,6 +53,8 @@ import {
   stopAck,
   stopRequests,
   streamRequests,
+  wire,
+  runPath,
   PING,
   RECONNECT,
   FAKED_URL,
@@ -192,16 +194,6 @@ function createRequest(remote: TestEndpoint) {
   const [request] = createRequests(remote);
   expect(request, "the endpoint must receive the selected workflow").toBeDefined();
   return request!;
-}
-
-/** Every request the endpoint served, in the order it arrived. */
-function wire(remote: TestEndpoint): string[] {
-  return remote.requests.map(({ method, path }) => `${method} ${path}`);
-}
-
-/** The routes one created run is followed on. */
-function runPath(remote: TestEndpoint): string {
-  return `/api/workflows/${remote.segment}`;
 }
 
 /** The run id AgentStatus prints — the handle the main agent passes to StopAgent. */

@@ -27,6 +27,8 @@ import {
   TERMINAL,
   textFrame,
   workspace,
+  wire,
+  runPath,
   write,
   workflow,
   type EndpointOptions,
@@ -223,14 +225,6 @@ function consoleLines(): string[] {
     vi.spyOn(console, level).mockImplementation((...values: unknown[]) => lines.push(values.map(String).join(" ")));
   }
   return lines;
-}
-
-function wire(remote: TestEndpoint): string[] {
-  return remote.requests.map(({ method, path }) => `${method} ${path}`);
-}
-
-function runPath(remote: TestEndpoint): string {
-  return `${remote.prefix}/api/workflows/${remote.segment}`;
 }
 
 /** Call only after draining the response on the current virtual tick. */

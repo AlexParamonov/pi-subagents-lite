@@ -19,6 +19,7 @@ import {
   installWorkflow,
   stopRequests,
   streamRequests,
+  wire,
   workspace,
   write,
   workflow,
@@ -93,10 +94,6 @@ function run(
 /** The same call, launched detached. */
 function launch(of: WorkflowSession, signal?: AbortSignal, update?: Update): Promise<Result> {
   return run(of, { workflow: "audit", prompt: "Review changes", run_in_background: true }, signal, update);
-}
-
-function requests(remote: TestEndpoint): string[] {
-  return remote.requests.map(({ method, path }) => `${method} ${path}`);
 }
 
 /** Wait on the real clock: these runs settle on their own, with no clock under the test. */
@@ -314,14 +311,14 @@ describe("the settlement notification", () => {
     await launch(session, undefined, (update) => paints.push(update));
     // A launch never ends, so this wait has no run to fail it: the milestone is awaited whole.
     await remote.streamOpened;
-    const sentBefore = requests(remote);
+    const sentBefore = wire(remote);
     const paintedBefore = [...paints];
 
     await session.shutdown();
     remote.releaseStream();
     await remote.streamSocketClosed();
 
-    expect(requests(remote), "a detached run keeps no local work alive").toEqual(sentBefore);
+    expect(wire(remote), "a detached run keeps no local work alive").toEqual(sentBefore);
     expect(stopRequests(remote), "US-30: teardown never stops a detached run").toHaveLength(0);
     expect(paints, "no update reaches a session that is gone").toEqual(paintedBefore);
     expect(session.nudges(), "no notification reaches a session that is gone").toEqual([]);
