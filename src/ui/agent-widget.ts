@@ -790,7 +790,8 @@ export class AgentWidget {
   }
 
   /** A remote run has no live view, so its row carries what the run itself said: its note, else its
-   * newest progress line. Only its first non-empty line fits the row. */
+   * newest progress line. Only its first non-empty line fits the row. The row's header carries no id,
+   * so a run's management id reaches this row only when the note's first line names it. */
   private runningActivity(a: AgentRecord, bg: LiveView | undefined): string {
     const said = (a.workflow?.note ?? a.workflow?.progress?.at(-1) ?? "")
       .split("\n")
