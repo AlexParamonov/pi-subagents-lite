@@ -309,7 +309,7 @@ describe("buildAgentActionsList — a workflow run", () => {
     vi.clearAllMocks();
   });
 
-  it("offers exactly Stop: no Steer and no conversation viewer for a run with no session", () => {
+  it("offers its details and Stop: no Steer and no conversation viewer for a run with no session", () => {
     const list = buildAgentActionsList(
       createMockCtx(),
       remoteRun(),
@@ -319,7 +319,59 @@ describe("buildAgentActionsList — a workflow run", () => {
       () => {},
     );
 
-    expect(selectListView(list).items.map((item) => item.value)).toEqual(["stop"]);
+    expect(selectListView(list).items.map((item) => item.value)).toEqual(["view-details", "stop"]);
+  });
+
+  it("offers its details and Clear once it has settled", () => {
+    const settled = {
+      ...remoteRun(),
+      lifecycle: { ...remoteRun().lifecycle, status: "completed" as const, completedAt: Date.now() },
+    };
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      settled,
+      defaultTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+
+    expect(selectListView(list).items.map((item) => item.value)).toEqual(["view-details", "clear"]);
+  });
+
+  it("opens the run's details, for a settled run as for a live one", async () => {
+    let opened = 0;
+    const ctx = createMockCtx([], [], [], {
+      ui: {
+        custom: vi.fn(async () => {
+          opened += 1;
+          return undefined;
+        }),
+      },
+    });
+
+    const list = buildAgentActionsList(
+      ctx,
+      remoteRun(),
+      defaultTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+    await list.onSelect!({ value: "view-details", label: "View details" });
+
+    const settled = { ...remoteRun(), lifecycle: { ...remoteRun().lifecycle, status: "completed" as const } };
+    const settledList = buildAgentActionsList(
+      ctx,
+      settled,
+      defaultTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+    await settledList.onSelect!({ value: "view-details", label: "View details" });
+
+    expect(opened).toBe(2);
   });
 
   it("requests the stop, and reports the request rather than an outcome", async () => {

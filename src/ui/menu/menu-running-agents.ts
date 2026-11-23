@@ -1,38 +1,20 @@
 /**
  * menu-running-agents.ts — Running agents menu concern.
  *
- * Uses SelectList from @earendil-works/pi-tui via ctx.ui.custom.
- * Agent list is a snapshot at construction time (stale until re-entry is acceptable).
- * Selecting an agent opens an actions submenu (SelectList).
- *
- * Exports:
- *   - showRunningAgentsMenu: list running/queued/completed agents
- *   - buildAgentActionsList: per-agent action sub-menu (view result, steer, stop, clear)
- *
- * Private helpers (single-consumer, co-located):
- *   - showConversationViewer: show ConversationViewer for agent snapshot
- *   - showTextViewer: show simple text viewer for result/error
+ * SelectList from @earendil-works/pi-tui, via ctx.ui.custom: the agent list, then a per-agent action
+ * submenu. The panes its actions open live in record-details.ts and text-pane.ts.
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import {
-  Input,
-  matchesKey,
-  SelectList,
-  truncateToWidth,
-  visibleWidth,
-  type Component,
-  type SelectItem,
-} from "@earendil-works/pi-tui";
+import { Input, SelectList, type Component, type SelectItem } from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../types.ts";
 import { SHORT_ID_LENGTH } from "../../types.ts";
-import { ConversationViewer } from "../conversation-viewer.ts";
-import { viewerToolDisplay, viewerPresentation } from "../tool-display.ts";
+import { openRecordDetails } from "../record-details.ts";
+import { showTextPane } from "../text-pane.ts";
 import { getDisplayName, recordDisplayName, agentBulletPrefix, formatMs } from "../format.ts";
 import { plainText } from "../sanitize.ts";
 import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.ts";
-import { overlayViewportRows } from "../overlay.ts";
-import { getManager, getStore } from "../../shell.ts";
+import { getManager } from "../../shell.ts";
 import type { Theme } from "../types.ts";
 
 /** Running or queued — the only non-terminal statuses (ADR-0006: active work is never cleared). */
@@ -40,118 +22,19 @@ function isActive(record: AgentRecord): boolean {
   return record.lifecycle.status === "running" || record.lifecycle.status === "queued";
 }
 
-async function showConversationViewer(ctx: ExtensionCommandContext, record: AgentRecord): Promise<void> {
-  if (!record.execution?.session) return;
-  const manager = getManager();
-
-  await ctx.ui.custom<void>(
-    (tui, theme, kb, done) => {
-      const viewer = new ConversationViewer(tui, record.execution.session!, record, theme, done, {
-        onStop: () => manager?.abort(record.id, "user"),
-        keybindings: kb,
-        onSteer: (msg: string) => manager?.steer(record.id, msg),
-        toolDisplay: viewerToolDisplay(ctx, manager, record.id),
-        ...viewerPresentation(getStore()),
-      });
-      viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
-      return viewer;
-    },
-    { overlay: true },
-  );
-}
-
-async function showTextViewer(
+/** The frozen text a record ends with, shown the way every pane here shows a text. */
+function showTextViewer(
   ctx: ExtensionCommandContext,
   record: AgentRecord,
   kind: "result" | "error",
   text: string,
 ): Promise<void> {
-  const titleSuffix = kind === "result" ? record.id.slice(0, SHORT_ID_LENGTH) : "Error";
   // Error text carries provider bodies and child stderr, result text carries whatever the
   // agent echoed back: neither may reach the terminal with a control sequence intact.
-  const textLines = text.split("\n").map((line) => plainText(line));
-  const displayName = recordDisplayName(record, getDisplayName(record.display.type));
-  const chromeLines = 5; // top border + title + sep + footer + bottom border
-  let scrollOffset = 0;
-  let autoScroll = true;
-
-  await ctx.ui.custom<void>(
-    (tui, theme, _kb, done) => {
-      const border = theme.fg("border", "│");
-
-      const viewportHeight = () => overlayViewportRows(tui.terminal.rows, chromeLines);
-
-      return {
-        invalidate() {},
-        render(width: number) {
-          const innerW = width - 4;
-          const out: string[] = [theme.fg("border", `\u256d${"\u2500".repeat(width - 2)}\u256e`)];
-
-          // Title row: │ name · suffix pad │
-          const titleStr = theme.bold(theme.fg("accent", `${displayName} \u00b7 ${titleSuffix}`));
-          const titlePad = Math.max(0, innerW - visibleWidth(titleStr));
-          out.push(`${border} ${truncateToWidth(titleStr + " ".repeat(titlePad), innerW, "...", true)} ${border}`);
-
-          // Separator
-          out.push(`${border} ${theme.fg("dim", "\u2500".repeat(innerW))} ${border}`);
-
-          // Content with scrolling
-          const vp = viewportHeight();
-          const maxScroll = Math.max(0, textLines.length - vp);
-          if (autoScroll) scrollOffset = maxScroll;
-          const vs = Math.min(scrollOffset, maxScroll);
-          const visible = textLines.slice(vs, vs + vp);
-
-          for (let i = 0; i < vp; i++) {
-            const line = visible[i] ?? "";
-            const truncated = truncateToWidth(line, innerW, "...", true);
-            const padLen = Math.max(0, innerW - visibleWidth(truncated));
-            out.push(`${border} ${truncated}${" ".repeat(padLen)} ${border}`);
-          }
-
-          // Footer
-          const scrollPct = textLines.length <= vp ? "100%" : `${Math.round(((vs + vp) / textLines.length) * 100)}%`;
-          const count = theme.fg("dim", `${textLines.length} lines \u00b7 ${scrollPct}`);
-          const footerText = theme.fg("dim", "q/Esc close");
-          const gap = Math.max(1, innerW - visibleWidth(count) - visibleWidth(footerText));
-          out.push(`${border} ${count}${" ".repeat(gap)}${footerText} ${border}`);
-
-          out.push(theme.fg("border", `\u2570${"\u2500".repeat(width - 2)}\u256f`));
-          return out;
-        },
-        handleInput(data: string) {
-          if (matchesKey(data, "q") || matchesKey(data, "escape")) {
-            done();
-            return;
-          }
-
-          const vp = viewportHeight();
-          const maxScroll = Math.max(0, textLines.length - vp);
-
-          if (matchesKey(data, "up")) {
-            scrollOffset = Math.max(0, scrollOffset - 1);
-            autoScroll = scrollOffset >= maxScroll;
-          } else if (matchesKey(data, "down")) {
-            scrollOffset = Math.min(maxScroll, scrollOffset + 1);
-            autoScroll = scrollOffset >= maxScroll;
-          } else if (matchesKey(data, "pageUp")) {
-            scrollOffset = Math.max(0, scrollOffset - vp);
-            autoScroll = false;
-          } else if (matchesKey(data, "pageDown")) {
-            scrollOffset = Math.min(maxScroll, scrollOffset + vp);
-            autoScroll = scrollOffset >= maxScroll;
-          } else if (matchesKey(data, "home") || data === "g") {
-            scrollOffset = 0;
-            autoScroll = false;
-          } else if (data === "G") {
-            scrollOffset = maxScroll;
-            autoScroll = true;
-          }
-        },
-      };
-    },
-    { overlay: true },
-  );
+  const lines = text.split("\n").map((line) => plainText(line));
+  const suffix = kind === "result" ? record.id.slice(0, SHORT_ID_LENGTH) : "Error";
+  const name = recordDisplayName(record, getDisplayName(record.display.type));
+  return showTextPane(ctx.ui, { title: `${name} \u00b7 ${suffix}`, rows: () => lines });
 }
 
 /**
@@ -176,6 +59,10 @@ export function buildAgentActionsList(
   const hasResult = !!record.result && record.result.length > 0;
   const hasError = !!record.error && record.error.length > 0;
 
+  if (record.workflow) {
+    // A run has no conversation to show, but it has what this client watched: its entries, one per row.
+    items.push({ value: "view-details", label: "View details" });
+  }
   if (record.lifecycle.status === "running" && hasSession) {
     items.push({ value: "view-snapshot", label: "View snapshot" });
   }
@@ -205,8 +92,8 @@ export function buildAgentActionsList(
 
   const list = new SelectList(items, 10, buildSelectListTheme(theme));
   list.onSelect = async (item) => {
-    if (item.value === "view-snapshot" || item.value === "view-conversation") {
-      await showConversationViewer(ctx, record);
+    if (item.value === "view-snapshot" || item.value === "view-conversation" || item.value === "view-details") {
+      await openRecordDetails(ctx.ui, record);
     } else if (item.value === "view-result") {
       await showTextViewer(ctx, record, "result", record.result!);
     } else if (item.value === "view-error") {

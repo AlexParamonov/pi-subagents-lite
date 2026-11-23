@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Opening an agent's details from the widget shows the same overlay that `/agents` showed: the view opens over the conversation instead of replacing the editor area, and both entry points now build one view with the same options.
 - The `Completion cards` setting row names what it hides: the description now names the cards the toggle governs instead of only background agents.
 
 - The package now requires **pi >= 1.5.1** (was `>=0.99.0`).
