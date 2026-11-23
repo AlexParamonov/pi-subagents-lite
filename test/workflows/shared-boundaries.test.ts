@@ -1093,11 +1093,19 @@ describe("workflow monitor continuity", () => {
     );
     await readReply(exchanges, remote, 7);
 
-    expect(await status(capture)).toMatch(/audit workflow\) completed/);
-    // A note clear and a progress write repaint on their own now, so the row repaints more than once
-    // before settlement. The exact repaint set is the row's own contract (US-19, US-31).
-    expect(row.repaints.at(-1)).toBe(`▶ recovery dispatched\nProgress on the new connection\n${ANSWER}`);
-    expect(row.repaints.filter((paint) => paint.includes("recovery dispatched"))).toHaveLength(2);
+    const listing = await status(capture);
+    expect(listing).toMatch(/audit workflow\) completed/);
+    const id = runId(listing);
+    // The cleared note and the new connection's progress each repaint on their own, before the
+    // settlement does, and the row keeps painting the handed-back note until then (US-19, US-31).
+    const handedNote =
+      `Workflow run ${id} is still running remotely. Its state is unknown after 5 observations: ` +
+      `nothing was stopped, and observation was handed back.\nCheck it later with AgentStatus using id ${id}.`;
+    expect(row.repaints).toEqual([
+      `▶ analysis dispatched\nProgress before the outage\n${handedNote}`,
+      `▶ recovery dispatched\nProgress on the new connection\n${handedNote}`,
+      `▶ recovery dispatched\nProgress on the new connection\n${ANSWER}`,
+    ]);
   });
 
   it.for([{ code: 500 }, { code: 503 }])(
