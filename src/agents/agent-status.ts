@@ -53,7 +53,7 @@ export function formatAgentStatusList(agents: AgentRecord[], limit: number): str
   const shownSettled = settled.slice(0, limit);
   const hidden = settled.length - shownSettled.length;
 
-  const lines = [...active, ...shownSettled].map(formatAgent).join(", ");
+  const lines = [...active, ...shownSettled].map(formatAgent).join("\n");
   return hidden > 0 ? `${lines}\nand ${hidden} more settled agents` : lines;
 }
 

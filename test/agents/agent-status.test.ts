@@ -141,6 +141,25 @@ describe("AgentStatus", () => {
     expect(output).toContain(note);
   });
 
+  it("gives every listed record its own line, so a multi-line note cannot swallow the next id", async () => {
+    const note = [
+      "Workflow run aaaa1111 is still running remotely.",
+      "Check it later with AgentStatus using id aaaa1111.",
+    ].join("\n");
+
+    const output = await statusText([
+      makeRecord({ ...WORKFLOW_RECORD, note }),
+      makeRecord({ ...WORKFLOW_RECORD, id: "bbbb2222bbbb2222" }),
+    ]);
+    const listing = output.split("\n\n")[0];
+
+    expect(listing.split("\n")).toEqual([
+      "aaaa1111 (audit workflow) running Workflow run aaaa1111 is still running remotely.",
+      "Check it later with AgentStatus using id aaaa1111.",
+      "bbbb2222 (audit workflow) running",
+    ]);
+  });
+
   it("states one delivery rule for every list shape", async () => {
     const texts = await Promise.all([
       statusText([makeRecord(SUBAGENT_RECORD)]),
