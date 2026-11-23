@@ -105,7 +105,7 @@ Per-agent transient display state (active tools, streaming response text) bridgi
 _Avoid_: Agent monitor, agent stats
 
 **Nudge**:
-A completion notification delivered to the parent session when a background agent settles (first settlement only), or when any agent settles after a continuation. A foreground agent's initial result returns inline through the tool call and delivers no nudge. Batched with a 200ms hold to coalesce rapid completions.
+A completion notification delivered to the parent session for a settlement that has no tool call left to answer in: the first settlement of a run launched in the background, the settlement of a **Workflow** run whose call handed the run back for any reason (its reads exhausted, a stop the endpoint refused or left unanswered, an `Esc` whose stop the endpoint did not confirm), and every settlement of a continued agent. What decides it is that the call stopped waiting, not how the run was launched: a run whose own call still waits answers inside that call and delivers no nudge, and a session that ends delivers none into itself or into the session that replaces it. Batched with a 200ms hold to coalesce rapid completions.
 _Avoid_: Callback, notification
 
 **Parent interrupt binding**:
@@ -140,7 +140,7 @@ _Avoid_: Timeout killer, stuck-agent detector
 - An **Agent briefing** describes all available **Agent types** to the LLM
 - A **Stealth tool** requires an **Agent briefing** before the LLM can use it
 - An **Activity tracker** is created per spawn and cleaned up on completion
-- A **Nudge** is emitted when a background agent completes, errors, or is stopped (first settlement), and on every settlement of a continued agent
+- A **Nudge** is emitted on the first settlement of a run launched in the background or handed back mid-run, and on every settlement of a continued agent
 - **Grace turns** are added to the max turns limit to determine when a steered agent is hard-aborted
 - A **Watchdog** stops a **Subagent** when a tool call or inactivity exceeds its configured thresholds
 - A **Parent interrupt binding** stops a foreground **Subagent** when the parent run is interrupted; background **Subagents** are never bound
@@ -156,7 +156,7 @@ _Avoid_: Timeout killer, stuck-agent detector
 - A **MessageAgent** message lands after the current turn's tool calls finish, never mid-tool-call, and is dropped if the run settles before that boundary
 - **MessageAgent** continues any **Settled** **Subagent** with a live session, including one a human stopped: the model can restart a deliberately stopped agent
 - Only the main session agent holds **MessageAgent**, `StopAgent` and `AgentStatus`; a **Subagent** never does, so cross-**Subagent** messaging and stopping are unreachable
-- A **Nudge** carries a **Subagent** result parent-ward; **MessageAgent** carries input the other way
+- A **Nudge** carries a settled **Subagent**'s or **Workflow** run's outcome parent-ward; **MessageAgent** carries input the other way
 - **Compact tool calls** and **Ungrouped tools** live in the **Global config** only: a **Project config** cannot carry either, and clearing **Model override**s keeps both
 - A **Workflow** is spawned from one **Workflow file** and runs on one **Workflow endpoint** via **Push-per-run**; the file's `endpoint` key is stripped before the config is sent
 - The `Workflow` tool's `path` param (default: parent session cwd) reaches the run only as the `working_dir` prompt var in prompt text (`${working_dir}`), never in node params or context messages
