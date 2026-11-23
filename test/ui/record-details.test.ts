@@ -77,12 +77,9 @@ function uiWith(theme: Theme): ExtensionUIContext {
   } as unknown as ExtensionUIContext;
 }
 
-/**
- * The viewer's own content rows at the width pi renders it at: border and padding removed, blank
- * viewport rows dropped. 120 is the width most of these pins are read at.
- */
-function contentRows(width = 120): string[] {
-  const frame = shown!.render(width).map((line) =>
+/** The frame at `width`: border, padding and colour removed, trailing padding trimmed. */
+function plainFrame(width: number): string[] {
+  return shown!.render(width).map((line) =>
     line
       .replace(/^\u2502 /, "")
       .replace(/ \u2502$/, "")
@@ -90,15 +87,38 @@ function contentRows(width = 120): string[] {
       .replace(/\u001b\[[0-9;]*m/g, "")
       .trimEnd(),
   );
-  // A separator is a run of rules, however the truncator cut it.
-  const separators = frame.flatMap((line, index) => (/^\u2500{10,}/.test(line) ? [index] : []));
+}
+
+/** A separator is a run of rules, however the truncator cut it. */
+function separatorsOf(frame: string[]): number[] {
+  return frame.flatMap((line, index) => (/^\u2500{10,}/.test(line) ? [index] : []));
+}
+
+/**
+ * The viewer's own content rows at the width pi renders it at: border and padding removed, blank
+ * viewport rows dropped. 120 is the width most of these pins are read at.
+ */
+function contentRows(width = 120): string[] {
+  const frame = plainFrame(width);
+  const separators = separatorsOf(frame);
   return frame.slice(separators[0]! + 1, separators[1]).filter((line) => line !== "");
+}
+
+/** The viewer's own rows around its content window: borders, header rows, separators, footer. */
+function chromeRows(width: number): string[] {
+  const frame = plainFrame(width);
+  const separators = separatorsOf(frame);
+  return [...frame.slice(0, separators[0]! + 1), ...frame.slice(separators[1]!)];
 }
 
 const frame = () => shown!.render(120).join("\n");
 
 /** A line wide enough for the wide overlay, yet long enough to break at 60 columns. */
 const LONG_LINE = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu";
+/** A node name long enough that the node's own row breaks at 60 columns, yet fits the wide overlay. */
+const LONG_NODE = "summarise-every-open-pull-request-in-the-monorepo";
+/** A record description that overflows 60 columns in the viewer's header. */
+const LONG_DESCRIPTION = "http://127.0.0.1:4100/runs/wf-remote-1/summarise-everything";
 /** Where that line breaks: a node's body has 54 cells at 60 columns, a row nothing groups has 56. */
 const WRAP_HEAD = "alpha beta gamma delta epsilon zeta eta theta iota";
 const WRAP_TAIL = "kappa lambda mu";
@@ -132,11 +152,11 @@ const SNAPSHOT_ROWS = [
  * A live Workflow run: no session, the snapshot the monitor last published, and the watch its own
  * publish path attaches. `publish` changes the snapshot the way that path does.
  */
-function liveRun(items: WorkflowDisplayItem[] = SNAPSHOT) {
+function liveRun(items: WorkflowDisplayItem[] = SNAPSHOT, description = "http://127.0.0.1:4100") {
   const watchers = new Set<() => void>();
   const record = makeAgentRecord({
     id: "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
-    display: { type: "audit" as AgentRecord["display"]["type"], description: "http://127.0.0.1:4100" },
+    display: { type: "audit" as AgentRecord["display"]["type"], description },
     lifecycle: { status: "running", startedAt: 1000, started: true },
     execution: { settled: false, settlementCount: 0 },
     workflow: { name: "audit", remoteId: "wf-remote-1", progress: ["\u25b6 analysis dispatched"], items },
@@ -358,6 +378,7 @@ describe("a Workflow run's details", () => {
       { type: "node-status", node: "report", status: "completed" },
       { type: "text", node: "report", text: LONG_LINE },
       { type: "text", node: null, text: LONG_LINE },
+      { type: "node-status", node: LONG_NODE, status: "completed" },
     ];
     const opened = openRecordDetails(uiWith(paint.theme), liveRun(long).record);
 
@@ -365,23 +386,28 @@ describe("a Workflow run's details", () => {
       " ✓ report completed",
       ` ${LONG_LINE}`,
       `  ${LONG_LINE}`,
+      ` ✓ ${LONG_NODE} completed`,
     ]);
 
-    // 60 columns leaves 54 cells for a node's body and 56 for a row nothing groups, so both break at `kappa`.
-    expect(contentRows(60), "and both split at the word where the width runs out").toEqual([
+    // 60 columns gives a node's own row and its body 54 cells, a row nothing groups 56, so each breaks
+    // at the word where the width runs out.
+    expect(contentRows(60), "and every kind splits at the word where the width runs out").toEqual([
       " ✓ report completed",
       ` ${WRAP_HEAD}`,
       ` ${WRAP_TAIL}`,
       `  ${WRAP_HEAD}`,
       WRAP_TAIL,
+      ` ✓ ${LONG_NODE}`,
+      "completed",
     ]);
     await opened;
   });
 
-  it("paints every wrapped row of a node's text in the colour that row is painted with", async () => {
+  it("paints every wrapped row in the colour that row is painted with", async () => {
     const long: WorkflowDisplayItem[] = [
       { type: "node-status", node: "report", status: "completed" },
       { type: "text", node: "report", text: LONG_LINE },
+      { type: "node-status", node: LONG_NODE, status: "completed" },
     ];
     const opened = openRecordDetails(uiWith(paint.theme), liveRun(long).record);
     paint.roles.length = 0;
@@ -391,6 +417,11 @@ describe("a Workflow run's details", () => {
     expect(paint.roles.filter((role) => role.startsWith("fg toolOutput"))).toEqual([
       `fg toolOutput ${WRAP_HEAD}`,
       `fg toolOutput ${WRAP_TAIL}`,
+    ]);
+    expect(paint.roles.filter((role) => role.startsWith("fg toolTitle"))).toEqual([
+      "fg toolTitle  ✓ report completed",
+      `fg toolTitle  ✓ ${LONG_NODE}`,
+      "fg toolTitle completed",
     ]);
     await opened;
   });
@@ -402,6 +433,24 @@ describe("a Workflow run's details", () => {
     const continuation = shown!.render(60).find((line) => line.includes(WRAP_TAIL));
 
     expect(continuation, "the wrapped continuation line carries the row's colour").toContain(`\u001b[32m${WRAP_TAIL}`);
+    await opened;
+  });
+
+  it("keeps its own header, separators and footer to one row each when the record's text is long", async () => {
+    const run = liveRun(SNAPSHOT, LONG_DESCRIPTION);
+    run.settle();
+    const opened = openRecordDetails(uiWith(paint.theme), run.record);
+
+    // 60 columns: 56 cells inside the borders, the stats row the fixture's own 1 turn and 8s.
+    expect(chromeRows(60)).toEqual([
+      `╭${"─".repeat(58)}╮`,
+      "✓ audit workflow  http://127.0.0.1:4100/runs/wf-remot...",
+      "1⟳ ·8s",
+      "─".repeat(56),
+      "─".repeat(56),
+      expect.stringContaining("Esc/q close"),
+      `╰${"─".repeat(58)}╯`,
+    ]);
     await opened;
   });
 
