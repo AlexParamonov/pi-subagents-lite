@@ -294,7 +294,7 @@ function pathRows(d: Record<string, unknown> | undefined, theme: Theme): string 
 }
 
 /** The card's fill. It is injected when a run settles, so nothing here is in flight: only a status the
- * status table marks as an error claims a failure, as pi does for a settled call, and the glyph still
+ * status table marks as an error claims a failure, as pi's rule for a settled call, and the glyph still
  * says which status it was. */
 function cardBackground(status: string | undefined): ToolBg {
   return statusColor(status) === "error" ? "toolErrorBg" : "toolSuccessBg";
