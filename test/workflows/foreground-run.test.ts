@@ -73,6 +73,7 @@ import {
   type TestEndpoint,
   type Workspace,
 } from "./fixtures.js";
+import { rendered, renderedRows, text } from "./session.js";
 
 let ws: Workspace;
 let api: MockExtensionAPI | undefined;
@@ -160,10 +161,6 @@ async function server(options?: EndpointOptions): Promise<TestEndpoint> {
 function install(remote: TestEndpoint, apiKey?: string): void {
   write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
   configure(ws, remote.url, apiKey);
-}
-
-function text(result: WorkflowResult): string {
-  return result.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
 }
 
 function run(
@@ -273,20 +270,6 @@ async function openRunningAgents(capture: MockExtensionAPI): Promise<MenuCompone
 function selectionDescription(api: MockExtensionAPI): string {
   const property = workflowTool(api)?.parameters.properties.workflow as { description?: string } | undefined;
   return property?.description ?? "";
-}
-
-/** The component's rows, without the trailing padding pi-tui pads every rendered line out to. */
-function renderedRows(component: unknown): string[] {
-  if (typeof component !== "object" || component === null || !("render" in component)) return [];
-  if (typeof component.render !== "function") return [];
-  const lines: unknown = component.render(240);
-  return Array.isArray(lines)
-    ? lines.filter((line): line is string => typeof line === "string").map((line) => line.trimEnd())
-    : [];
-}
-
-function rendered(component: unknown): string {
-  return renderedRows(component).join("\n");
 }
 
 /**
