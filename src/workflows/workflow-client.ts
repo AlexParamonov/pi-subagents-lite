@@ -236,14 +236,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
         // Nothing answered, so the reader's question is which endpoint to send to. A rejection came
         // from the endpoint the run was sent to, and carries the server's own words alone.
         const names = options.endpointNames ?? [];
-        const keys = names.length === 0 ? "" : ` Configured endpoints: ${names.join(", ")}.`;
-        return {
-          ok: false,
-          error: fault(
-            "has an unknown outcome",
-            `${sent.reason}. The run may still be running remotely; it was not retried.${keys}`,
-          ),
-        };
+        return unknownOutcome(sent.reason, names.length === 0 ? "" : ` Configured endpoints: ${names.join(", ")}.`);
       }
       if (sent.status < 200 || sent.status >= 300) {
         return { ok: false, error: fault("rejected the run", `HTTP ${sent.status}: ${rejection(sent.body)}`) };
@@ -252,14 +245,7 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
       if (!ids)
         return { ok: false, error: fault("created a run it did not identify", "the response carried no workflow id") };
       const unusable = unusableId(ids.workflowId);
-      if (unusable)
-        return {
-          ok: false,
-          error: fault(
-            "has an unknown outcome",
-            `${unusable}. The run may still be running remotely; it was not retried.`,
-          ),
-        };
+      if (unusable) return unknownOutcome(unusable);
       lastKnown = "running";
       return { ok: true, ...ids };
     },
@@ -314,6 +300,20 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
       return ack;
     },
   };
+
+  /**
+   * A create that never answered usefully: the run may exist remotely, and it was sent exactly once.
+   * `suffix` is what only this failure knows - the endpoints to choose between when nothing answered.
+   */
+  function unknownOutcome(detail: string, suffix = ""): WorkflowCreate {
+    return {
+      ok: false,
+      error: fault(
+        "has an unknown outcome",
+        `${detail}. The run may still be running remotely; it was not retried.${suffix}`,
+      ),
+    };
+  }
 
   /**
    * A stop the endpoint did not confirm, in its two forms: `error` names the endpoint it failed
