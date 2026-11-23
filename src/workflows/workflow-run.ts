@@ -138,6 +138,8 @@ export async function runWorkflow(
   // endpoint makes of it: no record, no observation, no stop, no publication into a gone session.
   if (!runRecord) return unwatched();
   hasRecord = true;
+  // The callbacks below are hoisted declarations, which TypeScript cannot narrow: the record keeps
+  // its post-guard alias.
   const record = runRecord;
   const agentId = record.id;
   const shortId = agentId.slice(0, SHORT_ID_LENGTH);
