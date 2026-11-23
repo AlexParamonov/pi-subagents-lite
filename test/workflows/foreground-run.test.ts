@@ -1842,7 +1842,8 @@ describe("workflow cancellation and shutdown", () => {
     );
     expect(text(status)).toContain("audit");
     expect(text(status)).toMatch(/running/i);
-    expect(text(status)).not.toMatch(/stopped/i);
+    // The note quotes the endpoint's refusal out loud; only the row's status slot may not claim an outcome.
+    expect(text(status)).not.toMatch(/\)\s+(stopped|error|completed|failed)\b/);
     expect(stopRequests(remote)).toHaveLength(1);
   });
 
