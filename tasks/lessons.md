@@ -910,6 +910,23 @@ the `FAIL` lines. If nothing reddens, characterize first or leave the line alone
 sites, extract at all N or at none - a partial extraction adds a name to memorize and leaves the duplication in
 place for the next reader to trip on.
 
+## A state-to-treatment mapping is pinned per surface, never per feature - 2026-11-23
+
+**What failed:** One criterion named four node states and the tool-row background each gets, on two surfaces.
+The card's fixture carried all four; the details view's role-recording fixture carried three, and its retry
+case sat in a test that pinned the row's word, not its background. Rounds of green passed over it, and the
+gap was found by reading the criterion against the fixtures, not by a failing run.
+
+**What worked:** Adding the fourth state to the details view's own exact-roles array, then mutating that
+surface's mapping table (`retry: "running"` to `"done"`): the run went 2 red on that file and 8 suite-wide,
+where 7 are the worktree's known `node_modules`-less failures - so the one red was the new assertion naming
+`bg toolSuccessBg` against the expected `toolPendingBg`, and nothing else in the suite read that table.
+
+**Next time:** When a criterion enumerates a set of states, check that each surface's own fixture holds every
+member of it - a sibling surface's coverage proves nothing about this one, because each has its own mapping
+table and its own fixture. Confirm with a mutation of that table and report the run's `FAIL` lines: zero red
+means the pin exists nowhere, however many sibling pins pass.
+
 ## A file a report calls gitignored may be the tracked one that carries the change - 2026-11-23
 
 **What failed:** A round listed `tasks/lessons.md` among the files whose correction "is not carried by the commits" because it is gitignored, and so left that round's lesson as an uncommitted edit in the main checkout while its sibling commits on the branch committed theirs. `tasks/lessons.md` is tracked (`.gitignore` reads `tasks/*` + `!tasks/lessons.md`), so the merge that closed

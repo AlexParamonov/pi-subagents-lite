@@ -267,6 +267,7 @@ describe("a Workflow run's details", () => {
   it("paints each node's row on the background its state is shown with, and its text as tool output", async () => {
     const states: WorkflowDisplayItem[] = [
       { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "node-status", node: "fetch", status: "retry" },
       { type: "node-status", node: "report", status: "completed" },
       { type: "node-status", node: "writer", status: "failed" },
       { type: "text", node: "writer", text: "the endpoint refused it" },
@@ -282,6 +283,8 @@ describe("a Workflow run's details", () => {
       "fg toolOutput   a chunk naming no node",
       "fg toolTitle  ▶ analysis dispatched",
       "bg toolPendingBg  ▶ analysis dispatched",
+      "fg toolTitle  ▶ fetch retrying",
+      "bg toolPendingBg  ▶ fetch retrying",
       "fg toolTitle  ✓ report completed",
       "bg toolSuccessBg  ✓ report completed",
       "fg toolTitle  ✗ writer failed",
