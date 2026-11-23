@@ -32,16 +32,17 @@ export async function openRecordDetails(
 ): Promise<void> {
   const run = record.workflow;
   if (run) {
-    return openViewer(ui, record, (theme) => runTranscript(record, theme), {}, overlay);
+    return showTranscript(ui, record, (theme) => runTranscript(record, theme), {}, overlay);
   }
   const session = record.execution.session;
   if (!session) {
     throw new Error(`agent ${record.id.slice(0, SHORT_ID_LENGTH)} has nothing to show`);
   }
-  return openViewer(ui, record, () => session, sessionWiring(ui, record), overlay);
+  return showTranscript(ui, record, () => session, sessionWiring(ui, record), overlay);
 }
 
-function openViewer(
+/** Hand the viewer this record's transcript source, with the presentation both surfaces share. */
+function showTranscript(
   ui: ExtensionUIContext,
   record: AgentRecord,
   makeSource: (theme: Theme) => TranscriptSource,
