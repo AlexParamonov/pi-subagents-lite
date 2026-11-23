@@ -18,6 +18,8 @@ import {
   type StopInitiator,
   type WatchdogStopDetail,
   type SpawnConfig,
+  type WorkflowRunInfo,
+  type WorkflowSettlementStatus,
 } from "../types.ts";
 import type { SubagentType } from "./types.ts";
 import { getAgentConfig } from "./agent-types.ts";
@@ -63,10 +65,19 @@ export interface ConcurrencyConfig {
 
 type OnAgentComplete = (record: AgentRecord) => void;
 type OnAgentStart = (record: AgentRecord) => void;
+/** A record's live view changed while no waiter owns the repaint (progress, a note written or cleared). */
+type OnRecordTouched = (record: AgentRecord) => void;
 
 interface ConcurrencySlot {
   limit: number;
   running: number;
+}
+
+/** A run the session owns: how its own execution ends, plus the record once it has one. */
+interface WorkflowClaim {
+  open: boolean;
+  onEnd(reason: "stop" | "shutdown"): void;
+  record?: AgentRecord;
 }
 
 interface SpawnArgs {
@@ -75,6 +86,35 @@ interface SpawnArgs {
   type: SubagentType;
   prompt: string;
   options: SpawnOptions;
+}
+
+/** What a Workflow run's record is made of: the frozen run, and the call that made it. */
+export interface WorkflowRunRegistration {
+  workflow: WorkflowRunInfo;
+  /** Row/widget headline for the run. */
+  description: string;
+  toolCallId?: string;
+  /** Foreground call's abort signal: Esc reaches the record's stop path, like ADR-0005. */
+  signal?: AbortSignal;
+  /**
+   * How the run was launched, recorded the way a subagent records its own. Only an explicit
+   * background launch sets it, and the tool row reads it to keep showing its launch receipt.
+   */
+  runInBackground?: boolean;
+  /** Kept for the record's lifetime so the UI-notify fallback reaches any later nudge. */
+  spawnCtx?: ExtensionContext;
+}
+
+/**
+ * One run's claim on the session, from before its first request until its local observation ends.
+ * `register` is the only way a Workflow record comes to exist, and it gives up once the session is
+ * gone, so a create answer that lands after shutdown reaches nothing.
+ */
+export interface WorkflowRunOwnership {
+  /** The run's record, or undefined when the session ended before the run had one. */
+  register(args: WorkflowRunRegistration): AgentRecord | undefined;
+  /** Give the claim back: this run is never going to have a record. */
+  abandon(): void;
 }
 
 export interface SpawnOptions extends SpawnConfig, RunCallbacks {
@@ -90,6 +130,7 @@ export class AgentManager {
   private watchdogInterval: ReturnType<typeof setInterval>;
   private onComplete?: OnAgentComplete;
   private onStart?: OnAgentStart;
+  private onRecordTouched?: OnRecordTouched;
 
   /** Completion-gate resolvers for every spawned record, keyed by agent id. The gate
    * (record.execution.promise) is created at spawn and opened exactly once at the record's
@@ -105,6 +146,15 @@ export class AgentManager {
 
   /** Attached-but-unsettled run promises, tracked so dispose() can await them. */
   private inFlightRuns = new Set<Promise<string>>();
+
+  /**
+   * Runs the session owns, from before their first request to the end of their observation. A claim
+   * exists before its record does, which is what lets shutdown reach a run still being created.
+   */
+  private workflowClaims = new Set<WorkflowClaim>();
+
+  /** True once dispose() has run: the manager accepts no further work and owns no further runs. */
+  private disposed = false;
 
   /** Session-level cumulative agent cost. Survives record removal (Clear/dispose). */
   private totalAgentCost = 0;
@@ -271,9 +321,7 @@ export class AgentManager {
         this.stopAgent(record, "user");
         return id;
       }
-      const handler = () => this.abort(id, "user");
-      options.signal.addEventListener("abort", handler, { once: true });
-      this.parentBindings.set(record, { signal: options.signal, handler });
+      this.attachParentBinding(record, options.signal);
     }
 
     if (queued) return id;
@@ -457,6 +505,13 @@ export class AgentManager {
     resolve(value);
   }
 
+  /** Bind a record to the interrupt of the tool call that created it: an abort stops the record. */
+  private attachParentBinding(record: AgentRecord, signal: AbortSignal): void {
+    const handler = () => this.abort(record.id, "user");
+    signal.addEventListener("abort", handler, { once: true });
+    this.parentBindings.set(record, { signal, handler });
+  }
+
   /** Remove a record's parent-interrupt binding; a later abort of the signal is a no-op. */
   private detachParentBinding(record: AgentRecord): void {
     const binding = this.parentBindings.get(record);
@@ -488,6 +543,19 @@ export class AgentManager {
 
   setOnComplete(cb: OnAgentComplete): void {
     this.onComplete = cb;
+  }
+
+  /**
+   * Wire the repaint a record's own writes need once no tool call is waiting on them. Mirrors
+   * `setOnComplete`: the host wiring owns the UI effect, the run owner only reports the change.
+   */
+  setOnRecordTouched(cb: OnRecordTouched): void {
+    this.onRecordTouched = cb;
+  }
+
+  /** Report that a record's live view changed, so the surfaces reading it repaint. */
+  notifyRecordTouched(record: AgentRecord): void {
+    this.onRecordTouched?.(record);
   }
 
   /** Get the session-level cumulative agent cost. Survives record removal (Clear/dispose). */
@@ -575,6 +643,8 @@ export class AgentManager {
   async steer(id: string, message: string): Promise<boolean> {
     const record = this.agents.get(id);
     if (!record) return false;
+    // A Workflow run has no session to steer and nothing to buffer into (US-29).
+    if (record.workflow) return false;
 
     if (record.lifecycle.status === "running") {
       if (!record.execution.session) {
@@ -660,6 +730,85 @@ export class AgentManager {
   }
 
   /**
+   * Claim the session for a run before its first request. Shutdown from now on ends the run's
+   * lifetime through `onEnd`, and its record can never be registered into a dead session.
+   */
+  beginWorkflowRun(onEnd: (reason: "stop" | "shutdown") => void): WorkflowRunOwnership {
+    const claim: WorkflowClaim = { open: !this.disposed, onEnd };
+    if (claim.open) this.workflowClaims.add(claim);
+    return {
+      register: (args) => {
+        if (!claim.open) return undefined;
+        const record = this.createWorkflowRecord(args, onEnd);
+        claim.record = record;
+        return record;
+      },
+      abandon: () => this.closeWorkflowClaim(claim),
+    };
+  }
+
+  /**
+   * Register a remote Workflow run inside its claim: the same gate-carrying record a subagent gets,
+   * with the local machinery left out (no session, watchdog, model slot or usage). The run's own
+   * execution owns observation and answers for the remote side through the claim's `onEnd`.
+   */
+  private createWorkflowRecord(
+    args: WorkflowRunRegistration,
+    onEnd: (reason: "stop" | "shutdown") => void,
+  ): AgentRecord {
+    const id = randomUUID().slice(0, AGENT_ID_PREFIX_LENGTH);
+    const record: AgentRecord = {
+      id,
+      workflow: args.workflow,
+      lifecycle: { status: "running", startedAt: Date.now(), started: true },
+      display: {
+        type: args.workflow.name,
+        description: args.description,
+        toolCallId: args.toolCallId,
+        ...(args.runInBackground ? { invocation: { runInBackground: true } } : {}),
+      },
+      execution: { settled: true, settlementCount: 0, endWorkflowRun: onEnd, spawnCtx: args.spawnCtx },
+      stats: { lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 }, toolUses: 0, compactionCount: 0 },
+    };
+    this.agents.set(id, record);
+    record.execution.promise = this.createCompletionGate(id);
+    if (args.signal) this.attachParentBinding(record, args.signal);
+    this.onStart?.(record);
+    return record;
+  }
+
+  private closeWorkflowClaim(claim: WorkflowClaim): void {
+    claim.open = false;
+    this.workflowClaims.delete(claim);
+  }
+
+  /** Release the claim a settled record no longer needs, so shutdown visits live runs only. */
+  private closeClaimForRecord(record: AgentRecord): void {
+    for (const claim of this.workflowClaims) {
+      if (claim.record === record) this.closeWorkflowClaim(claim);
+    }
+  }
+
+  /**
+   * Settle a Workflow run once: status, the one formatted text, the gate, one notification. A
+   * second path (a stop ack racing the observation loop) finds the record terminal and changes
+   * nothing, so no run is ever reported twice.
+   */
+  settleWorkflowRun(record: AgentRecord, status: WorkflowSettlementStatus, text: string): boolean {
+    if (isTerminalStatus(record.lifecycle.status)) return false;
+    record.lifecycle.status = status;
+    record.lifecycle.completedAt = Date.now();
+    if (status === "error") record.error = text;
+    else record.result = text;
+    record.execution.settlementCount++;
+    this.detachParentBinding(record);
+    this.closeClaimForRecord(record);
+    this.openGate(record.id, text);
+    this.notifyComplete(record);
+    return true;
+  }
+
+  /**
    * Records addressed by a tool-supplied id: the exact key when present, else
    * every retained record whose id starts with it (ADR-0010). A blank prefix is
    * a prefix of every id, so it matches nothing. getRecord() stays exact-match
@@ -697,6 +846,13 @@ export class AgentManager {
 
   /** Abort the session or remove the agent from the queue. Returns false if not running/queued. */
   private stopAgent(record: AgentRecord, stoppedBy?: StopInitiator, stopDetail?: WatchdogStopDetail): boolean {
+    if (record.workflow) {
+      // A remote run is never stopped by an assignment: the endpoint answers, and its answer (or
+      // the lack of one) decides the record's status. Callers still learn the request went out.
+      if (record.lifecycle.status !== "running") return false;
+      record.execution.endWorkflowRun?.("stop");
+      return true;
+    }
     const wasQueued = record.lifecycle.status === "queued";
     if (wasQueued) {
       this.queue = this.queue.filter((q) => q.id !== record.id);
@@ -764,15 +920,32 @@ export class AgentManager {
 
   /**
    * Terminate every child session and stop accepting work. The synchronous
-   * pass fails queued agents, tears down the sessions it can see, and detaches
-   * bindings; the awaits cover the rest: runs still in flight settle (their
+   * pass ends every Workflow run's claim on the session, fails queued agents,
+   * tears down the sessions it can see, and detaches bindings; the awaits cover
+   * the rest: runs still in flight settle (their
    * vanished-record sessions are torn down and tracked), then every pending
    * teardown drains, so no session outlives this call.
    */
   async dispose(): Promise<void> {
     clearInterval(this.watchdogInterval);
     this.queue = [];
+    this.disposed = true;
+    // US-30: every run the session owns — its record existing or not — ends its own observation
+    // here, and never stops the remote run.
+    for (const claim of this.workflowClaims) {
+      this.closeWorkflowClaim(claim);
+      claim.onEnd("shutdown");
+      if (claim.record) this.detachParentBinding(claim.record);
+    }
     for (const record of this.agents.values()) {
+      // A Workflow run's lifetime ended with its claim above; it has no session to release, and
+      // nothing will ever settle a run whose session died: drop its gate resolver without opening
+      // it, so no settlement text or notification can reach the gone session.
+      if (record.workflow) {
+        this.detachParentBinding(record);
+        this.gateResolvers.delete(record.id);
+        continue;
+      }
       // Queued subagents never start: fail them honestly so the waiting tool
       // call resumes with an explicit error instead of hanging (US-9).
       if (record.lifecycle.status === "queued") {

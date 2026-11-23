@@ -13,6 +13,9 @@ import { SpawnCoordinator } from "./spawn/spawn-coordinator.ts";
 import { toolCallListener } from "./agents/tool-execution.ts";
 import { invalidateAgentRow, cleanupInvalidations } from "./ui/renderer.ts";
 import { registerAgentTool } from "./registration.ts";
+import { registerWorkflowTool } from "./workflows/workflow-tool.ts";
+import { setWorkflowScanDirs, scanWorkflows } from "./workflows/workflow-registry.ts";
+import { workflowWarningSink } from "./workflows/workflow-notices.ts";
 import {
   getManager,
   getWidget,
@@ -33,9 +36,12 @@ export function ensureManagerAndWidget(): void {
 
   if (!currentManager) {
     // Coordinator needs the manager, so wire onComplete after creating it.
-    // Invalidate row when agent starts running (queued → running transition)
+    // Invalidate row when agent starts running (queued → running transition), and arm the widget's
+    // refresh: registering a record is the first thing a workflow-only session ever does, and with no
+    // interval armed its rows would never refresh and its finished row never expire while idle.
     const onStart = (record: AgentRecord) => {
       invalidateAgentRow(record.id);
+      getWidget()?.ensureTimer();
       getWidget()?.update();
     };
 
@@ -53,6 +59,12 @@ export function ensureManagerAndWidget(): void {
 
     newManager.setOnComplete((record) => {
       coordinator.onAgentComplete(record);
+      invalidateAgentRow(record.id);
+      getWidget()?.update();
+    });
+    // A run owner that has no waiter left paints nothing: its record writes are what the row and the
+    // widget read, so the same invalidation is the only repaint they get.
+    newManager.setOnRecordTouched((record) => {
       invalidateAgentRow(record.id);
       getWidget()?.update();
     });
@@ -81,6 +93,18 @@ export async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void
   const merged = await scanAndMerge({ disableDefaultAgents: disableDefaults });
 
   registerAgents(merged, { disableDefaultAgents: disableDefaults });
+}
+
+/** Trust-gated Workflow scan plus the schema that lists what was found. */
+async function scanAndRegisterWorkflows(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+  const trusted = ctx.isProjectTrusted();
+  setWorkflowScanDirs({
+    global: path.join(getAgentDir(), "workflows"),
+    shared: trusted ? path.join(ctx.cwd, ".agents", "workflows") : "",
+    project: trusted ? path.join(ctx.cwd, ".pi", "workflows") : "",
+  });
+  await scanWorkflows(workflowWarningSink(ctx));
+  registerWorkflowTool(pi);
 }
 
 export async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
@@ -214,6 +238,7 @@ export function setupEventListeners(pi: ExtensionAPI): void {
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
+    await scanAndRegisterWorkflows(pi, ctx);
     // ctrl+o syncs compact mode with tool expansion (push-based, no polling)
     if (ctx.hasUI && !unregisterTerminalInput) {
       unregisterTerminalInput = ctx.ui.onTerminalInput(createNavInputHandler(ctx));
@@ -239,7 +264,17 @@ export function setupEventListeners(pi: ExtensionAPI): void {
       const records = currentManager.listAgents();
       const active = records.filter((r) => r.lifecycle.status === "running" || r.lifecycle.status === "queued");
       if (active.length > 0 && ctx.hasUI) {
-        ctx.ui.notify(`${active.length} agent(s) killed by reload`, "warning");
+        // Pi's teardown aborts the active turn and awaits it before emitting this event, and that
+        // abort is what stops a bound Workflow run. A run still running here is one whose stop was
+        // never acknowledged, or one whose call already handed the wait back, so this notice claims
+        // only that watching ended.
+        const killed = active.filter((r) => !r.workflow).length;
+        const detached = active.length - killed;
+        const claims: string[] = [];
+        if (killed > 0) claims.push(`${killed} agent(s) killed by reload`);
+        if (detached > 0)
+          claims.push(`${detached} workflow run(s) are no longer watched; their remote outcomes are unknown`);
+        ctx.ui.notify(claims.join(". "), "warning");
       }
     }
     // Dispose coordinator, store, widget, then manager

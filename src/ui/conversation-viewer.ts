@@ -32,6 +32,7 @@ import {
   fgPreservingNestedStyles,
   formatToolDuration,
   getDisplayName,
+  recordDisplayName,
   resolveAgentModelLabel,
   statusIcon,
 } from "./format.ts";
@@ -708,7 +709,7 @@ export class ConversationViewer implements Component {
 
     // Header
     lines.push(hrTop);
-    const name = getDisplayName(this.record.display.type);
+    const name = recordDisplayName(this.record, getDisplayName(this.record.display.type));
 
     const icon = statusIcon(this.record.lifecycle.status, th, this.record.display.type || undefined);
     // Build stats line like the widget

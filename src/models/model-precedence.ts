@@ -95,6 +95,15 @@ export interface SubagentsConfig {
     providers?: Record<string, number>;
     models?: Record<string, number>;
   };
+  /**
+   * Workflow endpoints, resolved per run (US-6). The merged settings retain unusable URL, key and
+   * default values. `workflows/endpoints.ts` refuses the run rather than falling back to another
+   * endpoint or sending it unauthenticated (US-34, US-8).
+   */
+  workflows: {
+    endpoints: Record<string, { url?: unknown; apiKey?: unknown }>;
+    defaultEndpoint: unknown;
+  };
 }
 
 /**

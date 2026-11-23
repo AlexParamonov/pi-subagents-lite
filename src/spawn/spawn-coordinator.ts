@@ -2,7 +2,7 @@ import { getPiInstance, getSessionCtx, getWidget } from "../shell.ts";
 import { SHORT_ID_LENGTH } from "../types.ts";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { AgentRecord, LiveView, SpawnConfig, ToolActivity } from "../types.ts";
+import type { AgentRecord, AgentStatus, LiveView, SpawnConfig, ToolActivity } from "../types.ts";
 import type { AgentManager, SpawnOptions } from "../agents/agent-manager.ts";
 import { buildAgentDetails, formatResultContent } from "../agents/tool-execution.ts";
 
@@ -10,8 +10,9 @@ import { buildAgentDetails, formatResultContent } from "../agents/tool-execution
  * spawn-coordinator.ts — Spawn-and-track coordination for subagents.
  *
  * Single entry point for both LLM tool and menu spawn paths.
- * Owns: Nudge system (schedule/batch/emit), background agent tracking. Live-view
+ * Owns: Nudge system (build/batch/emit), background agent tracking. Live-view
  * state rides on the record (attached here at spawn) so continuations re-feed it.
+ * The batch owns the message it delivers: it is built while the record is alive.
  * Delegates concurrency and record lifecycle to AgentManager (peers, not ownership).
  *
  * Decision refs: D3 (forward events to live-view), D4 (stats on record only),
@@ -40,6 +41,23 @@ export interface SpawnResult {
   isBackground: boolean;
 }
 
+/**
+ * One settlement's delivery, composed while the record is still there to read. The flush sends
+ * this and reads no record, so a Clear inside the batch window cannot retract a promised outcome.
+ */
+interface NudgeMessage {
+  agentId: string;
+  /** The card's box label and the message header's word; never a rendering mode. */
+  kind: "agent" | "workflow";
+  /** The agent type or workflow name the header and the notify fallback name. */
+  label: string;
+  status: AgentStatus;
+  content: string;
+  details: Record<string, unknown>;
+  /** Captured at settlement: the UI-notify fallback needs a live context, not the gone session. */
+  spawnCtx?: ExtensionContext;
+}
+
 // --- Constants ---
 
 /** Batch delay for nudges — only emit one update per batch window (ms). */
@@ -51,8 +69,8 @@ export class SpawnCoordinator {
   /** Agent IDs spawned as background — the one-shot first-settlement nudge gate; also backs isBackground(). */
   private backgroundAgentIds = new Set<string>();
 
-  /** Pending nudge agent IDs, batched within the delay window. */
-  private pendingNudges = new Set<string>();
+  /** Pending settlement deliveries, one per agent (the latest wins), batched within the delay window. */
+  private pendingNudges = new Map<string, NudgeMessage>();
 
   private nudgeTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -163,21 +181,31 @@ export class SpawnCoordinator {
   }
 
   /**
-   * Schedule a nudge for an agent.
-   * Batches with NUDGE_DELAY_MS window to coalesce rapid completions.
+   * Enrol a run in the one-shot settlement notification, and nothing else. A workflow run reaches
+   * its outcome as a Nudge either at launch (`run_in_background`) or at a hand-back; neither is a
+   * background spawn, so the launch posture and the interrupt detach `markBackground` performs
+   * would both be lies about how the run was started.
    */
-  scheduleNudge(agentId: string): void {
-    this.pendingNudges.add(agentId);
+  enrollForNudge(agentId: string): void {
+    this.backgroundAgentIds.add(agentId);
+  }
+
+  /**
+   * Queue a settlement for delivery. Batches with NUDGE_DELAY_MS window to coalesce rapid
+   * completions, and keeps only the latest message per agent.
+   */
+  private scheduleNudge(message: NudgeMessage): void {
+    this.pendingNudges.set(message.agentId, message);
 
     if (this.nudgeTimer) return;
 
     this.nudgeTimer = setTimeout(() => {
       this.nudgeTimer = null;
-      const batch = [...this.pendingNudges];
+      const batch = [...this.pendingNudges.values()];
       this.pendingNudges.clear();
 
-      for (const id of batch) {
-        this.emitIndividualNudge(id);
+      for (const message of batch) {
+        this.emitIndividualNudge(message);
       }
     }, NUDGE_DELAY_MS);
   }
@@ -193,7 +221,7 @@ export class SpawnCoordinator {
     // >= 2, written by the manager before this callback fires) nudge for both
     // spawn classes — the coordinator never observes steers itself.
     if (this.backgroundAgentIds.delete(record.id) || record.execution.settlementCount >= 2) {
-      this.scheduleNudge(record.id);
+      this.scheduleNudge(this.settlementMessage(record));
     }
   }
 
@@ -234,7 +262,7 @@ export class SpawnCoordinator {
     };
   }
 
-  private emitIndividualNudge(agentId: string): void {
+  private emitIndividualNudge(message: NudgeMessage): void {
     // Skip if disposed — prevents stale pi usage after session replacement
     if (this.disposed) return;
 
@@ -242,39 +270,52 @@ export class SpawnCoordinator {
     const pi = getPiInstance();
     if (!pi) return;
 
-    const record = this.manager.getRecord(agentId);
-    if (!record) return;
-
-    const details = buildAgentDetails(record, {
-      includeStats: true,
-      includeStatus: true,
-    });
-
     try {
       // Explicit triggerTurn and no deliverAs: pi's streaming queue branch (triggerTurn !== false) is emptied by an ordinary Esc.
       const ctx = getSessionCtx();
       const parentIdle = ctx?.isIdle?.() ?? true;
 
       pi.sendMessage(
-        {
-          customType: "subagent-result",
-          content: `[Subagent "${record.display.type}" ${record.id.slice(0, SHORT_ID_LENGTH)} ${record.lifecycle.status}]\n\n${formatResultContent(record)}`,
-          details,
-          display: true,
-        },
+        { customType: "subagent-result", content: message.content, details: message.details, display: true },
         parentIdle ? { triggerTurn: true } : { triggerTurn: false },
       );
     } catch {
       // sendMessage failed (shared runtime overwritten by subagent bindCore).
       // Fall back to UI notification using the captured spawning-session context.
-      const spawnCtx = record.execution.spawnCtx;
+      const spawnCtx = message.spawnCtx;
       if (spawnCtx?.ui?.notify) {
         try {
-          spawnCtx.ui.notify(`[Subagent "${record.display.type}" ${record.lifecycle.status}] Result available`, "info");
+          const box = message.kind === "workflow" ? "Workflow" : "Subagent";
+          spawnCtx.ui.notify(`[${box} "${message.label}" ${message.status}] Result available`, "info");
         } catch {
           // ctx may also be stale if session was replaced
         }
       }
     }
+  }
+
+  /**
+   * The one message a settlement delivers, for either kind: the run's own header over the text its
+   * owner published. A workflow run has no usage accounting, so its details carry no stats.
+   */
+  private settlementMessage(record: AgentRecord): NudgeMessage {
+    const workflow = record.workflow;
+    const kind: NudgeMessage["kind"] = workflow ? "workflow" : "agent";
+    const label = workflow?.name ?? record.display.type;
+    const status = record.lifecycle.status;
+    const body = workflow ? (record.result ?? record.error ?? "") : formatResultContent(record);
+    const details = workflow
+      ? buildAgentDetails(record, { includeStatus: true, includeStats: false })
+      : buildAgentDetails(record, { includeStats: true, includeStatus: true });
+    details.kind = kind;
+    return {
+      agentId: record.id,
+      kind,
+      label,
+      status,
+      content: `[${workflow ? "Workflow" : "Subagent"} "${label}" ${record.id.slice(0, SHORT_ID_LENGTH)} ${status}]\n\n${body}`,
+      details,
+      spawnCtx: record.execution.spawnCtx,
+    };
   }
 }

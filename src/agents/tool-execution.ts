@@ -330,12 +330,18 @@ export async function executeStopAgentTool(
   const record = resolveAgent(params.agent_id, () => `Running agents: ${formatRunningAgents()}`);
 
   if (record.lifecycle.status !== "running" && record.lifecycle.status !== "queued") {
-    return successResult(
-      `Agent ${shortId(record)} is already ${record.lifecycle.status}. Running agents: ${formatRunningAgents()}`,
-    );
+    const name = record.workflow ? `Workflow run ${shortId(record)}` : `Agent ${shortId(record)}`;
+    return successResult(`${name} is already ${record.lifecycle.status}. Running agents: ${formatRunningAgents()}`);
   }
 
   if (manager.abort(record.id, "agent")) {
+    // A remote run is stopped by the endpoint and its answer arrives later, so this reports the
+    // request for a workflow run and never the outcome.
+    if (record.workflow) {
+      return successResult(
+        `Stop requested for workflow run ${shortId(record)}. Its status follows the endpoint's answer, not this call.`,
+      );
+    }
     return successResult(`Stopped agent ${shortId(record)}`);
   }
 
@@ -375,6 +381,12 @@ export async function executeMessageAgentTool(
   if (!manager) throw new Error("Agent manager is unavailable");
   const limit = agentStatusLimit ?? getStore().agent.agentStatusLimit;
   const record = resolveAgent(params.agent_id, () => `Known agents: ${formatKnownAgents(manager, limit)}`, manager);
+  if (record.workflow) {
+    // US-29: a remote run has no session and no steer API, so nothing is queued and nothing is confirmed.
+    throw new Error(
+      `Workflow run ${shortId(record)} cannot be steered: a workflow run has no session to receive a message.`,
+    );
+  }
   const wasRunning = record.lifecycle.status === "running";
 
   if (!wasRunning && !record.execution.session) {

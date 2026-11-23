@@ -1,6 +1,6 @@
 # pi-subagents-lite
 
-A lightweight pi extension that lets the LLM spawn autonomous child agents for complex tasks. Focused fork of pi-subagents with reduced surface area — no scheduling, no join modes.
+A lightweight pi extension that lets the LLM spawn autonomous child agents for complex tasks, and run remote anagen-x workflows through the same selection, update, and result flow. Focused fork of pi-subagents with reduced surface area — no scheduling, no join modes.
 
 ## Language
 
@@ -63,6 +63,28 @@ _Avoid_: Compact mode (that is the widget's own state), condensed view
 **Ungrouped tools**:
 Global comma-editable list of tool names the **Compact tool calls** presentation keeps whole, in their normal call block minus its result body, ending the **Call run** around them. An absent key means `write`, `edit`, `replace`, `bash`, `codemode`, `Agent`, `StopAgent`, `MessageAgent`; an empty list groups every call, `AgentStatus` included. Names match exactly and case-sensitively, custom and MCP names included. Its settings row appears only while **Compact tool calls** is on.
 _Avoid_: Excluded tools, tool categories, grouping allowlist
+
+### Workflows
+
+**Workflow**:
+A graph pipeline executed remotely by an anagen-x workflow API, triggered through the `Workflow` tool. Never a Pi session; tracked alongside Subagents in the agent record store, kind-tagged.
+_Avoid_: Pipeline, flow job, remote agent
+
+**Workflow file**:
+A `.yaml` file in graph's own workflow schema (`name`, `description`, `nodes`, `edges`, `entry_node`), discovered in `~/.pi/agent/workflows/`, `<project>/.agents/workflows/`, and `<project>/.pi/workflows/` with the same trust gating as agent files. Same-name collisions resolve by whole-file replacement, project > shared > global.
+_Avoid_: Workflow definition, workflow agent
+
+**Workflow endpoint**:
+A named `url` + `apiKey` pair under `workflows.endpoints` in the Global config, chosen per run by a Workflow file's `endpoint` key, else `workflows.defaultEndpoint`. A Project config may override a URL but never a key.
+_Avoid_: Graph connection, provider config
+
+**Push-per-run**:
+The delivery model where every Workflow run sends its full parsed Workflow file as the create request's `workflow_config`; the server holds no workflow registry and the local folders are the single source of truth.
+_Avoid_: Workflow registration, deployment
+
+**Poll-reconcile**:
+The client discipline for Workflow runs: `GET /api/workflows/:id` is the authority for run state; SSE is a display-only push channel, reconciled after a silence window or any reconnect, and SSE event ids are never trusted.
+_Avoid_: SSE-driven state, stream trust
 
 ### Worktrees
 
@@ -136,6 +158,13 @@ _Avoid_: Timeout killer, stuck-agent detector
 - Only the main session agent holds **MessageAgent**, `StopAgent` and `AgentStatus`; a **Subagent** never does, so cross-**Subagent** messaging and stopping are unreachable
 - A **Nudge** carries a **Subagent** result parent-ward; **MessageAgent** carries input the other way
 - **Compact tool calls** and **Ungrouped tools** live in the **Global config** only: a **Project config** cannot carry either, and clearing **Model override**s keeps both
+- A **Workflow** is spawned from one **Workflow file** and runs on one **Workflow endpoint** via **Push-per-run**; the file's `endpoint` key is stripped before the config is sent
+- The `Workflow` tool's `path` param (default: parent session cwd) reaches the run only as the `working_dir` prompt var in prompt text (`${working_dir}`), never in node params or context messages
+- A **Workflow file**'s prompt material lives server-side (`prompt_key` files); the extension never ships prompt content
+- A **Workflow** run is tracked in the agent record store, kind-tagged: **AgentStatus** lists it, `StopAgent` and Esc on a foreground run call the API stop endpoint
+- A **Workflow** run has no **Watchdog**, **Model override**, **Thinking level**, or **Worktree**; among **Settled** statuses, `failed` and `interrupted` map to error, `interrupted` keeping its reason
+- The `Workflow` tool's task text obeys the endpoint's 10,000-byte create limit, enforced before sending
+- A **Workflow** run renders node lifecycle events as status lines and progress chunks as streamed text; thinking deltas are never displayed
 
 ### Navigation
 
