@@ -289,7 +289,7 @@ export async function runWorkflow(
   function launched(): AgentToolResult<Record<string, unknown>> {
     const text = published.shown(
       `[Workflow "${args.name}" ${shortId} running] Started in the background: the result arrives as ` +
-        `a notification when the run settles. Check it later with AgentStatus using id ${shortId}. ` +
+        `a notification when the run settles. ${checkLater()} ` +
         `The endpoint holds the run as workflow_id ${workflow.remoteId}, readable by an authorized GET.`,
     );
     return { content: [{ type: "text", text }], details: { agentId, progress: lines } };

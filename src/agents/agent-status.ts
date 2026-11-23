@@ -12,14 +12,8 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { SubagentAgentManager } from "./subagent-context.ts";
 import type { AgentRecord } from "../types.ts";
-import { recordRow } from "../ui/format.ts";
+import { notedRow } from "../ui/format.ts";
 import { getManager, getStore } from "../shell.ts";
-
-/** The listing's entry for one record. Its live note rides the entry: the note is the record's own
- * health, already publisher-sanitized at write time. */
-function formatAgent(record: AgentRecord): string {
-  return record.workflow?.note ? `${recordRow(record)} ${record.workflow.note}` : recordRow(record);
-}
 
 /** In-progress agents are always shown; every other status is settled (issue constraints). */
 function isActive(record: AgentRecord): boolean {
@@ -53,7 +47,7 @@ export function formatAgentStatusList(agents: AgentRecord[], limit: number): str
   const shownSettled = settled.slice(0, limit);
   const hidden = settled.length - shownSettled.length;
 
-  const lines = [...active, ...shownSettled].map(formatAgent).join("\n");
+  const lines = [...active, ...shownSettled].map((record) => notedRow(record)).join("\n");
   return hidden > 0 ? `${lines}\nand ${hidden} more settled agents` : lines;
 }
 

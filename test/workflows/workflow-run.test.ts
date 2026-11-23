@@ -892,6 +892,9 @@ describe("a background launch", () => {
     expect(launched.details?.agentId).toBe(record.id);
     expect(text(launched)).toContain(shortId(record));
     expect(text(launched), "the server's own id is how a person reads the run on the endpoint").toContain(REMOTE_ID);
+    expect(text(launched), "the launch routes the caller the way every note does").toContain(
+      checkLater(shortId(record)),
+    );
     expect(text(launched)).toMatch(/running/i);
     expect(record.lifecycle.status, "the launch answers long before the run does").toBe("running");
     // The launch never waits: observation of the run carries on after the call returned.

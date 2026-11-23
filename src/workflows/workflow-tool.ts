@@ -16,7 +16,7 @@ import type {
 import { Text } from "@earendil-works/pi-tui";
 import { getCoordinator, getManager, getPiInstance, getStore } from "../shell.ts";
 import type { AgentRecord } from "../types.ts";
-import { recordRow } from "../ui/format.ts";
+import { notedRow, recordRow } from "../ui/format.ts";
 import { plainText } from "../ui/sanitize.ts";
 import type { Theme } from "../ui/types.ts";
 import { registerAgentInvalidation } from "../ui/renderer.ts";
@@ -145,15 +145,7 @@ function outcomeRows(record: AgentRecord | undefined, content: string): string[]
   if (!note) {
     return record.display.invocation?.runInBackground ? [recordRow(record), content] : [recordRow(record)];
   }
-  return [`${recordRow(record)} ${oneRow(note)}`];
-}
-
-/** Text headed for a surface that budgets one physical row. */
-function oneRow(text: string): string {
-  return text
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .join(" ");
+  return [notedRow(record, { oneLine: true })];
 }
 
 /** The call line: the workflow name, then exactly the optional parameters the agent supplied. */

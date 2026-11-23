@@ -207,6 +207,23 @@ export function recordRow(record: AgentRecord): string {
   return `${shortId} (${recordDisplayName(record, record.display.type)}) ${record.lifecycle.status}`;
 }
 
+/** The record's row with its live note riding it, in the one shape every surface joins them in. A
+ * surface that budgets one physical row asks for `oneLine`; one with no row budget prints the note
+ * exactly as its writer left it. */
+export function notedRow(record: AgentRecord, { oneLine = false }: { oneLine?: boolean } = {}): string {
+  const note = record.workflow?.note;
+  if (!note) return recordRow(record);
+  return `${recordRow(record)} ${oneLine ? oneRowText(note) : note}`;
+}
+
+/** Every non-empty line of `text`, folded onto one. */
+function oneRowText(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .join(" ");
+}
+
 /** Colored bullet prefix for agent names in pickers/menus.
  * Returns "• " with agent color when showAgentColors is ON and agent has a configured color,
  * or empty string when colors are off or agent has no color. */
