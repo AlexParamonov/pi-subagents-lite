@@ -50,6 +50,10 @@ Pi source code in ../pi
 - "The two copies differ" is a claim, not a fact: when de-forking a harness, run the swap. Handback's settlement waiter moved onto the real-clock `vi.waitFor` stayed green (`vi.waitFor` advances a fake clock, and the settling read is delivered before the wait), so that fork is clock ownership, not observed behaviour - while the same file's `waited`/`until` ladder is not interchangeable.
 - A shared text read-back is pinned only as deep as its deepest assertion: truncating the `AgentStatus` listing to its first line stayed green because `notedRow` folds the row and the note's first line onto one physical line, so the note's routing line is unpinned on that surface.
 - A field a test helper writes onto an object production handed it must exist in production: `widget.showStatus = true` outlived the property it once set, so the write was inert and the row it seemed to reveal came from elsewhere. Check the real object before believing a helper's setup.
+- When two scenarios answer identical endpoint bytes, pin the input that separates them and mutate the guard that reads it: keying a hand-back on "a stop was asked" instead of the parent signal must redden the manual-stop arm alone, or the pair pinned the fixture.
+- Capture an exact request array at the milestone that ends the sequence; read after a later `await` and a live record's own next reconnect appends to it.
+- To pin "nothing lands in the replacement session", start the replacement before advancing any clock, or the queued flush has already drained into the session that is gone.
+- A "one per still-bound run" criterion needs a pin with two still-bound runs; one cannot see a per-turn dedupe.
 
 ## pi-ai API & Subagent Lifecycle
 
