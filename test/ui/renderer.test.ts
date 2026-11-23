@@ -290,13 +290,13 @@ function withoutPreview(details: Record<string, unknown>): Record<string, unknow
 }
 
 describe("renderSubagentResult — the tool call's row treatment", () => {
+  // The card is injected at settlement, so these are the only statuses one can carry.
   it.each([
     ["completed", "toolSuccessBg"],
-    ["turn_limited", "toolPendingBg"],
-    ["stopped", "toolPendingBg"],
+    ["turn_limited", "toolSuccessBg"],
+    ["stopped", "toolSuccessBg"],
     ["error", "toolErrorBg"],
     ["aborted", "toolErrorBg"],
-    ["running", "toolPendingBg"],
   ] as [AgentLifecycle["status"], string][])(
     "shows status %s on the %s fill a tool call's own row gets",
     (status, fill) => {
@@ -312,6 +312,12 @@ describe("renderSubagentResult — the tool call's row treatment", () => {
     expect(boxFills).toEqual(["[toolErrorBg:]"]);
   });
 
+  it("paints a stopped run's card as finished, the way the same status fills a foreground row", () => {
+    renderSubagentResult(workflowNudge("stopped"), { expanded: false }, markingTheme, SHOW_COST);
+
+    expect(boxFills).toEqual(["[toolSuccessBg:]"]);
+  });
+
   it("paints a message with no status on the completed fill its own icon claims", () => {
     renderSubagentResult(
       { content: "Done.", details: { type: "builder" } },
@@ -323,7 +329,7 @@ describe("renderSubagentResult — the tool call's row treatment", () => {
     expect(boxFills).toEqual(["[toolSuccessBg:]"]);
   });
 
-  it("paints a status it does not know on the fill that claims no outcome", () => {
+  it("paints a status it does not know as a finished run, since nothing reports an error", () => {
     renderSubagentResult(
       { content: "Done.", details: { type: "builder", status: "no-such-status" } },
       { expanded: false },
@@ -331,7 +337,7 @@ describe("renderSubagentResult — the tool call's row treatment", () => {
       SHOW_COST,
     );
 
-    expect(boxFills).toEqual(["[toolPendingBg:]"]);
+    expect(boxFills).toEqual(["[toolSuccessBg:]"]);
   });
 
   it("paints the card's title with the tool-call title role", () => {

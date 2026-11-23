@@ -293,13 +293,11 @@ function pathRows(d: Record<string, unknown> | undefined, theme: Theme): string 
   return rows.join("\n");
 }
 
-/** The card's fill: the background a tool call's own row gets for the outcome the card reports. A
- * status marked with neither success nor error (capped, stopped, in flight, unknown) claims neither. */
+/** The card's fill. It is injected when a run settles, so nothing here is in flight: only a status the
+ * status table marks as an error claims a failure, as pi does for a settled call, and the glyph still
+ * says which status it was. */
 function cardBackground(status: string | undefined): ToolBg {
-  const color = statusColor(status);
-  if (color === "success") return "toolSuccessBg";
-  if (color === "error") return "toolErrorBg";
-  return "toolPendingBg";
+  return statusColor(status) === "error" ? "toolErrorBg" : "toolSuccessBg";
 }
 
 /** Render a subagent-result message injected after background agent completion. */

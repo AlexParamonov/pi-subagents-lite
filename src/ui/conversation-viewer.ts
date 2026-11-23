@@ -119,7 +119,7 @@ export interface TranscriptRow {
 /** What the viewer shows: a conversation message, or one entry a source contributes itself. */
 export type TranscriptEntry = AgentSession["messages"][number] | TranscriptRow | TranscriptNode;
 
-/** The three treatments a tool call's own row gets, named for the state they stand for. */
+/** What a node's own row reports about the node: in flight, done, or failed. */
 export type TranscriptNodeState = "running" | "done" | "failed";
 
 /**
