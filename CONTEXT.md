@@ -187,7 +187,7 @@ Rebuilding the roster into live display order (finished → running → queued) 
 _Avoid_: Re-sort, refresh
 
 **ConversationViewer overlay**:
-Live, scrollable view of an agent's conversation, streamed from session events. Opened from the running-agents menu; owns input while open (`Enter` steers, `s` stops). Its footer names the toggles it owns in short key notation (`C-t thinking`, `C-o tools`): a hint shows the key the user has actually bound to that action, several keys joined, and nothing at all when the action is unbound.
+Live, scrollable view of an agent's conversation, streamed from session events. Opened from the widget or the running-agents menu, always as an overlay twice pi's default overlay width and never wider than the terminal; owns input while open (`Enter` steers, `s` stops). Its footer names the toggles it owns in short key notation (`C-t thinking`, `C-o tools`): a hint shows the key the user has actually bound to that action, several keys joined, and nothing at all when the action is unbound.
 _Avoid_: ResultViewer, snapshot viewer
 
 **Call run**:
