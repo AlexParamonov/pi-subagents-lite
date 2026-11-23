@@ -35,14 +35,19 @@ export function ensureManagerAndWidget(): void {
   const currentWidget = getWidget();
 
   if (!currentManager) {
-    // Coordinator needs the manager, so wire onComplete after creating it.
-    // Invalidate row when agent starts running (queued → running transition), and arm the widget's
-    // refresh: registering a record is the first thing a workflow-only session ever does, and with no
-    // interval armed its rows would never refresh and its finished row never expire while idle.
-    const onStart = (record: AgentRecord) => {
+    // A record's row is stale after any of its writes, and every surface reads the record itself.
+    const repaintRow = (record: AgentRecord) => {
       invalidateAgentRow(record.id);
-      getWidget()?.ensureTimer();
       getWidget()?.update();
+    };
+
+    // Coordinator needs the manager, so wire onComplete after creating it. Invalidate the row on the
+    // queued → running transition, and arm the widget's refresh: registering a record is the first
+    // thing a workflow-only session ever does, and with no interval armed its rows would never
+    // refresh and its finished row never expire while idle.
+    const onStart = (record: AgentRecord) => {
+      getWidget()?.ensureTimer();
+      repaintRow(record);
     };
 
     const newManager = new AgentManager(
@@ -59,15 +64,11 @@ export function ensureManagerAndWidget(): void {
 
     newManager.setOnComplete((record) => {
       coordinator.onAgentComplete(record);
-      invalidateAgentRow(record.id);
-      getWidget()?.update();
+      repaintRow(record);
     });
     // A run owner that has no waiter left paints nothing: its record writes are what the row and the
     // widget read, so the same invalidation is the only repaint they get.
-    newManager.setOnRecordTouched((record) => {
-      invalidateAgentRow(record.id);
-      getWidget()?.update();
-    });
+    newManager.setOnRecordTouched(repaintRow);
   }
 
   if (!currentWidget) {
