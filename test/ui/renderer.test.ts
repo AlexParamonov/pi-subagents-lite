@@ -312,7 +312,7 @@ describe("renderSubagentResult — the tool call's row treatment", () => {
     expect(boxFills).toEqual(["[toolErrorBg:]"]);
   });
 
-  it("paints a stopped run's card as finished, the way the same status fills a foreground row", () => {
+  it("paints a stopped run's Workflow card on the finished fill, not the in-flight one", () => {
     renderSubagentResult(workflowNudge("stopped"), { expanded: false }, markingTheme, SHOW_COST);
 
     expect(boxFills).toEqual(["[toolSuccessBg:]"]);
