@@ -9,14 +9,15 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { getManager, getStore } from "../shell.ts";
 import { SHORT_ID_LENGTH, type AgentRecord } from "../types.ts";
-import { displayRows } from "../workflows/stream-view.ts";
+import { detailRows, type WorkflowNodeStatus } from "../workflows/stream-view.ts";
 import {
   ConversationViewer,
   type ConversationViewerOptions,
-  type TranscriptRow,
+  type TranscriptEntry,
+  type TranscriptNodeState,
   type TranscriptSource,
 } from "./conversation-viewer.ts";
-import { viewerPresentation, viewerToolDisplay } from "./tool-display.ts";
+import { viewerExpandFlag, viewerPresentation, viewerToolDisplay } from "./tool-display.ts";
 import type { Theme } from "./types.ts";
 
 export interface RecordDetailsOptions {
@@ -32,7 +33,9 @@ export async function openRecordDetails(
 ): Promise<void> {
   const run = record.workflow;
   if (run) {
-    return showTranscript(ui, record, (theme) => runTranscript(record, theme), {}, overlay);
+    // A run's rows are folded by the reader's own tool-output flag, the key every tool row answers to.
+    const wiring: ConversationViewerOptions = { toolDisplay: viewerExpandFlag({ ui }) };
+    return showTranscript(ui, record, (theme) => runTranscript(record, theme), wiring, overlay);
   }
   const session = record.execution.session;
   if (!session) {
@@ -75,10 +78,10 @@ function sessionWiring(ui: ExtensionUIContext, record: AgentRecord): Conversatio
 }
 
 /**
- * A run's display snapshot as a transcript: one row per entry, each naming its node and coloured by
- * that node's state. A new snapshot replaces the rows whole, so a reconnect replaces what is shown
- * rather than appending to it; the run's publish path is what says a snapshot arrived, and what the
- * record holds now is what is rebuilt then.
+ * A run's display snapshot as a transcript: one row per node, its entries folded under it. A new
+ * snapshot replaces the rows whole, so a reconnect replaces what is shown rather than appending to it;
+ * the run's publish path is what says a snapshot arrived, and what the record holds now is what is
+ * rebuilt then.
  */
 function runTranscript(record: AgentRecord, theme: Theme): TranscriptSource {
   let rows = rowsOf(record, theme);
@@ -95,12 +98,21 @@ function runTranscript(record: AgentRecord, theme: Theme): TranscriptSource {
   };
 }
 
-/** What the record has to show: one row per entry. */
-function rowsOf(record: AgentRecord, theme: Theme): TranscriptRow[] {
-  const rows: TranscriptRow[] = displayRows(record.workflow?.items ?? [], theme).map((text) => ({
-    role: "row",
-    text,
-  }));
+/** How a node's own row is coloured: the state it reports, in the three the viewer paints. */
+const NODE_STATE: Record<WorkflowNodeStatus, TranscriptNodeState> = {
+  dispatched: "running",
+  retry: "running",
+  completed: "done",
+  failed: "failed",
+};
+
+/** What the record has to show: one row per node, and one for every entry nothing groups. */
+function rowsOf(record: AgentRecord, theme: Theme): TranscriptEntry[] {
+  const rows: TranscriptEntry[] = detailRows(record.workflow?.items ?? []).map((row): TranscriptEntry =>
+    row.kind === "entry"
+      ? { role: "row", text: theme.fg("toolOutput", row.line) }
+      : { role: "node", title: row.title, state: NODE_STATE[row.state], body: row.body },
+  );
   if (rows.length > 0 || isActive(record)) return rows;
   // A settled run is waiting for nothing, so its empty view says so in the record's own words.
   return [{ role: "row", text: theme.fg("dim", "(this run delivered no entries)") }];

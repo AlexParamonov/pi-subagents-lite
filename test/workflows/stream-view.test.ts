@@ -1,11 +1,11 @@
 /**
  * stream-view.test.ts — What a frame does to one connection's display state (`apply`, `snapshot`)
- * and the lines that state becomes (`progressLines`, `displayRows`), which is what a tool call and a
- * run's details view show. Which channel of a node's text is shown, and what a replayed journal
- * sets, is pinned through the client.
+ * and the lines that state becomes (`progressLines`, `displayRows`, `detailRows`), which is what a
+ * tool call and a run's details view show. Which channel of a node's text is shown, and what a
+ * replayed journal sets, is pinned through the client.
  */
 import { describe, expect, it } from "vite-plus/test";
-import { displayRows, progressLines, StreamView } from "../../src/workflows/stream-view.js";
+import { detailRows, displayRows, progressLines, StreamView } from "../../src/workflows/stream-view.js";
 import type { WorkflowDisplayItem } from "../../src/workflows/stream-view.js";
 import { SseParser, type SseFrame } from "../../src/workflows/sse.js";
 import type { Theme } from "../../src/ui/types.js";
@@ -66,7 +66,7 @@ describe("progressLines", () => {
 });
 
 describe("displayRows", () => {
-  it("names the node on every entry and paints the row with that node's state colour", () => {
+  it("paints a node's state colour on its status row and its label, and its output as ordinary output", () => {
     const items: WorkflowDisplayItem[] = [
       { type: "node-status", node: "analysis", status: "dispatched" },
       { type: "activity", node: "analysis", activity: "read_file" },
@@ -79,10 +79,10 @@ describe("displayRows", () => {
 
     expect(displayRows(items, markingTheme)).toEqual([
       "accent:\u25b6 analysis dispatched",
-      "accent:  analysis tool read_file",
-      "accent:  analysis  Inspecting the repository",
+      "accent:  analysis toolOutput:tool read_file",
+      "accent:  analysis  toolOutput:Inspecting the repository",
       "warning:\u25b6 report retrying",
-      "warning:  report  Reading it again",
+      "warning:  report  toolOutput:Reading it again",
       "error:\u2717 writer failed",
       "dim:\u2713 index completed",
     ]);
@@ -98,6 +98,18 @@ describe("displayRows", () => {
     expect(displayRows([{ type: "text", node: null, text: "ok \u001b[31mhere" }], markingTheme)).toEqual([
       "toolOutput:  ok here",
     ]);
+  });
+
+  it("keeps a control sequence out of the node label it paints too", () => {
+    expect(
+      displayRows(
+        [
+          { type: "node-status", node: "anal\u001b[31msis", status: "completed" },
+          { type: "text", node: "anal\u001b[31msis", text: "ok \u001b[?25lhere" },
+        ],
+        markingTheme,
+      ),
+    ).toEqual(["dim:\u2713 analsis completed", "dim:  analsis  toolOutput:ok here"]);
   });
 
   it("spells every entry as progressLines does, the view's text row naming its node as well", () => {
@@ -120,6 +132,49 @@ describe("displayRows", () => {
       "  analysis tool read_file",
       "  analysis  Inspecting the diff.",
       "  a chunk naming no node",
+    ]);
+  });
+});
+
+describe("detailRows", () => {
+  it("groups a node's entries under its own row, naming the node once", () => {
+    const items: WorkflowDisplayItem[] = [
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "activity", node: "analysis", activity: "read_file" },
+      { type: "text", node: "analysis", text: "Inspecting the diff." },
+      { type: "node-status", node: "report", status: "completed" },
+      { type: "text", node: "report", text: "Two findings." },
+    ];
+
+    expect(detailRows(items)).toEqual([
+      {
+        kind: "node",
+        state: "dispatched",
+        title: "\u25b6 analysis dispatched",
+        body: ["tool read_file", "Inspecting the diff."],
+      },
+      { kind: "node", state: "completed", title: "\u2713 report completed", body: ["Two findings."] },
+    ]);
+  });
+
+  it("gives an entry nothing can group a row of its own, naming its node on that row", () => {
+    const items: WorkflowDisplayItem[] = [
+      { type: "activity", node: "analysis", activity: "read_file" },
+      { type: "text", node: null, text: "a chunk naming no node" },
+    ];
+
+    expect(detailRows(items)).toEqual([
+      { kind: "entry", line: "  analysis tool read_file" },
+      { kind: "entry", line: "  a chunk naming no node" },
+    ]);
+  });
+
+  it("hands the renderer text with every control sequence already removed", () => {
+    expect(detailRows([{ type: "node-status", node: "anal\u001b[31msis", status: "failed" }])).toEqual([
+      { kind: "node", state: "failed", title: "\u2717 analsis failed", body: [] },
+    ]);
+    expect(detailRows([{ type: "text", node: "anal\u001b[31msis", text: "ok \u001b[?25lhere" }])).toEqual([
+      { kind: "entry", line: "  analsis  ok here" },
     ]);
   });
 });

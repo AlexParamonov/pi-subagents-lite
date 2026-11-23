@@ -83,6 +83,7 @@ export function makeAgentRecord(overrides: AgentRecordOverrides = {}): AgentReco
 export interface MockShellStore {
   agent: Partial<SubagentsConfig["agent"]>;
   modelFor?: (type: string, parentModelId: string, agentConfig?: { model?: string }) => string;
+  notifyToolsExpanded?: (expanded: boolean) => void;
 }
 
 export interface ShellMockFns {
@@ -139,6 +140,7 @@ export function shellMock(fns: ShellMockFns = {}) {
           exposeDescriptions: false,
         },
         modelFor: () => "anthropic/claude-sonnet-4-6",
+        notifyToolsExpanded: () => {},
       } satisfies MockShellStore),
     coordinator: fns.coordinator ?? { spawn: vi.fn() },
     widget: fns.widget ?? undefined,

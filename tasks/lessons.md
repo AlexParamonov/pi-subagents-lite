@@ -872,3 +872,39 @@ Drive real keyboard input through the component returned by ui.custom before del
 **What failed:** A round kept the tool-result card flat while the details view gained per-node coloured rows, and justified the divergence as impossible on the card: "it composes its lines before pi knows their width", plus "pi's `renderResult` contract returns a `Text`". Both false - `renderResult` returns `Component` (`core/extensions/types.d.ts:496`), pi renders it at the real width, and pi's own `Box` already pads every child line of the card to that width with `toolPendingBg`/`toolSuccessBg`/`toolErrorBg` (`tool-execution.js:191-203`, `pi-tui/dist/components/box.js:114-131`). The owner approved a caller-visible deviation on a constraint that did not exist, and the false sentence had already spread to a doc comment, a test header and two reports.
 
 **Next time:** Before writing "cannot", open the installed dependency's `.d.ts` and the render path that consumes it, and quote the file:line in the report. Then state the real reason, which is usually a design tradeoff worth telling the owner about (here: a per-node fill would nest inside pi's own whole-card fill). The same rule covers a negative claim about behaviour: "this row has no click target" is pinned by driving the component's real input handler (`handleMouse` at the row's y, expecting `undefined`), never "as far as text and roles can pin it" - and you prove such a pin bites by registering a block for that row and watching it redden.
+
+## A colour pin on a padded row must record roles, not mark text - 2026-11-23
+
+**What failed:** The theme that names the role it was asked for (`fg: (c, t) => `${c}:${t}``) is this project's way to pin colour as a role instead of escape bytes, and it broke the moment a row was painted on a background: the viewer pads a tool-style row to the frame's inner width and then runs `truncateToWidth` over it, so the marker made the row longer than the viewport, its tail became `...`, and the pin compared truncation instead of colour. The same theme inflated `visibleWidth` enough to drop the footer's whole action group in a width test.
+
+**What worked:** For a padded row, a theme that answers with the text alone and *records* `role + text.trimEnd()` per call: the row text is then an exact-array pin under that theme, and the colour is a second exact-array pin over the recorded calls filtered to that surface's own roles. Unpadded rows (the tool card's flat lines) keep using the marking theme, which is why the two surfaces' pins look different. `bg` nesting `fg` means the recorded pair per row is `fg toolTitle ...` then `bg toolSuccessBg ...` - read the nesting order once, then it is stable.
+
+**Next time:** Ask whether the row is padded to the render width before choosing the marking theme. If it is, record the roles and pin the text under a colourless theme; the "same entries under a theme that paints no colour" arm is then already covered by every text pin, and keeping a second identical test would be a tautology.
+
+## A borrowed row look must not inherit the host model's capabilities - 2026-11-23
+
+**What failed (avoided):** Giving a Workflow node the tool-call row's look had an obvious-looking route: hand the viewer fake `assistant` and `toolResult` messages so `renderToolCall` paints the node. It buys three claims the run cannot honour - a click target (`blocks.push` fires for a call id whose result is in the transcript), a duration (`toolTimingText` reads a result `durationMs` or a watchdog start), and a tool name in the call line - plus the compact layout's grouping and its `ungroupedTools`/codemode/bash special cases starting to act on a node name.
+
+**What worked:** Reuse the paint, not the model. The node entry carries a title, a state and body lines only, and the viewer maps that state onto the same three background roles `callBg` returns (`toolPendingBg`/`toolSuccessBg`/`toolErrorBg`), painting it through `callRows` plus the body fold extracted out of `resultLines` (bash's tail rule kept as a parameter, not duplicated). No call id means no `toolBlocks` entry, no per-call expansion and no timing row. That extraction is also what made the run's fold free: `C-o` already flips the flag, and `syncToolsExpanded` already drops the message cache when it flips. The same discipline fixed the footer - `C-t thinking` did nothing in a run view, so the hint and the key handler now share one predicate instead of the hint lying about the key.
+
+**Next time:** When dressing one subsystem's row in another's style, list what the host's model carries (ids, results, timings, click targets) and keep those out of the borrowed row; say in one comment which capabilities the borrowed row deliberately lacks. And treat every footer hint as an assertion the view can honour: guard the hint and the key with the same predicate, so neither can advertise a dead control.
+
+## A green suite after touching an uncovered line proves nothing - 2026-11-23
+
+**What failed:** Folding the "inset a line one cell and fill it on the block's background" expression out of
+`renderToolCall`'s expanded-timing footer into the round's new `bodyRows` helper looked safe: all 937 tests in
+`test/ui/` stayed green. They stayed green because nothing renders that footer - the calls in those tests reach
+the viewer through the compact layout (`appendCompactCall`, timing on the title row), and no test opens an
+ungrouped call with the output flag on and a recorded duration. Replacing that footer's text with `PROBE ...`
+went green too, suite-wide.
+
+**What worked:** Mutating the line instead of trusting the green run. Once the probe came back green the
+extraction was reverted, rather than shipped with a new test bolted onto untouched session-view code: the inset
+pad-and-fill is spelled inline at three sites in that class (`bodyRows`, the expanded-timing footer,
+`renderUserMessage`) with `callRows` as its full-width sibling, so a helper covering two of them is a fourth
+spelling, not a dedup. One pass over all three is its own change.
+
+**Next time:** Before believing a green suite covers a refactor, mutate the expression being extracted and read
+the `FAIL` lines. If nothing reddens, characterize first or leave the line alone. And when an idiom repeats at N
+sites, extract at all N or at none - a partial extraction adds a name to memorize and leaves the duplication in
+place for the next reader to trip on.

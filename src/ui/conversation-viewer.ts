@@ -116,8 +116,24 @@ export interface TranscriptRow {
   text: string;
 }
 
-/** What the viewer shows: a conversation message, or one row a source contributes itself. */
-export type TranscriptEntry = AgentSession["messages"][number] | TranscriptRow;
+/** What the viewer shows: a conversation message, or one entry a source contributes itself. */
+export type TranscriptEntry = AgentSession["messages"][number] | TranscriptRow | TranscriptNode;
+
+/** The three treatments a tool call's own row gets, named for the state they stand for. */
+export type TranscriptNodeState = "running" | "done" | "failed";
+
+/**
+ * One node of a source with no session behind it, shown as a tool call's row is shown: its own line
+ * on the state's background, then its body under it, folded by the same collapse a result is.
+ */
+export interface TranscriptNode {
+  role: "node";
+  /** The row's own text, naming the node and the state it reported. */
+  title: string;
+  state: TranscriptNodeState;
+  /** The node's lines, in order, already safe to show. */
+  body: string[];
+}
 
 /**
  * Everything the viewer reads from what it shows. An `AgentSession` satisfies it; so does a source
@@ -138,6 +154,13 @@ interface ToolBlock {
 
 /** Background a call row is painted on while it runs and once its result lands. */
 type ToolBg = "toolPendingBg" | "toolSuccessBg" | "toolErrorBg";
+
+/** The background a node's row gets: the same three a call row is painted on. */
+const NODE_STATE_BG: Record<TranscriptNodeState, ToolBg> = {
+  running: "toolPendingBg",
+  done: "toolSuccessBg",
+  failed: "toolErrorBg",
+};
 
 /** A tool call as the viewer paints it: the id links its result and clicks, name and args fill the row. */
 interface ToolCall {
@@ -582,6 +605,21 @@ export class ConversationViewer implements Component {
     return cached;
   }
 
+  /**
+   * One node as a tool call's row is painted: its own line on the state's background, then its body
+   * on that background and folded the same way. A node has no tool call, so its row has no click
+   * target, no duration and no expansion of its own: the reader's tool-output flag folds them all.
+   */
+  private renderNodeRow(node: TranscriptNode, width: number): string[] {
+    const bg = NODE_STATE_BG[node.state];
+    // compactToolCalls deliberately does not fold a node's body: a run's view holds no call to summarise,
+    // so the only fold it offers is the tool-output one its own hint names.
+    return [
+      ...this.callRows(` ${node.title} `, bg, width),
+      ...this.bodyRows(this.bodyLines(node.body.join("\n"), width - 2, this.toolsExpanded), bg, width),
+    ];
+  }
+
   /** Render one message's lines, recording the tool blocks it paints; shared by the rebuild paths. */
   private renderMessage(
     msg: any,
@@ -594,6 +632,8 @@ export class ConversationViewer implements Component {
         return this.renderUserMessage(msg, width);
       case "row":
         return wrapTextWithAnsi(msg.text, width);
+      case "node":
+        return this.renderNodeRow(msg, width);
       case "assistant":
         return this.renderAssistantMessage(msg, width, toolResults, blocks);
       case "toolResult":
@@ -655,7 +695,7 @@ export class ConversationViewer implements Component {
       return;
     }
 
-    if (data === "\x14") {
+    if (data === "\x14" && this.sessionBacked()) {
       this.thinkingVisible = !this.thinkingVisible;
       this.invalidate(); // Clear cache so messages re-render with new visibility
       this.tui.requestRender();
@@ -826,9 +866,13 @@ export class ConversationViewer implements Component {
       if (this.isStoppable()) {
         actions.push(this.stopArmed ? th.fg("error", "s again to STOP") : th.fg("dim", "s stop"));
       }
-      actions.push(th.fg("dim", "C-t thinking"));
+      const sessionBacked = this.sessionBacked();
+      if (sessionBacked) actions.push(th.fg("dim", "C-t thinking"));
+      // The expand key's verb names what it unfolds here: a session's call results, a run's node text.
       const expandKey = this.keys.expandHint();
-      if (expandKey !== undefined) actions.push(th.fg("dim", `${keyLabel(expandKey)} tools`));
+      if (expandKey !== undefined) {
+        actions.push(th.fg("dim", `${keyLabel(expandKey)} ${sessionBacked ? "tools" : "text"}`));
+      }
       const footerRight = th.fg("dim", "↑↓ scroll · g/G top/bottom · PgUp/PgDn · Esc/q close");
 
       // Prepend scroll position readout only when there's spare width
@@ -852,13 +896,18 @@ export class ConversationViewer implements Component {
     return this.record.lifecycle.status === "running" || this.record.lifecycle.status === "queued";
   }
 
+  /** The record's session is the capability flag: steering, thinking blocks and tool calls exist only behind one. */
+  private sessionBacked(): boolean {
+    return !!this.record.execution.session;
+  }
+
   private isStoppable(): boolean {
     return !!this.onStop && this.isActive();
   }
 
   private canSteer(): boolean {
     // Offered whenever a session exists — a settled agent can be continued.
-    return !!this.onSteer && !!this.record.execution.session;
+    return !!this.onSteer && this.sessionBacked();
   }
 
   private openComposer(): void {
@@ -1057,10 +1106,13 @@ export class ConversationViewer implements Component {
     }
     // Compact mode shows no result body for any call, an ungrouped one included.
     if (!this.compactToolCalls) {
-      for (const line of this.resultLines(tc.name, result, width - 2, expanded)) {
-        const padNeeded = Math.max(0, width - 2 - visibleWidth(line));
-        inner.push(th.bg(bg, ` ${th.fg("toolOutput", line)}${" ".repeat(padNeeded)} `));
-      }
+      inner.push(
+        ...this.bodyRows(
+          this.bodyLines(resultText(result?.content), width - 2, expanded, tc.name === "bash"),
+          bg,
+          width,
+        ),
+      );
     }
     if (timing && expanded) {
       for (const line of ["", th.fg("muted", timing)]) {
@@ -1235,28 +1287,27 @@ export class ConversationViewer implements Component {
   }
 
   /**
-   * A tool result as plain wrapped text (no per-tool renderers): the whole
-   * result when expanded, else COLLAPSED_RESULT_LINES plus a hint naming the
-   * toggle key. bash keeps the tail (its verdict is at the end), the rest
-   * keep the head.
+   * A block's body as plain wrapped text (no per-tool renderers): the whole body when expanded, else
+   * COLLAPSED_RESULT_LINES plus a hint naming the toggle key. bash keeps the tail (its verdict is at
+   * the end), the rest keep the head.
    */
-  private resultLines(
-    toolName: string,
-    result: ToolResultStatus | undefined,
-    width: number,
-    expanded: boolean,
-  ): string[] {
-    const text = resultText(result?.content);
-    if (!text) return [];
+  private bodyLines(text: string, width: number, expanded: boolean, keepTail = false): string[] {
+    // Trailing newlines in a body are no lines to show: wrapping them leaves blank rows after it.
     const all = wrapTextWithAnsi(text, width);
     while (all.length > 0 && all[all.length - 1].trim() === "") all.pop();
     if (expanded || all.length <= COLLAPSED_RESULT_LINES) return all;
-
     const hidden = all.length - COLLAPSED_RESULT_LINES;
-    if (toolName === "bash") {
-      return [this.expandHintLine(`${hidden} earlier lines`), ...all.slice(-COLLAPSED_RESULT_LINES)];
-    }
+    if (keepTail) return [this.expandHintLine(`${hidden} earlier lines`), ...all.slice(-COLLAPSED_RESULT_LINES)];
     return [...all.slice(0, COLLAPSED_RESULT_LINES), this.expandHintLine(`${hidden} more lines`)];
+  }
+
+  /** Body lines painted on their block's background, inset one cell like a call's result. */
+  private bodyRows(lines: string[], bg: ToolBg, width: number): string[] {
+    const th = this.theme;
+    return lines.map((line) => {
+      const padNeeded = Math.max(0, width - 2 - visibleWidth(line));
+      return th.bg(bg, ` ${th.fg("toolOutput", line)}${" ".repeat(padNeeded)} `);
+    });
   }
 
   /** "... (N more lines, ctrl+o to expand)" colored like pi's keyHint. */
