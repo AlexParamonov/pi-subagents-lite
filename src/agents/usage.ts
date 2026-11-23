@@ -33,13 +33,13 @@ interface ContextUsageLike {
   percent: number | null;
 }
 
-/** Minimal shape we read from upstream `getSessionStats()`; a source with no session has neither. */
+/** Minimal shape we read from upstream `getSessionStats()`. */
 interface SessionStatsLike {
   tokens: { input: number; output: number; cacheWrite: number };
   contextUsage?: ContextUsageLike;
 }
 export interface SessionLike {
-  getSessionStats?(): SessionStatsLike;
+  getSessionStats(): SessionStatsLike;
   getContextUsage?(): ContextUsageLike | undefined;
 }
 
@@ -58,8 +58,9 @@ export function formatCost(cost: number): string {
 /**
  * Context-window utilization (0–100), or null when unavailable
  * (no model contextWindow, or post-compaction before the next response).
+ * A transcript source with no session behind it answers neither reading, so it gets null.
  */
-export function getSessionContextPercent(session: SessionLike | undefined): number | null {
+export function getSessionContextPercent(session: Partial<SessionLike> | undefined): number | null {
   if (!session) return null;
   try {
     if (session.getContextUsage) return session.getContextUsage()?.percent ?? null;
