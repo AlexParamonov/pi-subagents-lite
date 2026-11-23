@@ -759,8 +759,8 @@ describe("workflow credentials", () => {
     expect(text(result)).toBe(ANSWER);
   });
 
-  // The record's two URL copies are what the widget and the running-agents menu print, and neither
-  // surface holds this run's publisher: they are written already safe, from the validated base.
+  // The record's URL copy is what the widget and the running-agents menu print, and neither surface
+  // holds this run's publisher: it is written already safe, from the validated base.
   it("shows the run's own base whole on the widget and the running-agents menu", async () => {
     const path = "/gateway/v1";
     const remote = await server({

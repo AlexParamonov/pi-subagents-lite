@@ -74,8 +74,8 @@ export async function runWorkflow(
   // Every string this run publishes - notes, progress lines, settlement text - crosses the one
   // boundary that makes endpoint text safe (US-35).
   const published = createPublicText(args.endpoint.apiKey);
-  // The record's two URL copies cross this publisher because the surfaces that read them have no
-  // publisher of their own (US-35).
+  // The record's URL copy crosses this publisher because the surfaces that read it have no publisher
+  // of their own (US-35).
   const shownUrl = published.shown(args.endpoint.url);
 
   if (args.signal?.aborted) {
