@@ -41,13 +41,15 @@ const MONOCHROME: Theme = { fg: (_color, text) => text, bg: (_color, text) => te
 const requestRender = vi.fn<() => void>();
 let shown: ConversationViewer | undefined;
 let closed = 0;
+let customOptions: unknown[] = [];
 
 /** The `ui.custom` the open path is handed: it keeps the component pi was given. */
 function uiWith(theme: Theme): ExtensionUIContext {
   return {
     getToolsExpanded: () => false,
     setToolsExpanded: () => {},
-    custom: asUiCustom(async (factory: unknown, _options?: unknown) => {
+    custom: asUiCustom(async (factory: unknown, options?: unknown) => {
+      customOptions = [factory, options];
       shown = (factory as (tui: unknown, th: Theme, kb: unknown, done: () => void) => ConversationViewer)(
         asTui({ terminal: { rows: 40, cols: 120 }, requestRender }),
         theme,
@@ -133,6 +135,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   shown = undefined;
   closed = 0;
+  customOptions = [];
 });
 
 /** Hand the viewer the keys a reader presses, one at a time as the terminal does. */
@@ -209,6 +212,16 @@ describe("a Workflow run's details", () => {
 
     expect(contentRows()).toEqual(SNAPSHOT_ROWS.map((row) => row.replace(/^[a-zA-Z]+:/, "")));
     await opened;
+  });
+
+  it("shows over the surface that asked for it, and in its place for the one that did not", async () => {
+    const inPlace = openRecordDetails(uiWith(MARKING), liveRun().record);
+    expect(customOptions[1]).toBeUndefined();
+
+    const overMenu = openRecordDetails(uiWith(MARKING), liveRun().record, { overlay: true });
+    expect(customOptions[1]).toEqual({ overlay: true });
+
+    await Promise.all([inPlace, overMenu]);
   });
 
   it("offers no steering and no local stop for a remote run", async () => {
