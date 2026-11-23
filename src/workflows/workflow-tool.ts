@@ -20,6 +20,7 @@ import { notedRow } from "../ui/format.ts";
 import { plainText } from "../ui/sanitize.ts";
 import type { Theme } from "../ui/types.ts";
 import { registerAgentInvalidation } from "../ui/renderer.ts";
+import { displayRows } from "./stream-view.ts";
 import { resolveWorkflowEndpoint } from "./endpoints.ts";
 import { createWorkflowClient } from "./workflow-client.ts";
 import { runWorkflow } from "./workflow-run.ts";
@@ -129,14 +130,26 @@ export function renderWorkflowResult(
   if (agentId && context?.invalidate) registerAgentInvalidation(agentId, context.invalidate);
   const record = agentId ? getManager()?.getRecord(agentId) : undefined;
   const content = result.content.find((part) => part.type === "text")?.text ?? "";
-  // The monitor keeps the record's snapshot current after this call returned; `details.progress`
-  // is only what the wait had seen when it ended.
-  const progress =
-    record?.workflow?.progress ?? (Array.isArray(details.progress) ? (details.progress as string[]) : []);
-  const rows = [...progress, ...outcomeRows(record, content)].map((row) => plainText(row)).filter((row) => row !== "");
   const mark = context?.isError ? theme.fg("error", "\u2717") : "";
-  const body = rows.map((row) => `  ${theme.fg("toolOutput", row)}`).join("\n");
+  const outcome = outcomeRows(record, content)
+    .map((row) => plainText(row))
+    .filter((row) => row !== "")
+    .map((row) => theme.fg("toolOutput", row));
+  const body = [...entryRows(record, details, theme), ...outcome].map((row) => `  ${row}`).join("\n");
   return new Text(mark === "" ? body : `${mark} ${body.trimStart()}`, 0, 0);
+}
+
+/**
+ * The run's entries, painted as the run's details view paints them: one row per entry, each naming
+ * its node and coloured by that node's state. The monitor keeps the record's snapshot current after
+ * this call returned; `details.progress` is only the flat lines the wait had seen when it ended, and
+ * is all that is left to show once the record is gone.
+ */
+function entryRows(record: AgentRecord | undefined, details: Record<string, unknown>, theme: Theme): string[] {
+  const items = record?.workflow?.items;
+  if (items) return displayRows(items, theme);
+  const progress = Array.isArray(details.progress) ? (details.progress as string[]) : [];
+  return progress.map((row) => theme.fg("toolOutput", plainText(row)));
 }
 
 /** A settled run shows the one text it ended with. A live one shows its own id, state and note, and

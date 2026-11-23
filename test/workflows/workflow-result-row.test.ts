@@ -2,12 +2,15 @@
  * workflow-result-row.test.ts — The Workflow call's row: which text a record of each state puts on it.
  *
  * The row is the only place a handed-back run is described after its call returned, so it reads the
- * record, never the call's own returned text, for a run that is still live.
+ * record, never the call's own returned text, for a run that is still live. Its entries are the rows
+ * the run's details view paints, so one snapshot is not spelled two ways.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { AgentRecord } from "../../src/types.js";
 import type { WorkflowDisplayItem } from "../../src/workflows/stream-view.js";
+import type { Theme } from "../../src/ui/types.js";
+import { progressLines } from "../../src/workflows/stream-view.js";
 import { shellMock } from "../fixtures.js";
 import { defaultTheme } from "../mock-utils.js";
 
@@ -18,7 +21,16 @@ const { mockGetRecord } = vi.hoisted(() => ({
 vi.mock("../../src/shell.js", () => shellMock({ manager: { getRecord: mockGetRecord } }));
 
 import { renderWorkflowResult } from "../../src/workflows/workflow-tool.js";
-import { displayRows } from "../../src/workflows/stream-view.js";
+
+/** The roles a run's rows and the card's own rows are painted with. */
+const MARKED = new Set(["accent", "warning", "error", "dim", "toolOutput"]);
+
+/** A theme that names the role it was asked for, so a row shows the colour it was painted with. */
+const MARKING: Theme = {
+  fg: (color, text) => (MARKED.has(color) ? `${color}:${text}` : text),
+  bg: (_color, text) => text,
+  bold: (text) => text,
+};
 
 const SHORT_ID = "a1b2c3d4";
 const NOTE = [
@@ -29,7 +41,7 @@ const NOTE = [
 interface RunFixture {
   status: AgentRecord["lifecycle"]["status"];
   note?: string;
-  progress?: string[];
+  /** The record's display snapshot; `progress` is the same snapshot in its flat spelling. */
   items?: WorkflowDisplayItem[];
   result?: string;
   error?: string;
@@ -49,7 +61,7 @@ function liveRecord(fixture: RunFixture): AgentRecord {
     workflow: {
       name: "audit",
       remoteId: "wf-remote-1",
-      progress: fixture.progress ?? [],
+      progress: progressLines(fixture.items ?? []),
       ...(fixture.items ? { items: fixture.items } : {}),
       ...(fixture.note ? { note: fixture.note } : {}),
     },
@@ -64,11 +76,12 @@ function rowRows(paint: {
   content: Array<{ type: string; text?: string }>;
   details?: Record<string, unknown>;
   isError?: boolean;
+  theme?: Theme;
 }): string[] {
   const text = renderWorkflowResult(
     { content: paint.content, details: { agentId: `${SHORT_ID}-e5f6-4a7b-8c9d-0e1f2a3b4c5d`, ...paint.details } },
     { expanded: true },
-    defaultTheme,
+    paint.theme ?? defaultTheme,
     { isError: paint.isError ?? false, invalidate: () => {} },
   );
   return text
@@ -85,7 +98,9 @@ describe("the Workflow row's outcome line", () => {
   });
 
   it("names the run and its state while the record runs", () => {
-    mockGetRecord.mockReturnValue(liveRecord({ status: "running", progress: ["\u25b6 analysis dispatched"] }));
+    mockGetRecord.mockReturnValue(
+      liveRecord({ status: "running", items: [{ type: "node-status", node: "analysis", status: "dispatched" }] }),
+    );
 
     expect(rowRows({ content: [] })).toEqual(["\u25b6 analysis dispatched", `a1b2c3d4 (audit workflow) running`]);
   });
@@ -144,34 +159,47 @@ describe("the Workflow row's outcome line", () => {
     ]);
   });
 
-  /** One connection's snapshot, in the two forms the record carries it. */
-  const SNAPSHOT = {
-    items: [
-      { type: "node-status", node: "analysis", status: "dispatched" },
-      { type: "activity", node: "analysis", activity: "read_file" },
-      { type: "text", node: "analysis", text: "Inspecting the diff." },
-    ] as WorkflowDisplayItem[],
-    progress: ["\u25b6 analysis dispatched", "  analysis tool read_file", "  Inspecting the diff."],
-  };
+  it("paints the call's own lines as the flat lines they are once the record is gone", () => {
+    const progress = ["\u25b6 analysis dispatched", "  Inspecting the diff."];
 
-  it("shows the same entries the run's details view shows, in the same order", () => {
+    expect(rowRows({ content: [], details: { progress }, theme: MARKING })).toEqual([
+      "toolOutput:\u25b6 analysis dispatched",
+      "toolOutput:  Inspecting the diff.",
+    ]);
+  });
+
+  const SNAPSHOT: WorkflowDisplayItem[] = [
+    { type: "node-status", node: "analysis", status: "dispatched" },
+    { type: "activity", node: "analysis", activity: "read_file" },
+    { type: "text", node: "analysis", text: "Inspecting the diff." },
+    { type: "text", node: null, text: "a chunk naming no node" },
+  ];
+
+  it("paints the entries the run's details view paints: the same rows, order and colours", () => {
     mockGetRecord.mockReturnValue(
-      liveRecord({
-        status: "completed",
-        result: "two findings, one nit",
-        progress: SNAPSHOT.progress,
-        items: SNAPSHOT.items,
-      }),
+      liveRecord({ status: "completed", result: "two findings, one nit", items: SNAPSHOT }),
     );
 
-    const rows = rowRows({ content: [] });
-
-    expect(rows.slice(0, 3)).toEqual(SNAPSHOT.progress.map((line) => line.trim()));
-    expect(displayRows(SNAPSHOT.items, defaultTheme)).toEqual([
-      "\u25b6 analysis dispatched",
-      "  analysis tool read_file",
-      "  analysis  Inspecting the diff.",
+    expect(rowRows({ content: [], theme: MARKING })).toEqual([
+      "accent:\u25b6 analysis dispatched",
+      "accent:  analysis tool read_file",
+      "accent:  analysis  Inspecting the diff.",
+      "toolOutput:  a chunk naming no node",
+      "toolOutput:two findings, one nit",
     ]);
-    expect(rows.at(-1)).toBe("two findings, one nit");
+  });
+
+  it("paints the same rows uncoloured under a theme that paints no colour", () => {
+    mockGetRecord.mockReturnValue(
+      liveRecord({ status: "completed", result: "two findings, one nit", items: SNAPSHOT }),
+    );
+
+    expect(rowRows({ content: [] })).toEqual([
+      "\u25b6 analysis dispatched",
+      "analysis tool read_file",
+      "analysis  Inspecting the diff.",
+      "a chunk naming no node",
+      "two findings, one nit",
+    ]);
   });
 });

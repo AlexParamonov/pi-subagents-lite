@@ -963,8 +963,10 @@ describe("foreground workflow execution", () => {
 
     expect(streamRequests(remote)).toHaveLength(2);
     expect(readRequests(remote)).toHaveLength(2);
-    // The node names no other row: the only row naming it is its one status line.
-    const statusRows = (view: string): string[] => view.split("\n").filter((row) => row.includes("analysis"));
+    // Every row names the node it came from, so what the replay cannot duplicate is the node's one
+    // status line.
+    const statusRows = (view: string): string[] =>
+      view.split("\n").filter((row) => /analysis (dispatched|retrying|completed|failed)$/.test(row));
     for (const view of views) {
       expect(statusRows(view), "the view shows one status line for the node").toHaveLength(1);
       expect(view.split("Visible progress").length - 1, "the view shows the node's text once").toBe(1);
@@ -972,8 +974,8 @@ describe("foreground workflow execution", () => {
     expect(statusRows(views[0]!)).toEqual(["  \u25b6 analysis dispatched"]);
     expect(views.at(-1)!.split("\n")).toEqual([
       "  \u2713 analysis completed",
-      "    Inspected 12 files",
-      "    Visible progress",
+      "    analysis  Inspected 12 files",
+      "    analysis  Visible progress",
       "  The declared output",
     ]);
     // The replayed lifecycle frame carries the node's stored result: it is the node's own text, never

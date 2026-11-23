@@ -891,7 +891,11 @@ describe("workflow stream event admission", () => {
 
     const rows = later.split("\n");
     // The run's own row closes the view: the row reads the record, so it names the run and its state.
-    expect(rows.slice(0, -1)).toEqual(["▶ analysis dispatched", "analysis tool read_file", "Inspecting the diff."]);
+    expect(rows.slice(0, -1)).toEqual([
+      "▶ analysis dispatched",
+      "analysis tool read_file",
+      "analysis  Inspecting the diff.",
+    ]);
     expect(rows.at(-1)).toMatch(/^[0-9a-f]{8} \(audit workflow\) running$/);
     expect(views.every((view) => !view.includes("foreign-node"))).toBe(true);
     expect(remote.streamSocketsOpen()).toBe(1);
@@ -925,7 +929,7 @@ describe("workflow stream event admission", () => {
 
     const result = await pending;
     expect(text(result)).toBe(ANSWER);
-    expect(row.repaints).toEqual([`\u25b6 analysis dispatched\nInspecting the\n${ANSWER}`]);
+    expect(row.repaints).toEqual([`\u25b6 analysis dispatched\nanalysis  Inspecting the\n${ANSWER}`]);
   });
 
   it("uses GET at the original silence deadline when no recognized events arrive", async () => {
@@ -1049,14 +1053,14 @@ describe("workflow monitor continuity", () => {
       `observations; nothing was stopped, and observation was handed back. ` +
       `Check it later with AgentStatus using id ${id}.`;
     expect(before, "the paint the hand-back leaves behind carries the note on the run's own row").toBe(
-      `▶ analysis dispatched\nProgress before the outage\n${notedRow}`,
+      `▶ analysis dispatched\nanalysis  Progress before the outage\n${notedRow}`,
     );
     // The cleared note and the new connection's progress each repaint on their own, before the
     // settlement does.
     expect(row.repaints).toEqual([
-      `▶ analysis dispatched\nProgress before the outage\n${liveRow}`,
-      `▶ recovery dispatched\nProgress on the new connection\n${liveRow}`,
-      `▶ recovery dispatched\nProgress on the new connection\n${ANSWER}`,
+      `▶ analysis dispatched\nanalysis  Progress before the outage\n${liveRow}`,
+      `▶ recovery dispatched\nrecovery  Progress on the new connection\n${liveRow}`,
+      `▶ recovery dispatched\nrecovery  Progress on the new connection\n${ANSWER}`,
     ]);
   });
 
