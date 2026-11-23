@@ -96,7 +96,7 @@ export async function runWorkflow(
   let noteKind: NoteKind | undefined;
   let lines: string[] = [];
   // Whether the run has a record: a shutdown that overtakes the create request has none to release.
-  let recorded = false;
+  let hasRecord = false;
   let observation = new AbortController();
   // Cancels the local wait for a stop this session will no longer hear the answer to.
   const disposal = new AbortController();
@@ -122,20 +122,22 @@ export async function runWorkflow(
     url: shownUrl,
     remoteId: created.workflowId,
   };
+  // A detached run is never bound to an interrupt: the turn that launched it is over, and that
+  // turn's Esc belongs to the runs it is still answering for (US-30). The binding is the one
+  // expression both the record and the create-window check read.
+  const boundSignal = background ? undefined : args.signal;
   const runRecord = ownership.register({
     workflow,
     description: shownUrl,
     toolCallId: args.toolCallId,
-    // A detached run is never bound to an interrupt: the turn that launched it is over, and that
-    // turn's Esc belongs to the runs it is still answering for (US-30).
-    signal: background ? undefined : args.signal,
+    signal: boundSignal,
     runInBackground: background,
     spawnCtx: args.ctx,
   });
   // US-30: the session ended while the create request was in flight. The run keeps whatever the
   // endpoint makes of it: no record, no observation, no stop, no publication into a gone session.
   if (!runRecord) return unwatched();
-  recorded = true;
+  hasRecord = true;
   const record = runRecord;
   const agentId = record.id;
   const shortId = agentId.slice(0, SHORT_ID_LENGTH);
@@ -145,7 +147,7 @@ export async function runWorkflow(
   if (background) nudges.enrollForNudge(agentId);
   // An interrupt that landed while the create request was in flight: the run exists remotely by
   // now, so it is stopped rather than left alone.
-  else if (args.signal?.aborted) end("stop");
+  if (boundSignal?.aborted) end("stop");
 
   void observe();
   if (background) return launched();
@@ -201,7 +203,7 @@ export async function runWorkflow(
     // cancelled through the request machinery - which sends nothing new and retracts nothing sent.
     sessionEnded = true;
     disposal.abort();
-    if (recorded) release(published.shown(SHUTDOWN));
+    if (hasRecord) release(published.shown(SHUTDOWN));
   }
 
   function settle(status: WorkflowSettlementStatus, text: string): void {
@@ -302,10 +304,12 @@ export async function runWorkflow(
 
   /** The read budget spent: these reads told this session nothing, and the watch goes on. */
   function readBudget(observations: number): string {
-    const stop = stopRequested ? "" : "nothing was stopped, and ";
+    // A run that asked for a stop cannot claim nothing was stopped, so only a run that asked for
+    // none carries the denial.
+    const stopDenial = stopRequested ? "" : "nothing was stopped, and ";
     return (
       `Workflow run ${shortId}: its state is unknown after ${observations} observations; ` +
-      `${stop}observation was handed back.\n${checkLater()}`
+      `${stopDenial}observation was handed back.\n${checkLater()}`
     );
   }
 
