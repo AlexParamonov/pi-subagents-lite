@@ -73,9 +73,11 @@ interface ConcurrencySlot {
   running: number;
 }
 
-/** A run the session owns: how its own execution ends, plus the record once it has one. */
+/**
+ * A run the session owns: how its own execution ends, plus the record once it has one. Membership in
+ * `workflowClaims` is the whole of "the session still owns it", so nothing else has to be kept in step.
+ */
 interface WorkflowClaim {
-  open: boolean;
   onEnd(reason: "stop" | "shutdown"): void;
   record?: AgentRecord;
 }
@@ -734,11 +736,11 @@ export class AgentManager {
    * lifetime through `onEnd`, and its record can never be registered into a dead session.
    */
   beginWorkflowRun(onEnd: (reason: "stop" | "shutdown") => void): WorkflowRunOwnership {
-    const claim: WorkflowClaim = { open: !this.disposed, onEnd };
-    if (claim.open) this.workflowClaims.add(claim);
+    const claim: WorkflowClaim = { onEnd };
+    if (!this.disposed) this.workflowClaims.add(claim);
     return {
       register: (args) => {
-        if (!claim.open) return undefined;
+        if (!this.workflowClaims.has(claim)) return undefined;
         const record = this.createWorkflowRecord(args, onEnd);
         claim.record = record;
         return record;
@@ -778,7 +780,6 @@ export class AgentManager {
   }
 
   private closeWorkflowClaim(claim: WorkflowClaim): void {
-    claim.open = false;
     this.workflowClaims.delete(claim);
   }
 
