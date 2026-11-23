@@ -7,11 +7,13 @@
  *
  * Exports:
  *   - showRunningAgentsMenu: list running/queued/completed agents
- *   - buildAgentActionsList: per-agent action sub-menu (view result, steer, stop, clear)
+ *   - buildAgentActionsList: per-agent action sub-menu (view details/result, steer, stop, clear)
  *
  * Private helpers (single-consumer, co-located):
- *   - showConversationViewer: show ConversationViewer for agent snapshot
  *   - showTextViewer: show simple text viewer for result/error
+ *
+ * What a record's own details are - its conversation, a Workflow run's entries - is one open path in
+ * record-details.ts, shared with the widget.
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -26,13 +28,12 @@ import {
 } from "@earendil-works/pi-tui";
 import type { AgentRecord } from "../../types.ts";
 import { SHORT_ID_LENGTH } from "../../types.ts";
-import { ConversationViewer } from "../conversation-viewer.ts";
-import { viewerToolDisplay, viewerPresentation } from "../tool-display.ts";
+import { openRecordDetails } from "../record-details.ts";
 import { getDisplayName, recordDisplayName, agentBulletPrefix, formatMs } from "../format.ts";
 import { plainText } from "../sanitize.ts";
 import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.ts";
 import { overlayViewportRows } from "../overlay.ts";
-import { getManager, getStore } from "../../shell.ts";
+import { getManager } from "../../shell.ts";
 import type { Theme } from "../types.ts";
 
 /** Running or queued — the only non-terminal statuses (ADR-0006: active work is never cleared). */
@@ -40,26 +41,7 @@ function isActive(record: AgentRecord): boolean {
   return record.lifecycle.status === "running" || record.lifecycle.status === "queued";
 }
 
-async function showConversationViewer(ctx: ExtensionCommandContext, record: AgentRecord): Promise<void> {
-  if (!record.execution?.session) return;
-  const manager = getManager();
-
-  await ctx.ui.custom<void>(
-    (tui, theme, kb, done) => {
-      const viewer = new ConversationViewer(tui, record.execution.session!, record, theme, done, {
-        onStop: () => manager?.abort(record.id, "user"),
-        keybindings: kb,
-        onSteer: (msg: string) => manager?.steer(record.id, msg),
-        toolDisplay: viewerToolDisplay(ctx, manager, record.id),
-        ...viewerPresentation(getStore()),
-      });
-      viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
-      return viewer;
-    },
-    { overlay: true },
-  );
-}
-
+/** The frozen text a record ends with, in a scrolling overlay of its own. */
 async function showTextViewer(
   ctx: ExtensionCommandContext,
   record: AgentRecord,
@@ -176,6 +158,10 @@ export function buildAgentActionsList(
   const hasResult = !!record.result && record.result.length > 0;
   const hasError = !!record.error && record.error.length > 0;
 
+  if (record.workflow) {
+    // A run has no conversation to show, but it has what this client watched: its entries, one per row.
+    items.push({ value: "view-details", label: "View details" });
+  }
   if (record.lifecycle.status === "running" && hasSession) {
     items.push({ value: "view-snapshot", label: "View snapshot" });
   }
@@ -205,8 +191,14 @@ export function buildAgentActionsList(
 
   const list = new SelectList(items, 10, buildSelectListTheme(theme));
   list.onSelect = async (item) => {
-    if (item.value === "view-snapshot" || item.value === "view-conversation") {
-      await showConversationViewer(ctx, record);
+    if (item.value === "view-snapshot" || item.value === "view-conversation" || item.value === "view-details") {
+      // pi never awaits a selection callback, so a rejection here would end the process: the session a
+      // record had when these items were built can be gone by the choice.
+      try {
+        await openRecordDetails(ctx.ui, record, { overlay: true });
+      } catch (err) {
+        ctx.ui.notify(`Failed to open details: ${String(err)}`, "error");
+      }
     } else if (item.value === "view-result") {
       await showTextViewer(ctx, record, "result", record.result!);
     } else if (item.value === "view-error") {

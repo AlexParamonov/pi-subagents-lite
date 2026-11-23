@@ -7,8 +7,7 @@ import { matchesKey, isKeyRelease, getKeybindings } from "@earendil-works/pi-tui
 import { registerAgents, setAgentScanDirs, scanAndMerge } from "./agents/agent-types.ts";
 import { AgentManager } from "./agents/agent-manager.ts";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.ts";
-import { ConversationViewer } from "./ui/conversation-viewer.ts";
-import { viewerToolDisplay, viewerPresentation } from "./ui/tool-display.ts";
+import { openRecordDetails } from "./ui/record-details.ts";
 import { SpawnCoordinator } from "./spawn/spawn-coordinator.ts";
 import { toolCallListener } from "./agents/tool-execution.ts";
 import { invalidateAgentRow, cleanupInvalidations } from "./ui/renderer.ts";
@@ -125,28 +124,15 @@ export async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promis
 
 // --- Event listener setup ---
 
-/** Open the viewer overlay; the viewerOpen flag prevents nav deactivation while open. */
+/** Open the record's details over the conversation; the viewerOpen flag prevents nav deactivation while open. */
 async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Promise<void> {
   if (!record) return;
-  if (!record.execution?.session) return;
   const widget = getWidget();
   if (!widget) return;
-  const manager = getManager();
 
   try {
     widget.setViewerOpen(true);
-
-    await ctx.ui.custom<void>((tui, theme, kb, done) => {
-      const viewer = new ConversationViewer(tui, record.execution.session!, record, theme, done, {
-        onStop: () => manager?.abort(record.id, "user"),
-        keybindings: kb,
-        onSteer: (msg: string) => manager?.steer(record.id, msg),
-        toolDisplay: viewerToolDisplay(ctx, manager, record.id),
-        ...viewerPresentation(getStore()),
-      });
-      viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
-      return viewer;
-    });
+    await openRecordDetails(ctx.ui, record);
   } finally {
     widget.setViewerOpen(false);
   }
@@ -197,7 +183,7 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
         if (matchesKey(data, "enter")) {
           const record = widget.navSelect();
           openViewer(ctx, record).catch((err) => {
-            ctx.ui.notify(`Failed to open agent viewer: ${String(err)}`, "error");
+            ctx.ui.notify(`Failed to open details: ${String(err)}`, "error");
           });
           return { consume: true };
         }

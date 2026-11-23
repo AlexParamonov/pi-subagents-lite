@@ -141,6 +141,15 @@ export async function runWorkflow(
   const record = runRecord;
   const agentId = record.id;
   const shortId = agentId.slice(0, SHORT_ID_LENGTH);
+  // Whoever watches this run's display. The run's own publish path is the only writer of what they
+  // read, so this is the one signal they get.
+  const watchers = new Set<() => void>();
+  record.execution.watchSnapshot = (onChange) => {
+    watchers.add(onChange);
+    return () => {
+      watchers.delete(onChange);
+    };
+  };
 
   // Enrollment precedes observation, so a run that settles before its caller looked away is still
   // reported. A run the caller waits for is never enrolled: its settlement is that call's result.
@@ -217,6 +226,7 @@ export async function runWorkflow(
     // The settled view keeps the partial one: what this connection delivered is not undone by the
     // outcome. A call that already returned is repainted by the settlement's own notification.
     if (waiting) publish(outcome);
+    tellWatchers();
   }
 
   /**
@@ -271,13 +281,29 @@ export async function runWorkflow(
     if (settled || sessionEnded) return;
     lines = progressLines(items).map((line) => published.shown(line));
     workflow.progress = lines;
+    workflow.items = shownItems(items);
     repaint();
+  }
+
+  /** The snapshot a viewer paints: the same items, with every endpoint string made safe to show. */
+  function shownItems(items: readonly WorkflowDisplayItem[]): WorkflowDisplayItem[] {
+    return items.map((item) => {
+      const node = item.node === null ? null : published.shown(item.node);
+      if (item.type === "node-status") return { ...item, node };
+      if (item.type === "activity") return { ...item, node, activity: published.shown(item.activity) };
+      return { ...item, node, text: published.shown(item.text) };
+    });
   }
 
   /** The live view changed: the waiter paints it while it holds, the record's owner after that. */
   function repaint(): void {
     if (waiting) publish();
     else manager.notifyRecordTouched(record);
+    tellWatchers();
+  }
+
+  function tellWatchers(): void {
+    for (const watch of watchers) watch();
   }
 
   function publish(outcomeText?: string): void {

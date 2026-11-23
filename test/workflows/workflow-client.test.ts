@@ -549,8 +549,11 @@ describe("monitor display", () => {
     server.releaseStream();
     await settled;
 
+    // The captured `node_complete` payload carries the node's own text next to its status, and a node
+    // that streamed nothing has that text to show.
     expect(snapshots.at(-1)).toEqual([
       { type: "node-status", node: "analysis", status: "completed" },
+      { type: "text", node: "analysis", text: "Inspected 12 files" },
       { type: "node-status", node: "report", status: "failed" },
       { type: "node-status", node: "review", status: "dispatched" },
     ]);

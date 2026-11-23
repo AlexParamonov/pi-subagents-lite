@@ -309,7 +309,7 @@ describe("buildAgentActionsList — a workflow run", () => {
     vi.clearAllMocks();
   });
 
-  it("offers exactly Stop: no Steer and no conversation viewer for a run with no session", () => {
+  it("offers its details and Stop: no Steer and no conversation viewer for a run with no session", () => {
     const list = buildAgentActionsList(
       createMockCtx(),
       remoteRun(),
@@ -319,7 +319,59 @@ describe("buildAgentActionsList — a workflow run", () => {
       () => {},
     );
 
-    expect(selectListView(list).items.map((item) => item.value)).toEqual(["stop"]);
+    expect(selectListView(list).items.map((item) => item.value)).toEqual(["view-details", "stop"]);
+  });
+
+  it("offers its details and Clear once it has settled", () => {
+    const settled = {
+      ...remoteRun(),
+      lifecycle: { ...remoteRun().lifecycle, status: "completed" as const, completedAt: Date.now() },
+    };
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      settled,
+      defaultTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+
+    expect(selectListView(list).items.map((item) => item.value)).toEqual(["view-details", "clear"]);
+  });
+
+  it("opens the run's details, for a settled run as for a live one", async () => {
+    let opened = 0;
+    const ctx = createMockCtx([], [], [], {
+      ui: {
+        custom: vi.fn(async () => {
+          opened += 1;
+          return undefined;
+        }),
+      },
+    });
+
+    const list = buildAgentActionsList(
+      ctx,
+      remoteRun(),
+      defaultTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+    await list.onSelect!({ value: "view-details", label: "View details" });
+
+    const settled = { ...remoteRun(), lifecycle: { ...remoteRun().lifecycle, status: "completed" as const } };
+    const settledList = buildAgentActionsList(
+      ctx,
+      settled,
+      defaultTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+    await settledList.onSelect!({ value: "view-details", label: "View details" });
+
+    expect(opened).toBe(2);
   });
 
   it("requests the stop, and reports the request rather than an outcome", async () => {
@@ -819,6 +871,33 @@ describe("buildAgentActionsList — completed agent with session", () => {
 
     expect(capturedFactory).toBeDefined();
     expect(ctx.ui.custom).toHaveBeenCalledWith(expect.any(Function), { overlay: true });
+  });
+
+  it("reports a record whose session is gone by the time the row is chosen", async () => {
+    const notify = vi.fn<ExtensionUIContext["notify"]>();
+    const custom = vi.fn(async () => undefined);
+    const ctx = createMockCtx([], [], [], { ui: { notify, custom } });
+    const record = makeRecord({
+      lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
+      execution: { session: makeMockSession([{ role: "user", content: "hi" }]) },
+      result: "done",
+    });
+    // The items were built while the record had a session; Clear/dispose released it before the choice,
+    // and pi never awaits a selection callback, so a rejection here would end the process.
+    const list = buildAgentActionsList(
+      ctx,
+      record,
+      defaultTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+    record.execution.session = undefined;
+
+    await list.onSelect!({ value: "view-conversation", label: "View conversation" });
+
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("nothing to show"), "error");
+    expect(custom).not.toHaveBeenCalled();
   });
 
   it("hands the saved viewer presentation to the ConversationViewer", async () => {

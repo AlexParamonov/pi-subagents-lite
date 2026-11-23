@@ -5,10 +5,11 @@
  * replays its whole log per connection and this client never resumes by id), so nothing carries
  * over. Text is tracked per node, attempt and turn: one channel of a turn is shown, never
  * concatenated, and a full-turn frame closes the turn it arrives on. `progressLines` spells the
- * state for the tool call.
+ * state as the tool call's lines, `displayRows` as the details view's coloured rows.
  */
 
 import { plainText } from "../ui/sanitize.ts";
+import type { Theme } from "../ui/types.ts";
 import { field, parseRecord, record } from "./payload.ts";
 import type { SseFrame } from "./sse.ts";
 
@@ -104,6 +105,15 @@ class NodeLines {
     this.turn = new TurnText();
   }
 
+  /**
+   * The value a node's completion frame carries. A node whose own turns delivered text has delivered
+   * this content once already, so the value is shown only when the node has shown none.
+   */
+  showResult(text: string): void {
+    if (text === "" || this.texts.length > 0) return;
+    this.fullTurn(text);
+  }
+
   showActivity(activity: string): boolean {
     if (this.activity.includes(activity)) return false;
     this.activity.push(activity);
@@ -156,6 +166,8 @@ export class StreamView {
     if (lifecycle !== undefined) {
       if (lifecycle === "dispatched" || lifecycle === "retry") lines.beginAttempt();
       lines.status = lifecycle;
+      // The status change is the change; the completion value is taken for the entry it adds, if any.
+      if (lifecycle === "completed") lines.showResult(completedText(payload));
       effect.changed = true;
     } else if (event === null) {
       effect.changed = lines.append("raw", data);
@@ -193,6 +205,16 @@ export class StreamView {
  */
 const FULL_TURN_STEPS = new Set(["assistant_turn", "llm_response"]);
 
+/**
+ * The text a `node_complete` frame carries: `result.value.text`, the key path the captured journal and
+ * live frames both write (`recorded/replay-completed.sse`, `recorded/live-stream.sse`). This is the
+ * node's return value, and it is the only text the endpoint sends for a node that streams no progress
+ * frame. A value of any other shape declares no text.
+ */
+function completedText(payload: Record<string, unknown> | null): string {
+  return field(record(record(payload?.result)?.value), "text") ?? "";
+}
+
 function applyProgress(lines: NodeLines, payload: Record<string, unknown> | null): boolean {
   const step = field(payload, "step");
   const detail = record(payload?.detail);
@@ -229,4 +251,45 @@ function lineFor(item: WorkflowDisplayItem): string {
 /** The lines a tool call shows for one connection's display state, control sequences removed. */
 export function progressLines(items: readonly WorkflowDisplayItem[]): string[] {
   return items.map((item) => plainText(lineFor(item))).filter((line) => line !== "");
+}
+
+/** The theme roles a run's rows are painted with. */
+type RowRole = "accent" | "warning" | "dim" | "error" | "toolOutput";
+
+/** The theme role each node state is painted with, as the widget paints an agent status. */
+const NODE_STATE_COLOR: Record<WorkflowNodeStatus, RowRole> = {
+  dispatched: "accent",
+  retry: "warning",
+  completed: "dim",
+  failed: "error",
+};
+
+/**
+ * The view's spelling of one entry: the tool call's line, plus the node named on a text entry too.
+ * The flat spelling is the run's stored and published snapshot, whose wording is fixed, so only the
+ * view adds the attribution a text row needs to carry on its own. Every entry carries its mark or at
+ * least its indent, so no entry ever spells an empty line.
+ */
+function displayLineFor(item: WorkflowDisplayItem): string {
+  return item.type === "text" && item.node !== null ? `  ${item.node}  ${item.text}` : lineFor(item);
+}
+
+/**
+ * The rows one connection's display state is shown as, each naming its node and coloured by that
+ * node's state. An entry whose node reported no state, and one naming no node at all, carry no state
+ * colour. Colour is applied here, after the text was sanitised, so the stored text is unchanged.
+ */
+export function displayRows(items: readonly WorkflowDisplayItem[], theme: Theme): string[] {
+  const states = new Map<string, WorkflowNodeStatus>();
+  for (const item of items) {
+    if (item.type === "node-status" && item.node !== null) states.set(item.node, item.status);
+  }
+  return items.map((item) => theme.fg(roleOf(item, states), plainText(displayLineFor(item))));
+}
+
+/** The role one entry is painted with: its node's latest state, or the flat tool-output role for an
+ * entry that names no node, or one whose node has reported no state. */
+function roleOf(item: WorkflowDisplayItem, states: Map<string, WorkflowNodeStatus>): RowRole {
+  const state = item.node === null ? undefined : states.get(item.node);
+  return state === undefined ? "toolOutput" : NODE_STATE_COLOR[state];
 }

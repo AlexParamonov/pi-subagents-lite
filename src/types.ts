@@ -3,6 +3,7 @@ import type { AgentSession, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { AgentOutputLog } from "./agents/output-file.ts";
 import type { LifetimeUsage, AgentUsage } from "./agents/usage.ts";
 import type { SubagentType, AgentInvocation } from "./agents/types.ts";
+import type { WorkflowDisplayItem } from "./workflows/stream-view.ts";
 
 export type ThinkingLevel = ModelThinkingLevel;
 
@@ -67,6 +68,13 @@ export interface WorkflowRunInfo {
    * tool call that first displayed it. Display data, never a status.
    */
   progress?: string[];
+  /**
+   * The same snapshot as the typed items `progress` spells, kept so a surface can label each entry
+   * with its node and colour it by that node's state. Every string in it already crossed the run's
+   * publisher, so it is as safe to paint as `progress`; the two are written together, from one
+   * snapshot. Display data, never a status.
+   */
+  items?: WorkflowDisplayItem[];
   /**
    * The monitor's latest running-state note, not a lifecycle status. Kinds and their clearing rules:
    * `unknown` (reads failed) falls to an authoritative `running` read; `stop-failed` (the endpoint
@@ -247,6 +255,11 @@ export interface AgentExecutionState {
    * a remote run's status follows the endpoint's answer.
    */
   endWorkflowRun?: (reason: "stop" | "shutdown") => void;
+  /**
+   * Be told this record's own display changed, by whoever is watching it live (a Workflow run's
+   * details view). Attached by the run next to its record; the returned function stops the watching.
+   */
+  watchSnapshot?: (onChange: () => void) => () => void;
 }
 
 /**

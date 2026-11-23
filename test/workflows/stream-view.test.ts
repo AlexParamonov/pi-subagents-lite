@@ -1,12 +1,22 @@
 /**
  * stream-view.test.ts — What a frame does to one connection's display state (`apply`, `snapshot`)
- * and the lines that state becomes (`progressLines`), which is what a tool call shows. Which channel
- * of a node's text is shown, and what a replayed journal sets, is pinned through the client.
+ * and the lines that state becomes (`progressLines`, `displayRows`), which is what a tool call and a
+ * run's details view show. Which channel of a node's text is shown, and what a replayed journal
+ * sets, is pinned through the client.
  */
 import { describe, expect, it } from "vite-plus/test";
-import { progressLines, StreamView } from "../../src/workflows/stream-view.js";
+import { displayRows, progressLines, StreamView } from "../../src/workflows/stream-view.js";
 import type { WorkflowDisplayItem } from "../../src/workflows/stream-view.js";
-import type { SseFrame } from "../../src/workflows/sse.js";
+import { SseParser, type SseFrame } from "../../src/workflows/sse.js";
+import type { Theme } from "../../src/ui/types.js";
+import { recorded } from "./fixtures.js";
+
+/** A theme that names the role it was asked for, so a row shows the colour it was painted with. */
+const markingTheme: Theme = {
+  fg: (color, text) => `${color}:${text}`,
+  bg: (color, text) => `${color}:${text}`,
+  bold: (text) => text,
+};
 
 /** A frame as the parser hands it over: its SSE event name and its joined payload. */
 function frame(event: string | null, data: string): SseFrame {
@@ -24,6 +34,11 @@ function named(event: string, node: string, payload?: Record<string, unknown>): 
 /** An unnamed chunk: the text channel the producer sends without a name or an id. */
 function chunk(text: string): SseFrame {
   return frame(null, text);
+}
+
+/** Captured bytes as the parser hands them over, so a pin can be the bytes off the socket. */
+function frames(bytes: string): SseFrame[] {
+  return new SseParser().push(bytes);
 }
 
 describe("progressLines", () => {
@@ -48,6 +63,117 @@ describe("progressLines", () => {
   it("keeps a control sequence out of every line", () => {
     expect(progressLines([{ type: "text", node: null, text: "ok \u001b[?25l here" }])).toEqual(["  ok  here"]);
   });
+});
+
+describe("displayRows", () => {
+  it("names the node on every entry and paints the row with that node's state colour", () => {
+    const items: WorkflowDisplayItem[] = [
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "activity", node: "analysis", activity: "read_file" },
+      { type: "text", node: "analysis", text: "Inspecting the repository" },
+      { type: "node-status", node: "report", status: "retry" },
+      { type: "text", node: "report", text: "Reading it again" },
+      { type: "node-status", node: "writer", status: "failed" },
+      { type: "node-status", node: "index", status: "completed" },
+    ];
+
+    expect(displayRows(items, markingTheme)).toEqual([
+      "accent:\u25b6 analysis dispatched",
+      "accent:  analysis tool read_file",
+      "accent:  analysis  Inspecting the repository",
+      "warning:\u25b6 report retrying",
+      "warning:  report  Reading it again",
+      "error:\u2717 writer failed",
+      "dim:\u2713 index completed",
+    ]);
+  });
+
+  it("shows an entry that names no node unlabelled and in no node's colour", () => {
+    expect(displayRows([{ type: "text", node: null, text: "a chunk naming no node" }], markingTheme)).toEqual([
+      "toolOutput:  a chunk naming no node",
+    ]);
+  });
+
+  it("keeps a control sequence out of the text it paints, and paints only what is left", () => {
+    expect(displayRows([{ type: "text", node: null, text: "ok \u001b[31mhere" }], markingTheme)).toEqual([
+      "toolOutput:  ok here",
+    ]);
+  });
+
+  it("spells every entry as progressLines does, the view's text row naming its node as well", () => {
+    const items: WorkflowDisplayItem[] = [
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "activity", node: "analysis", activity: "read_file" },
+      { type: "text", node: "analysis", text: "Inspecting the diff." },
+      { type: "text", node: null, text: "a chunk naming no node" },
+    ];
+    const plain: Theme = { fg: (_color, text) => text, bg: (_color, text) => text, bold: (text) => text };
+
+    expect(progressLines(items)).toEqual([
+      "\u25b6 analysis dispatched",
+      "  analysis tool read_file",
+      "  Inspecting the diff.",
+      "  a chunk naming no node",
+    ]);
+    expect(displayRows(items, plain)).toEqual([
+      "\u25b6 analysis dispatched",
+      "  analysis tool read_file",
+      "  analysis  Inspecting the diff.",
+      "  a chunk naming no node",
+    ]);
+  });
+});
+
+describe("a node's completion", () => {
+  it("shows the text the node completed with as that node's own entry", () => {
+    const view = new StreamView();
+    view.apply(named("node_dispatched", "analysis"));
+
+    view.apply(named("node_complete", "analysis", { result: { status: "ok", value: { text: "Inspected 12 files" } } }));
+
+    expect(view.snapshot()).toEqual([
+      { type: "node-status", node: "analysis", status: "completed" },
+      { type: "text", node: "analysis", text: "Inspected 12 files" },
+    ]);
+  });
+
+  it("shows each node's completed text from the captured journal replay", () => {
+    const view = new StreamView();
+
+    for (const frame of frames(recorded("replay-completed.sse"))) view.apply(frame);
+
+    expect(progressLines(view.snapshot())).toEqual([
+      "\u2713 analysis completed",
+      "  Inspected 12 files",
+      "\u2713 report completed",
+      "  Report written",
+    ]);
+  });
+
+  it("adds nothing for a node that already delivered text", () => {
+    const view = new StreamView();
+    view.apply(named("node_dispatched", "analysis"));
+    view.apply(named("node_progress", "analysis", { step: "llm_response", detail: { text: "Inspecting the diff." } }));
+
+    view.apply(named("node_complete", "analysis", { result: { status: "ok", value: { text: "Inspected 12 files" } } }));
+
+    expect(view.snapshot()).toEqual([
+      { type: "node-status", node: "analysis", status: "completed" },
+      { type: "text", node: "analysis", text: "Inspecting the diff." },
+    ]);
+  });
+
+  it.for([{}, { result: "Inspected 12 files" }, { result: { status: "ok" } }, { result: { value: 7 } }])(
+    "declares no text for a completion whose payload carries %j",
+    (payload) => {
+      const view = new StreamView();
+      view.apply(named("node_dispatched", "analysis"));
+
+      view.apply(named("node_complete", "analysis", payload));
+
+      expect(view.snapshot()).toEqual([{ type: "node-status", node: "analysis", status: "completed" }]);
+    },
+  );
 });
 
 // A lookup on a plain object also matches what Object.prototype carries, so the first four names are

@@ -120,6 +120,9 @@ vi.mock("../src/ui/format.js", () => ({
   formatMs: vi.fn(() => "0s"),
   buildStatsParts: vi.fn(() => []),
   getDisplayName: vi.fn((type: string) => type),
+  recordDisplayName: vi.fn((record: AgentRecord, name: string) =>
+    record.workflow ? `${record.workflow.name} workflow` : name,
+  ),
 }));
 
 const mockManager = {
@@ -329,6 +332,51 @@ describe("navigation key handler (createNavInputHandler)", () => {
       await vi.runAllTimersAsync(); // openViewer awaits ctx.ui.custom
 
       expect(viewerOptions).toEqual([expect.objectContaining({ compactToolCalls: true, ungroupedTools: ["my_tool"] })]);
+    });
+
+    /** A run record: no session, and the kind tag the viewer needs to open it at all. */
+    function workflowRun(status: AgentRecord["lifecycle"]["status"] = "running"): AgentRecord {
+      return makeAgentRecord({
+        lifecycle: { status, startedAt: 1000, started: true, ...(status === "running" ? {} : { completedAt: 2000 }) },
+        execution: { settled: false, settlementCount: 0 },
+        workflow: { name: "audit", remoteId: "wf-remote-1", items: [] },
+      });
+    }
+
+    it("opens a details view for a Workflow run instead of doing nothing", async () => {
+      mockMatchesKey.mockImplementation((_d: string, key: KeyId) => key === "enter");
+      mockWidget.navSelect.mockReturnValueOnce(workflowRun());
+      const custom = vi.fn(async () => undefined);
+      const runCtx = asExtensionContext({ ui: { ...ctx.ui, custom, notify: vi.fn() } });
+
+      createNavInputHandler(runCtx)("some_data");
+      await vi.runAllTimersAsync();
+
+      expect(custom).toHaveBeenCalledWith(expect.any(Function), undefined);
+    });
+
+    it("opens a details view for a run that has already settled", async () => {
+      mockMatchesKey.mockImplementation((_d: string, key: KeyId) => key === "enter");
+      mockWidget.navSelect.mockReturnValueOnce(workflowRun("completed"));
+      const custom = vi.fn(async () => undefined);
+      const runCtx = asExtensionContext({ ui: { ...ctx.ui, custom, notify: vi.fn() } });
+
+      createNavInputHandler(runCtx)("some_data");
+      await vi.runAllTimersAsync();
+
+      expect(custom).toHaveBeenCalled();
+    });
+
+    it("reports a record with neither a session nor a run, instead of swallowing the keypress", async () => {
+      mockMatchesKey.mockImplementation((_d: string, key: KeyId) => key === "enter");
+      mockWidget.navSelect.mockReturnValueOnce(makeAgentRecord({ execution: { settled: false, settlementCount: 0 } }));
+      const notify = vi.fn();
+      const emptyCtx = asExtensionContext({ ui: { ...ctx.ui, custom: vi.fn(async () => undefined), notify } });
+
+      createNavInputHandler(emptyCtx)("some_data");
+      await vi.runAllTimersAsync();
+
+      expect(notify).toHaveBeenCalledWith(expect.stringContaining("11111111"), "error");
     });
 
     it("deactivates on non-navigation key", () => {

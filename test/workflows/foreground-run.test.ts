@@ -972,11 +972,13 @@ describe("foreground workflow execution", () => {
     expect(statusRows(views[0]!)).toEqual(["  \u25b6 analysis dispatched"]);
     expect(views.at(-1)!.split("\n")).toEqual([
       "  \u2713 analysis completed",
+      "    Inspected 12 files",
       "    Visible progress",
       "  The declared output",
     ]);
-    // The replayed lifecycle frame carries the node's stored result: it is not the run's answer.
-    expect(views.join("\n")).not.toContain(RECORDED.nodeResult);
+    // The replayed lifecycle frame carries the node's stored result: it is the node's own text, never
+    // the run's answer, so it never reaches the text this call returns.
+    expect(text(result)).not.toContain(RECORDED.nodeResult);
     expect(text(result)).toContain("The declared output");
   });
 });

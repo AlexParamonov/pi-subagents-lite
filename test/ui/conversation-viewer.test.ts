@@ -109,6 +109,7 @@ import {
   ConversationViewer,
   type ConversationViewerOptions,
   type ToolDisplayOptions,
+  type TranscriptSource,
 } from "../../src/ui/conversation-viewer.js";
 
 // --- Test helpers ---
@@ -188,11 +189,11 @@ interface ViewerOptions extends ConversationViewerOptions {
 
 /** This suite is the ordinary viewer, so compact rendering is off unless a test asks for it. */
 function openViewer(
-  session: ReturnType<typeof makeMockSession>,
+  source: TranscriptSource,
   record: AgentRecord,
   { rows, onClose, ...options }: ViewerOptions = {},
 ): ConversationViewer {
-  return new ConversationViewer(makeTui(rows), session, record, defaultTheme, onClose ?? vi.fn(), {
+  return new ConversationViewer(makeTui(rows), source, record, defaultTheme, onClose ?? vi.fn(), {
     compactToolCalls: false,
     ...options,
   });
@@ -1376,6 +1377,99 @@ describe("ConversationViewer", () => {
 
       expect(output.match(/fixture-existing-message/g)).toHaveLength(1);
       expect(output.match(/fixture-appended-message/g)).toHaveLength(1);
+    });
+  });
+
+  describe("a source with no session", () => {
+    /** A transcript source a test can change while the viewer is open. */
+    function makeSource(rows: { role: "row"; text: string }[]) {
+      let current = rows;
+      let notify: (() => void) | undefined;
+      return {
+        get messages() {
+          return current;
+        },
+        subscribe: (listener: () => void) => {
+          notify = () => listener();
+          return () => {
+            notify = undefined;
+          };
+        },
+        /** What the source does when its whole content is replaced: report the change, no event. */
+        replace(rows: { role: "row"; text: string }[]) {
+          current = rows;
+          notify?.();
+        },
+      };
+    }
+
+    /** The viewer's own content rows: border and padding removed, blank viewport rows dropped. */
+    function contentRows(viewer: ConversationViewer): string[] {
+      const frame = viewer.render(80).map((line) =>
+        line
+          .replace(/^\u2502 /, "")
+          .replace(/ \u2502$/, "")
+          .trimEnd(),
+      );
+      const separators = frame.flatMap((line, index) => (/^\u2500+$/.test(line) ? [index] : []));
+      return frame.slice(separators[0]! + 1, separators[1]).filter((line) => line !== "");
+    }
+
+    function sessionless() {
+      return makeMockRecord({ execution: { settled: false, settlementCount: 0, session: undefined } });
+    }
+
+    it("paints the rows its source contributes, in its source's order", () => {
+      const viewer = openViewer(
+        makeSource([
+          { role: "row", text: "\u25b6 analysis dispatched" },
+          { role: "row", text: "  analysis tool read_file" },
+          { role: "row", text: "  analysis  Inspecting the diff." },
+        ]),
+        sessionless(),
+      );
+
+      expect(contentRows(viewer)).toEqual([
+        "\u25b6 analysis dispatched",
+        "  analysis tool read_file",
+        "  analysis  Inspecting the diff.",
+      ]);
+    });
+
+    it("wraps a row too long for its width instead of cutting it short", () => {
+      const viewer = openViewer(makeSource([{ role: "row", text: "x".repeat(150) }]), sessionless());
+
+      expect(contentRows(viewer).join("")).toBe("x".repeat(150));
+    });
+
+    it("replaces the rows it showed when its source reports new ones", () => {
+      vi.useFakeTimers();
+      try {
+        const source = makeSource([
+          { role: "row", text: "\u25b6 analysis dispatched" },
+          { role: "row", text: "  analysis  Inspecting the diff." },
+        ]);
+        const viewer = openViewer(source, sessionless());
+        viewer.render(80);
+        mockRequestRender.mockClear();
+
+        source.replace([{ role: "row", text: "\u2713 analysis completed" }]);
+        vi.runAllTimers();
+
+        expect(mockRequestRender).toHaveBeenCalled();
+        expect(contentRows(viewer)).toEqual(["\u2713 analysis completed"]);
+        viewer.dispose();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("shows no stop hint for a source it cannot stop", () => {
+      const viewer = openViewer(makeSource([{ role: "row", text: "\u25b6 analysis dispatched" }]), sessionless(), {
+        onStop: undefined,
+      });
+
+      expect(frameText(viewer)).not.toMatch(/\bs stop\b|to STOP/i);
     });
   });
 
