@@ -310,9 +310,7 @@ export class SpawnCoordinator {
     const status = record.lifecycle.status;
     const body = workflow ? (record.result ?? record.error ?? "") : formatResultContent(record);
     // A remote run has no usage accounting: its snapshot asks for none rather than carrying zeros.
-    const details = workflow
-      ? buildAgentDetails(record, { includeStatus: true, includeStats: false })
-      : buildAgentDetails(record, { includeStatus: true, includeStats: true });
+    const details = buildAgentDetails(record, { includeStatus: true, includeStats: !workflow });
     details.kind = kind;
     return {
       agentId: record.id,
