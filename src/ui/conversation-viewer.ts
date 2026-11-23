@@ -896,7 +896,7 @@ export class ConversationViewer implements Component {
     return this.record.lifecycle.status === "running" || this.record.lifecycle.status === "queued";
   }
 
-  /** Thinking blocks and tool calls exist only behind a session, so a session-less view shows neither. */
+  /** The record's session is the capability flag: steering, thinking blocks and tool calls exist only behind one. */
   private sessionBacked(): boolean {
     return !!this.record.execution.session;
   }
@@ -907,7 +907,7 @@ export class ConversationViewer implements Component {
 
   private canSteer(): boolean {
     // Offered whenever a session exists — a settled agent can be continued.
-    return !!this.onSteer && !!this.record.execution.session;
+    return !!this.onSteer && this.sessionBacked();
   }
 
   private openComposer(): void {
