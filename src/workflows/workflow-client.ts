@@ -84,7 +84,8 @@ type StopStatus = (typeof STOP_STATUSES)[number];
  * The endpoint's three-way stop acknowledgement, or the reason it did not acknowledge. `refusal` is
  * that failure in the short form a hand-back note quotes: no endpoint name, URL or transport detail,
  * and no `stop`-family word of its own, because a note may deny a stop but never speak of one.
- * `error` is the same failure named by the endpoint it happened against, for the diagnostic path.
+ * `error` is the same failure named by the endpoint it happened against: `stop` logs it, because the
+ * note carries none of that detail.
  */
 export type WorkflowStop = { ok: true; status: StopStatus } | { ok: false; error: string; refusal: string };
 
@@ -309,40 +310,48 @@ export function createWorkflowClient(endpoint: WorkflowEndpoint, options: Workfl
     },
 
     async stop(workflowId, signal): Promise<WorkflowStop> {
-      if (segmentOf(workflowId) === null)
-        return {
-          ok: false,
-          error: fault("did not send the stop request", ROUTELESS),
-          refusal: "the run id names no request route",
-        };
-      // Any stop request takes the stream away: the run's own state after a stop is whatever the
-      // next authoritative read says.
-      lastKnown = "unknown";
-      const sent = await answer("POST", runRoutes(workflowId).stop, undefined, signal);
-      if (!sent.ok)
-        return {
-          ok: false,
-          error: fault("did not answer the stop request", sent.reason),
-          refusal: "the endpoint did not answer the request",
-        };
-      if (sent.status < 200 || sent.status >= 300) {
-        const refusal = `HTTP ${sent.status}: ${rejection(sent.body)}`;
-        return { ok: false, error: fault("refused the stop request", refusal), refusal };
-      }
-      const status = stopStatus(sent.body);
-      if (!status) {
-        return {
-          ok: false,
-          error: fault("answered the stop request unreadably", `no stop status in ${published.bounded(sent.body)}`),
-          refusal: "the endpoint answered with no usable acknowledgement",
-        };
-      }
-      // An acknowledgement that is not `stopped` says the run's own state must be read now: the
-      // next entry skips its owed delay for exactly that one authoritative read.
-      if (status !== "stopped") bypassNextDelay = true;
-      return { ok: true, status };
+      const ack = await sendStop(workflowId, signal);
+      // The run's note quotes `refusal` alone, so this is where the endpoint-named reason is left.
+      if (!ack.ok) console.warn(`[pi-subagents-lite] ${ack.error}`);
+      return ack;
     },
   };
+
+  /** One stop request and its acknowledgement, or the reason it did not arrive. */
+  async function sendStop(workflowId: string, signal?: AbortSignal): Promise<WorkflowStop> {
+    if (segmentOf(workflowId) === null)
+      return {
+        ok: false,
+        error: fault("did not send the stop request", ROUTELESS),
+        refusal: "the run id names no request route",
+      };
+    // Any stop request takes the stream away: the run's own state after a stop is whatever the
+    // next authoritative read says.
+    lastKnown = "unknown";
+    const sent = await answer("POST", runRoutes(workflowId).stop, undefined, signal);
+    if (!sent.ok)
+      return {
+        ok: false,
+        error: fault("did not answer the stop request", sent.reason),
+        refusal: "the endpoint did not answer the request",
+      };
+    if (sent.status < 200 || sent.status >= 300) {
+      const refusal = `HTTP ${sent.status}: ${rejection(sent.body)}`;
+      return { ok: false, error: fault("refused the stop request", refusal), refusal };
+    }
+    const status = stopStatus(sent.body);
+    if (!status) {
+      return {
+        ok: false,
+        error: fault("answered the stop request unreadably", `no stop status in ${published.bounded(sent.body)}`),
+        refusal: "the endpoint answered with no usable acknowledgement",
+      };
+    }
+    // An acknowledgement that is not `stopped` says the run's own state must be read now: the
+    // next entry skips its owed delay for exactly that one authoritative read.
+    if (status !== "stopped") bypassNextDelay = true;
+    return { ok: true, status };
+  }
 
   /**
    * One SSE connection: display state is rebuilt from scratch, the silence clock is armed by

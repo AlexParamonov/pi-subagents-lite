@@ -1623,6 +1623,26 @@ describe("stop", () => {
     });
     expect((stop as { error: string }).error).toContain(FAKED_URL);
   });
+
+  // A hand-back note quotes `refusal` alone, so the log is where the reason of a stop that never
+  // reached the endpoint still reaches someone.
+  it("logs the endpoint-named diagnostic of a stop the transport never carried", async () => {
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const socket = fakeWorkflowFetch({
+      stream: (_push, close) => close(),
+      read: () => jsonResponse(200, readState()),
+      stop: async () => {
+        throw new Error("socket hang up");
+      },
+    });
+    const run = await client(FAKED_URL, undefined, socket.fetch);
+
+    await run.stop(REMOTE_ID);
+
+    expect(warnings.mock.calls.map((call) => String(call[0]))).toEqual([
+      `[pi-subagents-lite] Workflow endpoint "local" (${FAKED_URL}) did not answer the stop request: socket hang up`,
+    ]);
+  });
 });
 
 // ── monitor continuity: the observation state belongs to the run, not to one wait ──
