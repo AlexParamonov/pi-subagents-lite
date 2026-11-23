@@ -109,9 +109,9 @@ class NodeLines {
    * The value a node's completion frame carries. A node whose own turns delivered text has delivered
    * this content once already, so the value is shown only when the node has shown none.
    */
-  showResult(text: string): boolean {
-    if (text === "" || this.texts.length > 0) return false;
-    return this.fullTurn(text);
+  showResult(text: string): void {
+    if (text === "" || this.texts.length > 0) return;
+    this.fullTurn(text);
   }
 
   showActivity(activity: string): boolean {
@@ -166,8 +166,9 @@ export class StreamView {
     if (lifecycle !== undefined) {
       if (lifecycle === "dispatched" || lifecycle === "retry") lines.beginAttempt();
       lines.status = lifecycle;
+      // The status change is the change; the completion value is taken for the entry it adds, if any.
+      if (lifecycle === "completed") lines.showResult(completedText(payload));
       effect.changed = true;
-      if (lifecycle === "completed") effect.changed = lines.showResult(completedText(payload)) || effect.changed;
     } else if (event === null) {
       effect.changed = lines.append("raw", data);
     } else if (event === PROGRESS) {
