@@ -326,70 +326,76 @@ export class ConversationViewer implements Component {
     this.seedRunningToolCalls();
     this.unsubscribe = source.subscribe((event) => {
       try {
-        if (this.closed) return;
-        if (event === undefined) {
-          // A source with no session says only that its entries changed: what it holds now replaces
-          // what it held, so nothing cached may survive the next frame.
-          this.invalidate();
-          this.scheduleRender();
-          return;
-        }
-        if (event.type === "message_update") {
-          const me = event.assistantMessageEvent;
-          const prevThinking = this.streamingThinking;
-          const prevText = this.streamingText;
-          switch (me?.type) {
-            case "thinking_start":
-            case "thinking_end":
-              this.streamingThinking = "";
-              this.streamingThinkingMd?.setText("");
-              this.refreshStreamingMessage();
-              break;
-            case "thinking_delta":
-              this.streamingThinking += me.delta;
-              this.ensureThinkingMd().setText(this.streamingThinking);
-              break;
-            case "text_start":
-            case "text_end":
-              this.streamingText = "";
-              this.streamingTextMd?.setText("");
-              this.refreshStreamingMessage();
-              break;
-            case "text_delta":
-              this.streamingText += me.delta;
-              this.ensureTextMd().setText(this.streamingText);
-              break;
-          }
-          if (this.streamingThinking !== prevThinking || this.streamingText !== prevText) {
-            this.scheduleRender();
-          }
-        } else if (event.type === "tool_execution_start") {
-          this.toolStartedAt.set(event.toolCallId, Date.now());
-          if (event.toolName === "codemode") this.toolPartialCalls.delete(event.toolCallId);
-          this.refreshToolCalls([event.toolCallId]);
-        } else if (event.type === "tool_execution_update") {
-          if (event.toolName === "codemode") {
-            this.toolPartialCalls.set(event.toolCallId, codemodeCallsFrom(event.partialResult?.details));
-            this.refreshToolCalls([event.toolCallId]);
-          }
-        } else if (event.type === "tool_execution_end") {
-          const startedAt = this.toolStartedAt.get(event.toolCallId);
-          this.toolStartedAt.delete(event.toolCallId);
-          // pi >= 1.4 reports the monotonic duration on the event; older typings lack the field.
-          const reportedMs = (event as { durationMs?: number }).durationMs;
-          const durationMs = reportedMs ?? (startedAt === undefined ? undefined : Date.now() - startedAt);
-          if (durationMs !== undefined) this.toolFinishedMs.set(event.toolCallId, durationMs);
-          this.refreshToolCalls([event.toolCallId]);
-        } else if (event.type === "message_end") {
-          if (event.message.role === "toolResult") this.toolPartialCalls.delete(event.message.toolCallId);
-          // Session-level end-of-message (pi swaps the final message object
-          // into the last slot at "done") — same refresh as the boundaries.
-          this.refreshStreamingMessage();
-        }
+        this.handleSourceEvent(event);
       } catch {
         // Swallow — a throw here would crash the host menu; events can arrive after closure, before dispose.
       }
     });
+  }
+
+  /** Apply what the source reports to what is on screen. A session's event names the part of the
+   * transcript that moved; a source with no session reports only that its entries changed. */
+  private handleSourceEvent(event: AgentSessionEvent | undefined): void {
+    if (this.closed) return;
+    if (event === undefined) {
+      // A source with no session says only that its entries changed: what it holds now replaces
+      // what it held, so nothing cached may survive the next frame.
+      this.invalidate();
+      this.scheduleRender();
+      return;
+    }
+    if (event.type === "message_update") {
+      const me = event.assistantMessageEvent;
+      const prevThinking = this.streamingThinking;
+      const prevText = this.streamingText;
+      switch (me?.type) {
+        case "thinking_start":
+        case "thinking_end":
+          this.streamingThinking = "";
+          this.streamingThinkingMd?.setText("");
+          this.refreshStreamingMessage();
+          break;
+        case "thinking_delta":
+          this.streamingThinking += me.delta;
+          this.ensureThinkingMd().setText(this.streamingThinking);
+          break;
+        case "text_start":
+        case "text_end":
+          this.streamingText = "";
+          this.streamingTextMd?.setText("");
+          this.refreshStreamingMessage();
+          break;
+        case "text_delta":
+          this.streamingText += me.delta;
+          this.ensureTextMd().setText(this.streamingText);
+          break;
+      }
+      if (this.streamingThinking !== prevThinking || this.streamingText !== prevText) {
+        this.scheduleRender();
+      }
+    } else if (event.type === "tool_execution_start") {
+      this.toolStartedAt.set(event.toolCallId, Date.now());
+      if (event.toolName === "codemode") this.toolPartialCalls.delete(event.toolCallId);
+      this.refreshToolCalls([event.toolCallId]);
+    } else if (event.type === "tool_execution_update") {
+      if (event.toolName === "codemode") {
+        this.toolPartialCalls.set(event.toolCallId, codemodeCallsFrom(event.partialResult?.details));
+        this.refreshToolCalls([event.toolCallId]);
+      }
+    } else if (event.type === "tool_execution_end") {
+      const startedAt = this.toolStartedAt.get(event.toolCallId);
+      this.toolStartedAt.delete(event.toolCallId);
+      // pi >= 1.4 reports the monotonic duration on the event; older typings lack the field.
+      const reportedMs = (event as { durationMs?: number }).durationMs;
+      const durationMs = reportedMs ?? (startedAt === undefined ? undefined : Date.now() - startedAt);
+      if (durationMs !== undefined) this.toolFinishedMs.set(event.toolCallId, durationMs);
+      this.refreshToolCalls([event.toolCallId]);
+    } else if (event.type === "message_end") {
+      if (event.message.role === "toolResult") this.toolPartialCalls.delete(event.message.toolCallId);
+      // Session-level end-of-message (pi swaps the final message object
+      // into the last slot at "done") — same refresh as the boundaries.
+      this.refreshStreamingMessage();
+    }
   }
   private ensureThinkingMd(): Markdown {
     if (!this.streamingThinkingMd) {
