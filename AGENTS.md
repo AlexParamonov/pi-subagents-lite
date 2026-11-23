@@ -54,6 +54,7 @@ Pi source code in ../pi
 - Capture an exact request array at the milestone that ends the sequence; read after a later `await` and a live record's own next reconnect appends to it.
 - To pin "nothing lands in the replacement session", start the replacement before advancing any clock, or the queued flush has already drained into the session that is gone.
 - Report a mutation's red set as the run's `FAIL` lines. A probe run scoped to the files you edited measures that scope, not the code: the same edit went 2 red on two files and 3 red suite-wide, and M8's phrase swap went 21.
+- A sentence naming which files use a helper is a grep result, not a memory; and a sub-count inside a correct total is still a count (a 21 written as 1 + 9 + 8 + 1 sums to 19).
 - A "one per still-bound run" criterion needs a pin with two still-bound runs; one cannot see a per-turn dedupe.
 
 ## pi-ai API & Subagent Lifecycle
