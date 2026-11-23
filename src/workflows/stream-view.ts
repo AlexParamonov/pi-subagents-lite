@@ -105,6 +105,15 @@ class NodeLines {
     this.turn = new TurnText();
   }
 
+  /**
+   * The value a node's completion frame carries. A node whose own turns delivered text has delivered
+   * this content once already, so the value is shown only when the node has shown none.
+   */
+  showResult(text: string): boolean {
+    if (text === "" || this.texts.length > 0) return false;
+    return this.fullTurn(text);
+  }
+
   showActivity(activity: string): boolean {
     if (this.activity.includes(activity)) return false;
     this.activity.push(activity);
@@ -158,6 +167,7 @@ export class StreamView {
       if (lifecycle === "dispatched" || lifecycle === "retry") lines.beginAttempt();
       lines.status = lifecycle;
       effect.changed = true;
+      if (lifecycle === "completed") effect.changed = lines.showResult(completedText(payload)) || effect.changed;
     } else if (event === null) {
       effect.changed = lines.append("raw", data);
     } else if (event === PROGRESS) {
@@ -193,6 +203,16 @@ export class StreamView {
  * chunk of the turn still arriving, not a boundary.
  */
 const FULL_TURN_STEPS = new Set(["assistant_turn", "llm_response"]);
+
+/**
+ * The text a `node_complete` frame carries: `result.value.text`, the key path the captured journal and
+ * live frames both write (`recorded/replay-completed.sse`, `recorded/live-stream.sse`). This is the
+ * node's return value, and it is the only text the endpoint sends for a node that streams no progress
+ * frame. A value of any other shape declares no text.
+ */
+function completedText(payload: Record<string, unknown> | null): string {
+  return field(record(record(payload?.result)?.value), "text") ?? "";
+}
 
 function applyProgress(lines: NodeLines, payload: Record<string, unknown> | null): boolean {
   const step = field(payload, "step");

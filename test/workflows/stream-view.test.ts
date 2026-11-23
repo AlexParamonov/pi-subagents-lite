@@ -7,8 +7,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import { displayRows, progressLines, StreamView } from "../../src/workflows/stream-view.js";
 import type { WorkflowDisplayItem } from "../../src/workflows/stream-view.js";
-import type { SseFrame } from "../../src/workflows/sse.js";
+import { SseParser, type SseFrame } from "../../src/workflows/sse.js";
 import type { Theme } from "../../src/ui/types.js";
+import { recorded } from "./fixtures.js";
 
 /** A theme that names the role it was asked for, so a row shows the colour it was painted with. */
 const markingTheme: Theme = {
@@ -33,6 +34,11 @@ function named(event: string, node: string, payload?: Record<string, unknown>): 
 /** An unnamed chunk: the text channel the producer sends without a name or an id. */
 function chunk(text: string): SseFrame {
   return frame(null, text);
+}
+
+/** Captured bytes as the parser hands them over, so a pin can be the bytes off the socket. */
+function frames(bytes: string): SseFrame[] {
+  return new SseParser().push(bytes);
 }
 
 describe("progressLines", () => {
@@ -116,6 +122,58 @@ describe("displayRows", () => {
       "  a chunk naming no node",
     ]);
   });
+});
+
+describe("a node's completion", () => {
+  it("shows the text the node completed with as that node's own entry", () => {
+    const view = new StreamView();
+    view.apply(named("node_dispatched", "analysis"));
+
+    view.apply(named("node_complete", "analysis", { result: { status: "ok", value: { text: "Inspected 12 files" } } }));
+
+    expect(view.snapshot()).toEqual([
+      { type: "node-status", node: "analysis", status: "completed" },
+      { type: "text", node: "analysis", text: "Inspected 12 files" },
+    ]);
+  });
+
+  it("shows each node's completed text from the captured journal replay", () => {
+    const view = new StreamView();
+
+    for (const frame of frames(recorded("replay-completed.sse"))) view.apply(frame);
+
+    expect(progressLines(view.snapshot())).toEqual([
+      "\u2713 analysis completed",
+      "  Inspected 12 files",
+      "\u2713 report completed",
+      "  Report written",
+    ]);
+  });
+
+  it("adds nothing for a node that already delivered text", () => {
+    const view = new StreamView();
+    view.apply(named("node_dispatched", "analysis"));
+    view.apply(named("node_progress", "analysis", { step: "llm_response", detail: { text: "Inspecting the diff." } }));
+
+    view.apply(named("node_complete", "analysis", { result: { status: "ok", value: { text: "Inspected 12 files" } } }));
+
+    expect(view.snapshot()).toEqual([
+      { type: "node-status", node: "analysis", status: "completed" },
+      { type: "text", node: "analysis", text: "Inspecting the diff." },
+    ]);
+  });
+
+  it.for([{}, { result: "Inspected 12 files" }, { result: { status: "ok" } }, { result: { value: 7 } }])(
+    "declares no text for a completion whose payload carries %j",
+    (payload) => {
+      const view = new StreamView();
+      view.apply(named("node_dispatched", "analysis"));
+
+      view.apply(named("node_complete", "analysis", payload));
+
+      expect(view.snapshot()).toEqual([{ type: "node-status", node: "analysis", status: "completed" }]);
+    },
+  );
 });
 
 // A lookup on a plain object also matches what Object.prototype carries, so the first four names are
