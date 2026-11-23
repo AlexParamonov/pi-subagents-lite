@@ -1,12 +1,21 @@
 /**
  * stream-view.test.ts — What a frame does to one connection's display state (`apply`, `snapshot`)
- * and the lines that state becomes (`progressLines`), which is what a tool call shows. Which channel
- * of a node's text is shown, and what a replayed journal sets, is pinned through the client.
+ * and the lines that state becomes (`progressLines`, `displayRows`), which is what a tool call and a
+ * run's details view show. Which channel of a node's text is shown, and what a replayed journal
+ * sets, is pinned through the client.
  */
 import { describe, expect, it } from "vite-plus/test";
-import { progressLines, StreamView } from "../../src/workflows/stream-view.js";
+import { displayRows, progressLines, StreamView } from "../../src/workflows/stream-view.js";
 import type { WorkflowDisplayItem } from "../../src/workflows/stream-view.js";
 import type { SseFrame } from "../../src/workflows/sse.js";
+import type { Theme } from "../../src/ui/types.js";
+
+/** A theme that names the role it was asked for, so a row shows the colour it was painted with. */
+const markingTheme: Theme = {
+  fg: (color, text) => `${color}:${text}`,
+  bg: (color, text) => `${color}:${text}`,
+  bold: (text) => text,
+};
 
 /** A frame as the parser hands it over: its SSE event name and its joined payload. */
 function frame(event: string | null, data: string): SseFrame {
@@ -47,6 +56,53 @@ describe("progressLines", () => {
 
   it("keeps a control sequence out of every line", () => {
     expect(progressLines([{ type: "text", node: null, text: "ok \u001b[?25l here" }])).toEqual(["  ok  here"]);
+  });
+});
+
+describe("displayRows", () => {
+  it("names the node on every entry and paints the row with that node's state colour", () => {
+    const items: WorkflowDisplayItem[] = [
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "activity", node: "analysis", activity: "read_file" },
+      { type: "text", node: "analysis", text: "Inspecting the repository" },
+      { type: "node-status", node: "report", status: "retry" },
+      { type: "text", node: "report", text: "Reading it again" },
+      { type: "node-status", node: "writer", status: "failed" },
+      { type: "node-status", node: "index", status: "completed" },
+    ];
+
+    expect(displayRows(items, markingTheme)).toEqual([
+      "accent:\u25b6 analysis dispatched",
+      "accent:  analysis tool read_file",
+      "accent:  Inspecting the repository",
+      "warning:\u25b6 report retrying",
+      "warning:  Reading it again",
+      "error:\u2717 writer failed",
+      "dim:\u2713 index completed",
+    ]);
+  });
+
+  it("shows an entry that names no node unlabelled and in no node's colour", () => {
+    expect(displayRows([{ type: "text", node: null, text: "a chunk naming no node" }], markingTheme)).toEqual([
+      "toolOutput:  a chunk naming no node",
+    ]);
+  });
+
+  it("keeps a control sequence out of the text it paints, and paints only what is left", () => {
+    expect(displayRows([{ type: "text", node: null, text: "ok \u001b[31mhere" }], markingTheme)).toEqual([
+      "toolOutput:  ok here",
+    ]);
+  });
+
+  it("paints the same lines progressLines spells, so the card and the view agree", () => {
+    const items: WorkflowDisplayItem[] = [
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "activity", node: "analysis", activity: "read_file" },
+      { type: "text", node: null, text: "a chunk naming no node" },
+    ];
+    const plain: Theme = { fg: (_color, text) => text, bg: (_color, text) => text, bold: (text) => text };
+
+    expect(displayRows(items, plain)).toEqual(progressLines(items));
   });
 });
 

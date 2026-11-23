@@ -9,6 +9,7 @@
  */
 
 import { plainText } from "../ui/sanitize.ts";
+import type { Theme } from "../ui/types.ts";
 import { field, parseRecord, record } from "./payload.ts";
 import type { SseFrame } from "./sse.ts";
 
@@ -229,4 +230,31 @@ function lineFor(item: WorkflowDisplayItem): string {
 /** The lines a tool call shows for one connection's display state, control sequences removed. */
 export function progressLines(items: readonly WorkflowDisplayItem[]): string[] {
   return items.map((item) => plainText(lineFor(item))).filter((line) => line !== "");
+}
+
+/** The theme role each node state is painted with, as the widget paints an agent status. */
+const NODE_STATE_COLOR: Record<WorkflowNodeStatus, "accent" | "warning" | "dim" | "error"> = {
+  dispatched: "accent",
+  retry: "warning",
+  completed: "dim",
+  failed: "error",
+};
+
+/**
+ * The rows one connection's display state is shown as, each coloured by the state of the node it
+ * names. An entry whose node reported no state, and one naming no node at all, carry no state colour.
+ * Colour is applied here, after the text was sanitised, so the stored and published text is unchanged.
+ */
+export function displayRows(items: readonly WorkflowDisplayItem[], theme: Theme): string[] {
+  const states = new Map<string, WorkflowNodeStatus>();
+  for (const item of items) {
+    if (item.type === "node-status" && item.node !== null) states.set(item.node, item.status);
+  }
+  return items
+    .map((item) => {
+      const line = plainText(lineFor(item));
+      const state = item.node === null ? undefined : states.get(item.node);
+      return line === "" ? "" : theme.fg(state === undefined ? "toolOutput" : NODE_STATE_COLOR[state], line);
+    })
+    .filter((row) => row !== "");
 }

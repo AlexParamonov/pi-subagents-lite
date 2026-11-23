@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { AgentRecord } from "../../src/types.js";
+import type { WorkflowDisplayItem } from "../../src/workflows/stream-view.js";
 import { shellMock } from "../fixtures.js";
 import { defaultTheme } from "../mock-utils.js";
 
@@ -17,6 +18,7 @@ const { mockGetRecord } = vi.hoisted(() => ({
 vi.mock("../../src/shell.js", () => shellMock({ manager: { getRecord: mockGetRecord } }));
 
 import { renderWorkflowResult } from "../../src/workflows/workflow-tool.js";
+import { displayRows } from "../../src/workflows/stream-view.js";
 
 const SHORT_ID = "a1b2c3d4";
 const NOTE = [
@@ -28,6 +30,7 @@ interface RunFixture {
   status: AgentRecord["lifecycle"]["status"];
   note?: string;
   progress?: string[];
+  items?: WorkflowDisplayItem[];
   result?: string;
   error?: string;
   launched?: boolean;
@@ -47,6 +50,7 @@ function liveRecord(fixture: RunFixture): AgentRecord {
       name: "audit",
       remoteId: "wf-remote-1",
       progress: fixture.progress ?? [],
+      ...(fixture.items ? { items: fixture.items } : {}),
       ...(fixture.note ? { note: fixture.note } : {}),
     },
     stats: { toolUses: 0, compactionCount: 0, lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 } },
@@ -138,5 +142,32 @@ describe("the Workflow row's outcome line", () => {
     expect(rowRows({ content: [{ type: "text", text: "cleared after the call returned" }] })).toEqual([
       "cleared after the call returned",
     ]);
+  });
+
+  /** One connection's snapshot, in the two forms the record carries it. */
+  const SNAPSHOT = {
+    items: [
+      { type: "node-status", node: "analysis", status: "dispatched" },
+      { type: "activity", node: "analysis", activity: "read_file" },
+      { type: "text", node: null, text: "Inspecting the diff." },
+    ] as WorkflowDisplayItem[],
+    progress: ["\u25b6 analysis dispatched", "  analysis tool read_file", "  Inspecting the diff."],
+  };
+
+  it("shows the same entries the run's details view shows, in the same order", () => {
+    mockGetRecord.mockReturnValue(
+      liveRecord({
+        status: "completed",
+        result: "two findings, one nit",
+        progress: SNAPSHOT.progress,
+        items: SNAPSHOT.items,
+      }),
+    );
+
+    const rows = rowRows({ content: [] });
+
+    expect(rows.slice(0, 3)).toEqual(SNAPSHOT.progress.map((line) => line.trim()));
+    expect(rows.slice(0, 3)).toEqual(displayRows(SNAPSHOT.items, defaultTheme).map((row) => row.trim()));
+    expect(rows.at(-1)).toBe("two findings, one nit");
   });
 });
