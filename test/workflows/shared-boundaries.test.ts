@@ -1360,6 +1360,60 @@ describe("workflow session shutdown", () => {
     expect(notices.join("\n")).not.toMatch(/no longer watched/i);
   });
 
+  it("sends one stop for each run the torn-down turn was still answering for", async () => {
+    // US-30 counts per run: the teardown's turn abort is the only stop, and every still-bound run of
+    // that turn gets exactly one of its own. A run the session only watched is not a stop target.
+    const first = await server({ holdStream: true, streams: [DISPATCH], reads: [OUTAGE] });
+    const second = await server({ holdStream: true, streams: [DISPATCH], reads: [OUTAGE] });
+    write(
+      join(ws.agentDir, "workflows", "audit.yaml"),
+      `${workflow("audit", "Inspect a repository")}endpoint: first\n`,
+    );
+    write(join(ws.agentDir, "workflows", "report.yaml"), `${workflow("report", "Write a report")}endpoint: second\n`);
+    write(
+      join(ws.agentDir, "subagents-lite.json"),
+      JSON.stringify({
+        workflows: {
+          endpoints: { first: { url: first.url }, second: { url: second.url } },
+          defaultEndpoint: "first",
+        },
+      }),
+    );
+    const capture = await start();
+    const turn = new AbortController();
+    const audit = tool(capture).execute(
+      "call-audit",
+      { workflow: "audit", prompt: "Inspect it" },
+      turn.signal,
+      undefined,
+      ctx!,
+    );
+    const report = tool(capture).execute(
+      "call-report",
+      { workflow: "report", prompt: "Write it" },
+      turn.signal,
+      undefined,
+      ctx!,
+    );
+    await Promise.all([first.streamOpened, second.streamOpened]);
+
+    turn.abort();
+    const [auditResult, reportResult] = await Promise.all([audit, report]);
+    const listed = await status(capture);
+    const sent = [wire(first), wire(second)];
+
+    await shutdown();
+
+    expect(text(auditResult)).toMatch(/acknowledged the stop/i);
+    expect(text(reportResult)).toMatch(/acknowledged the stop/i);
+    expect(listed).toMatch(/audit workflow\) stopped/);
+    expect(listed).toMatch(/report workflow\) stopped/);
+    expect(stopRequests(first), "the first bound run is stopped once").toHaveLength(1);
+    expect(stopRequests(second), "the second bound run is stopped once").toHaveLength(1);
+    expect([wire(first), wire(second)], "teardown adds no request to either run").toEqual(sent);
+    expect(capture.api.sendMessage, "a torn-down turn notifies nobody").not.toHaveBeenCalled();
+  });
+
   it.for(["an open stream", "read backoff", "an unanswered stop"] as const)(
     "ends local observation during %s",
     async (window) => {

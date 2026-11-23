@@ -194,6 +194,16 @@ function createRequest(remote: TestEndpoint) {
   return request!;
 }
 
+/** Every request the endpoint served, in the order it arrived. */
+function wire(remote: TestEndpoint): string[] {
+  return remote.requests.map(({ method, path }) => `${method} ${path}`);
+}
+
+/** The routes one created run is followed on. */
+function runPath(remote: TestEndpoint): string {
+  return `/api/workflows/${remote.segment}`;
+}
+
 /** The run id AgentStatus prints — the handle the main agent passes to StopAgent. */
 function listedRunId(status: WorkflowResult): string {
   const id = text(status).match(/\b[0-9a-f]{8}\b/)?.[0];
@@ -1658,13 +1668,24 @@ describe("workflow endpoint and input errors", () => {
   it("reports a lost create response as an unknown outcome without retrying", async () => {
     const remote = await server({ loseCreateResponse: true });
     install(remote);
-    const tool = executable(await start());
+    const capture = await start();
+    const tool = executable(capture);
 
-    const result = await outcome(tool);
+    const result = await run(tool);
+    const report = { text: text(result), isError: result.isError ?? false };
 
-    expect(result.isError).toBe(true);
-    expect(result.text).toMatch(/unknown|possibly|may still/i);
+    expect(report.isError).toBe(true);
+    expect(report.text).toMatch(/unknown|possibly|may still/i);
+    expect(report.text, "the only honest claim is that a run may be live behind the lost answer").toMatch(
+      /may still be running remotely/i,
+    );
+    expect(report.text, "a lost answer claims no run outcome; the transport's own words may still appear").not.toMatch(
+      /completed|terminated/,
+    );
+    expect(result.details, "a create that never answered leaves no record to settle").toEqual({});
     expect(createRequests(remote)).toHaveLength(1);
+    expect(wire(remote), "nothing is retried and nothing is followed").toEqual(["POST /api/workflows"]);
+    expect(text(await run(executable(capture, "AgentStatus"), {}))).toMatch(/no agents running or completed/i);
   });
 });
 
@@ -1713,6 +1734,85 @@ describe("workflow cancellation and shutdown", () => {
 
     expect(createRequests(remote)).toHaveLength(1);
     expect(stopRequests(remote)).toHaveLength(1);
+  });
+
+  it("settles a create interrupted by the parent from the stop acknowledgement alone", async () => {
+    // The create window is the one place a stop is asked for before any observation exists: the
+    // admitted id must be stopped, and the `stopped` acknowledgement is the whole settlement - GET
+    // is never read, so the `terminated` footprint the endpoint keeps cannot overrule it (US-18).
+    const remote = await server({ holdCreate: true });
+    install(remote);
+    const capture = await start();
+    const tool = executable(capture);
+    const abort = new AbortController();
+    const pending = outcome(tool, { workflow: "audit", prompt: "Review changes" }, abort.signal);
+    await beforeEnd(remote.createReceived, pending, "create was sent");
+
+    abort.abort();
+    remote.releaseCreate();
+    await remote.stopReceived;
+    const stopped = await pending;
+
+    expect(stopped.text).toMatch(/acknowledged the stop/i);
+    const status = await run(executable(capture, "AgentStatus"), {});
+    expect(text(status)).toMatch(/audit workflow\) stopped/);
+    expect(text(status), "the terminated footprint never reaches the record").not.toMatch(/terminated|failed/i);
+    expect(stopRequests(remote), "the admitted id is stopped once").toHaveLength(1);
+    expect(readRequests(remote), "the acknowledgement settles it; no read is asked for").toHaveLength(0);
+    expect(streamRequests(remote), "a create never answered has no connection to follow").toHaveLength(0);
+  });
+
+  it("settles a create interrupted by the parent from the read a non-stopped acknowledgement triggers", async () => {
+    // `already_finished` says the log already holds the run's end: GET carries the state, and it
+    // outranks any label the stop could have given (US-18).
+    const remote = await server({ holdCreate: true, stopOutcome: "already_finished", reads: [declaredOutputRead()] });
+    install(remote);
+    const capture = await start();
+    const tool = executable(capture);
+    const abort = new AbortController();
+    const pending = outcome(tool, { workflow: "audit", prompt: "Review changes" }, abort.signal);
+    await beforeEnd(remote.createReceived, pending, "create was sent");
+
+    abort.abort();
+    remote.releaseCreate();
+    const answered = await pending;
+
+    expect(answered.isError ?? false).toBe(false);
+    expect(answered.text).toBe(RECORDED.answer);
+    const status = await run(executable(capture, "AgentStatus"), {});
+    expect(text(status)).toMatch(/audit workflow\) completed/);
+    expect(wire(remote)).toEqual(["POST /api/workflows", `POST ${runPath(remote)}/stop`, `GET ${runPath(remote)}`]);
+    expect(stopRequests(remote)).toHaveLength(1);
+  });
+
+  it("hands back a create the parent interrupted when the read after the stop still says running", async () => {
+    // The third create-window arm: the endpoint did not confirm the stop and its read still reports
+    // the run live. The waiting call cannot be kept (the parent is gone), so it is handed back with
+    // the interrupted note and the record keeps running under its own watch.
+    const remote = await server({
+      holdCreate: true,
+      holdStream: true,
+      stopOutcome: "interrupted",
+      reads: [stateReply({ status: "running" })],
+    });
+    install(remote);
+    const capture = await start();
+    const tool = executable(capture);
+    const abort = new AbortController();
+    const pending = outcome(tool, { workflow: "audit", prompt: "Review changes" }, abort.signal);
+    await beforeEnd(remote.createReceived, pending, "create was sent");
+
+    abort.abort();
+    remote.releaseCreate();
+    const handed = await pending;
+    const sent = wire(remote);
+
+    expect(handed.isError ?? false).toBe(false);
+    expect(handed.text).toMatch(/not confirmed/i);
+    expect(handed.text, "the note may deny a stop, never claim one").toMatch(/nothing was stopped/i);
+    const status = await run(executable(capture, "AgentStatus"), {});
+    expect(text(status)).toMatch(/audit workflow\) running/);
+    expect(sent).toEqual(["POST /api/workflows", `POST ${runPath(remote)}/stop`, `GET ${runPath(remote)}`]);
   });
 
   it("leaves a run whose create answer arrived after shutdown unwatched and unstopped", async () => {

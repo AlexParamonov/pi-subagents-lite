@@ -252,11 +252,19 @@ describe("a run whose monitoring fails", () => {
     const pending = run(session);
 
     const handed = await handedBack(exchanges, remote, pending);
-    const id = runId(await session.status());
+    const listing = await session.status();
+    const id = runId(listing);
     expect(text(handed)).toBe(readBudgetNote(id));
-    expect(await session.status(), "the run is remote, so it stays listed and running").toMatch(
+    expect(listing, "the run is remote, so it stays listed and running").toMatch(
       new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`),
     );
+    // The listing prints the note as its writer left it, routing line last: that last line is the
+    // whole routing a note gives, and a listing that carried only the note's head would strand the
+    // caller with no way back to the run.
+    expect(listing.split("\n").slice(0, 2), "the listing carries both lines of the note").toEqual([
+      `${id} (${WORKFLOW} workflow) running ${readBudgetNote(id).split("\n")[0]}`,
+      checkLater(id),
+    ]);
     expect(stopRequests(remote), "a failed read stops nothing").toHaveLength(0);
     expect(session.nudges(), "a run whose state is unknown has settled for no reason").toEqual(NO_NUDGE);
 
@@ -542,6 +550,122 @@ describe("a stop the endpoint did not confirm", () => {
     expect(session.nudges(), "the caller holds the outcome, so the parent is not told").toEqual(NO_NUDGE);
     expect(await session.status()).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) completed`));
     expect(stopRequests(remote), "the hand-requested stop is sent once").toHaveLength(1);
+  }, 60_000);
+
+  it("hands back the call once when the interrupt overtakes the hand-requested stop", async () => {
+    // The third order, on this file's endpoint script: the same dead-runner acknowledgement and the
+    // same live read as the test above, with one difference - the parent interrupt lands while the
+    // hand-requested stop is still on the wire. Only that signal converts the wait, so the call is
+    // handed back once and enrolled, and the in-flight stop stays the only request the endpoint sees.
+    const remote = await server({
+      holdStream: true,
+      holdStop: true,
+      streams: QUIET_STREAMS,
+      reads: [RUNNING, declaredOutputRead()],
+      stopOutcome: "interrupted",
+    });
+    installWorkflow(ws, remote);
+    const session = await start({ parentIdle: false });
+    const exchanges = clockedLoopback();
+    const turn = new AbortController();
+    const live = deferred<void>();
+    const pending = run(session, turn.signal, () => live.resolve());
+
+    await beforeEnd(live.promise, pending, "the held stream painted live progress");
+    const id = runId(await session.status());
+    await session.stop(id);
+    await beforeEnd(remote.stopReceived, pending, "the hand-requested stop to be on the wire");
+
+    turn.abort();
+    remote.releaseStop();
+    remote.releaseStream();
+    await readReply(exchanges, remote, 1);
+    const handed = await handedOver(pending, "the interrupt that overtook the stop hands the call back");
+
+    expect(text(handed), "what failed was the stop, so the note is the interrupted one").toMatch(/not confirmed/i);
+    expect(text(handed)).toContain(checkLater(id));
+    expect(claimsAStop(text(handed)), "a stop the endpoint did not confirm is never reported as done").toEqual([]);
+    expect(await session.status()).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
+    expect(session.nudges(), "a hand-back is not a settlement").toEqual(NO_NUDGE);
+    expect(stopRequests(remote), "the interrupt adds no stop to the one already on the wire").toHaveLength(1);
+
+    // Enrolled: the read that answers is the run's one notification, committed to the busy parent.
+    await vi.advanceTimersByTimeAsync(2_000);
+    await readReply(exchanges, remote, 2);
+    expect(await settled(session)).toEqual([
+      {
+        message: {
+          customType: "subagent-result",
+          content: `[Workflow "${WORKFLOW}" ${id} completed]\n\n${ANSWER}`,
+          display: true,
+          details: expect.objectContaining({ kind: "workflow", status: "completed" }),
+        },
+        options: { triggerTurn: false },
+      },
+    ]);
+  }, 60_000);
+
+  it("keeps a hand-stopped run bound to the interrupt its caller never raised", async () => {
+    // Same acknowledgement, same live read, no interrupt yet: the call waits (the test above), and so
+    // does the parent binding. An interrupt that arrives later is therefore still a stop request -
+    // the second one the endpoint sees - and only then is the call handed back.
+    const remote = await server({
+      holdStream: true,
+      streams: ENDLESS_QUIET,
+      reads: [...Array.from({ length: 12 }, () => RUNNING), declaredOutputRead()],
+      stopOutcome: "interrupted",
+    });
+    installWorkflow(ws, remote);
+    const session = await start({ parentIdle: false });
+    const exchanges = clockedLoopback();
+    const turn = new AbortController();
+    const live = deferred<void>();
+    const pending = run(session, turn.signal, () => live.resolve());
+
+    await beforeEnd(live.promise, pending, "the held stream painted live progress");
+    const id = runId(await session.status());
+    await session.stop(id);
+    await beforeEnd(remote.stopReceived, pending, "the hand-requested stop to arrive");
+    remote.releaseStream();
+    await readReply(exchanges, remote, 1);
+    await stillWaiting(pending, "a hand-requested stop with no interrupt keeps its call waiting");
+    expect(stopRequests(remote)).toHaveLength(1);
+
+    turn.abort();
+    await until(() => expect(stopRequests(remote)).toHaveLength(2));
+    const handed = await returned(pending, "the later interrupt reaches the run that is still bound");
+
+    expect(text(handed)).toMatch(/not confirmed/i);
+    expect(await session.status()).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
+    expect(stopRequests(remote), "the binding answers its own stop, once").toHaveLength(2);
+  }, 60_000);
+
+  it("lands a settlement queued at teardown in no session, old or replacement", async () => {
+    // The batch owns its message for 200 ms before Pi sees it. A teardown that lands inside that
+    // window voids the delivery: the gone session receives nothing, and neither does the session that
+    // replaces it, because the flushed message would travel on the shell's current pi.
+    const remote = await server({ streams: QUIET_STREAMS, reads: [declaredOutputRead()] });
+    installWorkflow(ws, remote);
+    const session = await start({ parentIdle: false });
+    const exchanges = clockedLoopback();
+
+    const launched = await session.run({ ...ARGS, run_in_background: true });
+    expect(launched.isError ?? false).toBe(false);
+    const id = runId(await session.status());
+    await readReply(exchanges, remote, 1);
+    // The run has settled and its delivery is queued; the batch window has not been advanced.
+    expect(await session.status()).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) completed`));
+    expect(session.nudges(), "the settlement is still inside the batch window").toEqual(NO_NUDGE);
+
+    // No clock step between the teardown and the replacement session: if the queued delivery
+    // survived, it would travel on the shell's current pi - the replacement's.
+    await session.shutdown();
+    const replacement = await start({ parentIdle: true });
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(session.nudges(), "the session that ended receives no settlement").toEqual(NO_NUDGE);
+    expect(replacement.nudges(), "US-30: no settlement arrives in the session that replaced it").toEqual(NO_NUDGE);
+    expect(await replacement.status(), "a torn-down run leaves no record behind").not.toContain(id);
   }, 60_000);
 
   it("stops nothing further when the session ends around a run whose observation was handed back", async () => {
