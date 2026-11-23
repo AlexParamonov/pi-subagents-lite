@@ -165,6 +165,20 @@ describe("a Workflow run's details", () => {
     await opened;
   });
 
+  it("repaints a snapshot handed over in the array it already holds", async () => {
+    const items: WorkflowDisplayItem[] = [];
+    const run = liveRun(items);
+    const opened = openRecordDetails(uiWith(MARKING), run.record);
+    items.push({ type: "node-status", node: "analysis", status: "dispatched" });
+    requestRender.mockClear();
+
+    run.publish(items);
+
+    await vi.waitFor(() => expect(requestRender).toHaveBeenCalled());
+    expect(contentRows()).toEqual(["accent:\u25b6 analysis dispatched"]);
+    await opened;
+  });
+
   it("replaces the rows it showed when the record carries a newer snapshot", async () => {
     const run = liveRun();
     const opened = openRecordDetails(uiWith(MARKING), run.record);

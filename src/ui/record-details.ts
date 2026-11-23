@@ -10,7 +10,6 @@ import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { getManager, getStore } from "../shell.ts";
 import { SHORT_ID_LENGTH, type AgentRecord } from "../types.ts";
 import { displayRows } from "../workflows/stream-view.ts";
-import type { WorkflowDisplayItem } from "../workflows/stream-view.ts";
 import {
   ConversationViewer,
   type ConversationViewerOptions,
@@ -77,24 +76,25 @@ function sessionWiring(ui: ExtensionUIContext, record: AgentRecord): Conversatio
 /**
  * A run's display snapshot as a transcript: one row per entry, each naming its node and coloured by
  * that node's state. A new snapshot replaces the rows whole, so a reconnect replaces what is shown
- * rather than appending to it; the run's publish path is what says a snapshot arrived.
+ * rather than appending to it; the run's publish path is what says a snapshot arrived, and what the
+ * record holds now is what is rebuilt then.
  */
 function runTranscript(record: AgentRecord, theme: Theme): TranscriptSource {
-  let shown = record.workflow?.items;
-  let rows = rowsOf(shown, theme);
+  let rows = rowsOf(record, theme);
   return {
     get messages() {
-      if (record.workflow?.items !== shown) {
-        shown = record.workflow?.items;
-        rows = rowsOf(shown, theme);
-      }
       return rows;
     },
     // A record left by a session that ended has no run left to watch it.
-    subscribe: (listener) => record.execution.watchSnapshot?.(listener) ?? (() => {}),
+    subscribe: (listener) =>
+      record.execution.watchSnapshot?.(() => {
+        rows = rowsOf(record, theme);
+        listener();
+      }) ?? (() => {}),
   };
 }
 
-function rowsOf(items: WorkflowDisplayItem[] | undefined, theme: Theme): TranscriptEntry[] {
-  return displayRows(items ?? [], theme).map((text) => ({ role: "row", text }));
+/** What the record has to show: one row per entry. */
+function rowsOf(record: AgentRecord, theme: Theme): TranscriptEntry[] {
+  return displayRows(record.workflow?.items ?? [], theme).map((text) => ({ role: "row", text }));
 }
