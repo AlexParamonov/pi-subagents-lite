@@ -3,13 +3,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentToolResult, AgentToolUpdateCallback, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import {
-  createMockExtensionAPI,
-  fakeCtx,
-  loadExtension,
-  type MockExtensionAPI,
-  type RegisteredTool,
-} from "../fixtures.js";
+import { createMockExtensionAPI, fakeCtx, loadExtension, type MockExtensionAPI } from "../fixtures.js";
 import { defaultTheme, defaultUi } from "../mock-utils.js";
 import { asCommandContext, asTui, asUiCustom } from "../pi-boundaries.js";
 import {
@@ -39,6 +33,7 @@ import {
   type TestEndpoint,
   type Workspace,
 } from "./fixtures.js";
+import { mockAgentDir, renderedRows, report, runId, text, tool } from "./session.js";
 
 const TARGET = "release-gateway";
 const KEY = "fixture-api-token";
@@ -50,16 +45,6 @@ type Result = AgentToolResult<Record<string, unknown>>;
 type Update = AgentToolUpdateCallback<Record<string, unknown>>;
 type Exchanges = ReturnType<typeof clockedLoopback>;
 
-interface ExecutableTool extends RegisteredTool {
-  execute(
-    id: string,
-    args: Record<string, unknown>,
-    signal: AbortSignal | undefined,
-    update: Update | undefined,
-    ctx: ExtensionContext,
-  ): Promise<Result>;
-}
-
 let ws: Workspace;
 let api: MockExtensionAPI | undefined;
 let ctx: ExtensionContext | undefined;
@@ -68,11 +53,7 @@ let remotes: TestEndpoint[];
 beforeEach(() => {
   ws = workspace();
   remotes = [];
-  vi.resetModules();
-  vi.doMock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
-    ...(await importOriginal<typeof import("@earendil-works/pi-coding-agent")>()),
-    getAgentDir: () => ws.agentDir,
-  }));
+  mockAgentDir(ws);
 });
 
 afterEach(async () => {
@@ -129,55 +110,21 @@ function overrideProjectUrl(url: string): void {
   );
 }
 
-function tool(capture: MockExtensionAPI, name = "Workflow"): ExecutableTool {
-  const registered = capture.tools.filter((tool) => tool.name === name).at(-1) as ExecutableTool | undefined;
-  expect(registered?.execute, `Pi must be able to call ${name}`).toBeTypeOf("function");
-  return registered!;
-}
-
 function run(capture: MockExtensionAPI, signal?: AbortSignal, onUpdate?: Update): Promise<Result> {
   return tool(capture).execute("workflow-call", ARGS, signal, onUpdate, ctx!);
-}
-
-function text(result: Result): string {
-  return result.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
-}
-
-async function report(pending: Promise<Result>) {
-  try {
-    const result = await pending;
-    return { isError: result.isError ?? false, text: text(result) };
-  } catch (error) {
-    if (!(error instanceof Error)) throw error;
-    return { isError: true, text: error.message };
-  }
 }
 
 async function status(capture: MockExtensionAPI): Promise<string> {
   return text(await tool(capture, "AgentStatus").execute("status-call", {}, undefined, undefined, ctx!));
 }
 
-function runId(listing: string): string {
-  const id = listing.match(/\b[0-9a-f]{8}\b/)?.[0];
-  expect(id, "AgentStatus must list the run by its short id").toBeTypeOf("string");
-  return id!;
-}
-
 async function stop(capture: MockExtensionAPI, id: string): Promise<string> {
   return text(await tool(capture, "StopAgent").execute("stop-call", { agent_id: id }, undefined, undefined, ctx!));
 }
 
+/** This file reads every surface as fully trimmed text, so its rows are trimmed at both ends. */
 function rows(component: unknown): string[] {
-  if (
-    typeof component !== "object" ||
-    component === null ||
-    !("render" in component) ||
-    typeof component.render !== "function"
-  )
-    return [];
-  const lines: unknown = component.render(240);
-  if (!Array.isArray(lines)) return [];
-  return lines.filter((line): line is string => typeof line === "string").map((line) => line.trim());
+  return renderedRows(component).map((line) => line.trim());
 }
 
 /** Drive the real Workflow row, including its registered completion invalidation. */

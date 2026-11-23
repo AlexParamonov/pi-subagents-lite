@@ -810,3 +810,12 @@ export function configure(ws: Workspace, url: string, apiKey?: string): void {
     }),
   );
 }
+
+/**
+ * The workflow file and endpoint config one single-workflow session needs: the `audit` workflow, and
+ * `remote` as the endpoint its default route resolves to. Install it before the session starts.
+ */
+export function installWorkflow(ws: Workspace, remote: TestEndpoint): void {
+  write(join(ws.agentDir, "workflows", "audit.yaml"), workflow());
+  configure(ws, remote.url);
+}

@@ -7,18 +7,9 @@
  */
 
 import { rmSync } from "node:fs";
-import { join } from "node:path";
-import type { AgentToolResult, AgentToolUpdateCallback, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AgentToolResult, AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import {
-  createMockExtensionAPI,
-  fakeCtx,
-  loadExtension,
-  type MockExtensionAPI,
-  type RegisteredTool,
-} from "../fixtures.js";
-import { asTui } from "../pi-boundaries.js";
-import { defaultTheme, defaultUi } from "../mock-utils.js";
+import { defaultTheme } from "../mock-utils.js";
 import {
   beforeEnd,
   clockedLoopback,
@@ -27,45 +18,31 @@ import {
   DISPATCH,
   endpoint,
   errorBody,
+  installWorkflow,
   readRequests,
   RECORDED,
   stateReply,
   stopRequests,
   workspace,
-  write,
-  workflow,
   type EndpointOptions,
   type TestEndpoint,
   type Workspace,
 } from "./fixtures.js";
+import {
+  mockAgentDir,
+  renderedRows,
+  runId,
+  startWorkflowSession,
+  text,
+  WORKFLOW_CALL,
+  type Nudge,
+  type WorkflowSession,
+} from "./session.js";
 import { claimsAStop } from "./note-words.js";
 
 type Result = AgentToolResult<Record<string, unknown>>;
 type Update = AgentToolUpdateCallback<Record<string, unknown>>;
 type Exchanges = ReturnType<typeof clockedLoopback>;
-
-/** One hand Pi received: the message, plus the options it was delivered with. */
-interface Nudge {
-  message: { customType: string; content: string; display: boolean; details: unknown };
-  options: unknown;
-}
-
-/** A tool Pi can call, with its `execute` exposed. */
-interface ExecutableTool extends RegisteredTool {
-  execute(
-    id: string,
-    args: Record<string, unknown>,
-    signal: AbortSignal | undefined,
-    update: Update | undefined,
-    ctx: ExtensionContext,
-  ): Promise<Result>;
-}
-
-/** The widget the extension registered, reached through `setWidget` as Pi reaches it. */
-interface Widget {
-  showStatus: boolean;
-  render(): string[];
-}
 
 const WORKFLOW = "audit";
 const ARGS = { workflow: WORKFLOW, prompt: "Review changes" };
@@ -94,84 +71,33 @@ const readBudgetNote = (id: string): string =>
 const NO_NUDGE: Nudge[] = [];
 
 let ws: Workspace;
-let api: MockExtensionAPI | undefined;
-let ctx: ExtensionContext | undefined;
+let session: WorkflowSession | undefined;
 let remotes: TestEndpoint[] = [];
 
 beforeEach(() => {
   ws = workspace();
   remotes = [];
-  vi.resetModules();
-  vi.doMock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
-    ...(await importOriginal<typeof import("@earendil-works/pi-coding-agent")>()),
-    getAgentDir: () => ws.agentDir,
-  }));
+  mockAgentDir(ws);
 });
 
 afterEach(async () => {
-  await shutdown();
+  await session?.shutdown();
   for (const remote of remotes) await remote.close();
   vi.unstubAllGlobals();
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.doUnmock("@earendil-works/pi-coding-agent");
-  api = undefined;
-  ctx = undefined;
+  session = undefined;
   rmSync(ws.root, { recursive: true, force: true });
 });
 
 /**
- * Start the session the way Pi does, with the widget's host attached. The workflow file and the
- * endpoint config must be installed first: the session reads them as it starts.
+ * Start the session the way Pi does, widget host attached and first turn fired. The workflow file
+ * and the endpoint config must be installed first: the session reads them as it starts.
  */
-async function start(options: { notices?: string[]; parentIdle?: boolean } = {}) {
-  api = createMockExtensionAPI();
-  const notices = options.notices ?? [];
-  const tui = asTui({ terminal: { columns: 240, rows: 24 } });
-  const theme = { ...defaultTheme, bg: (_color: string, text: string) => text };
-  let rows: Widget | undefined;
-  ctx = fakeCtx({
-    cwd: ws.project,
-    isIdle: () => options.parentIdle ?? true,
-    ui: {
-      ...defaultUi,
-      notify: (message: string) => notices.push(message),
-      setStatus: () => {},
-      setWidget: (_key: string, content: unknown) => {
-        const build = content as ((tui: unknown, theme: unknown) => Widget) | undefined;
-        rows = build ? build(tui, theme) : undefined;
-      },
-    },
-  });
-  await loadExtension(api.api);
-  await startListener("session_start", { type: "session_start", reason: "startup" });
-  await startListener("turn_start", { type: "turn_start" });
-  return {
-    capture: api,
-    notices,
-    widgetText: () => {
-      expect(rows, "the extension must register a widget").toBeDefined();
-      rows!.showStatus = true;
-      return rows!
-        .render()
-        .filter((row) => row !== "")
-        .join("\n");
-    },
-  };
-}
-
-async function startListener(event: string, payload: Record<string, unknown>): Promise<void> {
-  const handler = api!.listeners.find((entry) => entry.event === event)?.handler;
-  expect(handler, `the extension must handle ${event}`).toBeDefined();
-  await handler!(payload, ctx);
-}
-
-async function shutdown(): Promise<void> {
-  if (!api || !ctx) return;
-  const handler = api.listeners.find((entry) => entry.event === "session_shutdown")?.handler;
-  expect(handler, "Pi must be able to end the session").toBeTypeOf("function");
-  await handler!({ type: "session_shutdown", reason: "quit" }, ctx);
-  ctx = undefined;
+async function start(options: { parentIdle?: boolean } = {}): Promise<WorkflowSession> {
+  session = await startWorkflowSession({ cwd: ws.project, parentIdle: options.parentIdle });
+  return session;
 }
 
 async function server(options: EndpointOptions): Promise<TestEndpoint> {
@@ -180,50 +106,9 @@ async function server(options: EndpointOptions): Promise<TestEndpoint> {
   return remote;
 }
 
-/** The workflow file and endpoint config one single-workflow session needs. */
-function install(remote: TestEndpoint): void {
-  write(join(ws.agentDir, "workflows", `${WORKFLOW}.yaml`), workflow());
-  write(
-    join(ws.agentDir, "subagents-lite.json"),
-    JSON.stringify({ workflows: { endpoints: { local: { url: remote.url } }, defaultEndpoint: "local" } }),
-  );
-}
-
-function tool(capture: MockExtensionAPI, name = "Workflow"): ExecutableTool {
-  const registered = capture.tools.filter((entry) => entry.name === name).at(-1) as ExecutableTool | undefined;
-  expect(registered?.execute, `Pi must be able to call ${name}`).toBeTypeOf("function");
-  return registered!;
-}
-
-function run(signal?: AbortSignal, update?: Update): Promise<Result> {
-  return tool(api!).execute("workflow-call", ARGS, signal, update, ctx!);
-}
-
-function text(result: Result): string {
-  return result.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
-}
-
-async function stop(capture: MockExtensionAPI, id: string): Promise<string> {
-  return text(await tool(capture, "StopAgent").execute("stop-call", { agent_id: id }, undefined, undefined, ctx!));
-}
-
-async function status(capture: MockExtensionAPI): Promise<string> {
-  return text(await tool(capture, "AgentStatus").execute("status-call", {}, undefined, undefined, ctx!));
-}
-
-/** The run id AgentStatus prints - the handle the caller addresses the run by. */
-function runId(listing: string): string {
-  const id = listing.match(/\b[0-9a-f]{8}\b/)?.[0];
-  expect(id, "the session must be given the run's id").toBeTypeOf("string");
-  return id!;
-}
-
-/** Everything the extension handed Pi as a completion notification. */
-function nudges(capture: MockExtensionAPI): Nudge[] {
-  return capture.api.sendMessage.mock.calls.map(([message, options]) => ({
-    message: message as Nudge["message"],
-    options,
-  }));
+/** The registered `Workflow` tool, called with this file's one set of arguments. */
+function run(of: WorkflowSession, signal?: AbortSignal, update?: Update): Promise<Result> {
+  return of.run(ARGS, signal, update);
 }
 
 /**
@@ -321,16 +206,6 @@ async function stillWaiting(pending: Promise<Result>, reason: string): Promise<v
   expect(waiting, reason).toBe(true);
 }
 
-/** Rows a rendered component produced, without the padding each row carries. */
-function renderedRows(component: unknown): string[] {
-  if (typeof component !== "object" || component === null || !("render" in component)) return [];
-  if (typeof component.render !== "function") return [];
-  const lines: unknown = (component.render as (width: number) => unknown)(240);
-  return Array.isArray(lines)
-    ? lines.filter((line): line is string => typeof line === "string").map((line) => line.trimEnd())
-    : [];
-}
-
 /** The last paint the call delivered: the row a reader of the session is looking at. */
 function lastPaint(paints: Result[]): Result {
   const paint = paints.at(-1);
@@ -339,13 +214,13 @@ function lastPaint(paints: Result[]): Result {
 }
 
 /** The card's run row: what a reader of the session sees for the run at this paint. */
-function row(paint: Result): string {
-  const component = tool(api!).renderResult?.(paint, { expanded: true }, defaultTheme, {
+function row(of: WorkflowSession, paint: Result): string {
+  const component = of.tool().renderResult?.(paint, { expanded: true }, defaultTheme, {
     args: ARGS,
     state: {},
     expanded: true,
     isPartial: false,
-    toolCallId: "workflow-call",
+    toolCallId: WORKFLOW_CALL,
     invalidate: () => {},
     cwd: ws.project,
     executionStarted: true,
@@ -360,35 +235,35 @@ function row(paint: Result): string {
   );
 }
 
-async function settled(capture: MockExtensionAPI, count = 1): Promise<Nudge[]> {
-  await until(() => expect(nudges(capture)).toHaveLength(count));
-  return nudges(capture);
+/** Wait on this file's own clock: `until` steps the virtual clock these runs are paced by. */
+async function settled(of: WorkflowSession): Promise<Nudge[]> {
+  await until(() => expect(of.nudges()).toHaveLength(1));
+  return of.nudges();
 }
-
 describe("a run whose monitoring fails", () => {
   it("hands the call back, keeps the record running and notifies once when the run later settles", async () => {
     const remote = await server({
       streams: QUIET_STREAMS,
       reads: [...Array.from({ length: 5 }, () => OUTAGE), declaredOutputRead()],
     });
-    install(remote);
-    const capture = (await start()).capture;
+    installWorkflow(ws, remote);
+    const session = await start();
     const exchanges = clockedLoopback();
-    const pending = run();
+    const pending = run(session);
 
     const handed = await handedBack(exchanges, remote, pending);
-    const id = runId(await status(capture));
+    const id = runId(await session.status());
     expect(text(handed)).toBe(readBudgetNote(id));
-    expect(await status(capture), "the run is remote, so it stays listed and running").toMatch(
+    expect(await session.status(), "the run is remote, so it stays listed and running").toMatch(
       new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`),
     );
     expect(stopRequests(remote), "a failed read stops nothing").toHaveLength(0);
-    expect(nudges(capture), "a run whose state is unknown has settled for no reason").toEqual(NO_NUDGE);
+    expect(session.nudges(), "a run whose state is unknown has settled for no reason").toEqual(NO_NUDGE);
 
     // The read that answers after the hand-back is the settlement: the caller learns it once, as the
     // one message shape every settlement delivery has - the run's own header over its published text.
     await readAgain(exchanges, remote, 6);
-    expect(await settled(capture)).toEqual([
+    expect(await settled(session)).toEqual([
       {
         message: {
           customType: "subagent-result",
@@ -403,18 +278,18 @@ describe("a run whose monitoring fails", () => {
 
   it("claims no stop in a note about a failed read", async () => {
     const remote = await server({ streams: QUIET_STREAMS, reads: Array.from({ length: 8 }, () => OUTAGE) });
-    install(remote);
-    const capture = (await start()).capture;
+    installWorkflow(ws, remote);
+    const session = await start();
     const exchanges = clockedLoopback();
-    const pending = run();
+    const pending = run(session);
 
     const handed = await handedBack(exchanges, remote, pending);
-    const id = runId(await status(capture));
+    const id = runId(await session.status());
     expect(text(handed)).toContain(readBudgetNote(id));
     expect(text(handed), "the run's remote id is the only handle the caller has").toContain(id);
     expect(claimsAStop(text(handed)), "a run that never asked to be stopped is not reported as stopped").toEqual([]);
     expect(stopRequests(remote)).toHaveLength(0);
-    expect(row(handed), "the card for a handed-back call names no stop failure").not.toMatch(/stop failed/i);
+    expect(row(session, handed), "the card for a handed-back call names no stop failure").not.toMatch(/stop failed/i);
   }, 60_000);
 
   it("clears the unknown note when a read says the run is live again", async () => {
@@ -422,27 +297,29 @@ describe("a run whose monitoring fails", () => {
       streams: QUIET_STREAMS,
       reads: [...Array.from({ length: 5 }, () => OUTAGE), RUNNING],
     });
-    install(remote);
-    const capture = (await start()).capture;
+    installWorkflow(ws, remote);
+    const session = await start();
     const exchanges = clockedLoopback();
-    const pending = run();
+    const pending = run(session);
 
     const handed = await handedBack(exchanges, remote, pending);
-    const id = runId(await status(capture));
-    expect(row(handed), "the note is on the row to be cleared").toContain("state is unknown after 5 observations");
+    const id = runId(await session.status());
+    expect(row(session, handed), "the note is on the row to be cleared").toContain(
+      "state is unknown after 5 observations",
+    );
 
     // The read that answers authoritatively ends the unknown, and nothing else follows: no further
     // progress frame, no settlement, no notification.
     await readAgain(exchanges, remote, 6);
-    expect(row(handed), "the row is still the run's live row").toMatch(
+    expect(row(session, handed), "the row is still the run's live row").toMatch(
       new RegExp(`^${id} \\(${WORKFLOW} workflow\\) running`),
     );
-    expect(row(handed), "and it carries no unknown line").not.toMatch(/state is unknown/i);
-    expect(await status(capture), "the listing reads the record, so the note is gone there too").not.toMatch(
+    expect(row(session, handed), "and it carries no unknown line").not.toMatch(/state is unknown/i);
+    expect(await session.status(), "the listing reads the record, so the note is gone there too").not.toMatch(
       /state is unknown/i,
     );
-    expect(await status(capture)).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
-    expect(nudges(capture), "a run that is known again has not settled").toEqual(NO_NUDGE);
+    expect(await session.status()).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
+    expect(session.nudges(), "a run that is known again has not settled").toEqual(NO_NUDGE);
     expect(stopRequests(remote), "recovery stops nothing").toHaveLength(0);
   }, 60_000);
 
@@ -453,13 +330,13 @@ describe("a run whose monitoring fails", () => {
       reads: [...Array.from({ length: 5 }, () => OUTAGE), RUNNING],
       stopRejection: REFUSAL,
     });
-    install(remote);
-    const capture = (await start()).capture;
+    installWorkflow(ws, remote);
+    const session = await start();
     const exchanges = clockedLoopback();
     const esc = new AbortController();
     const paints: Result[] = [];
     const live = deferred<void>();
-    const pending = run(esc.signal, (update) => {
+    const pending = run(session, esc.signal, (update) => {
       paints.push(update!);
       live.resolve();
     });
@@ -468,7 +345,7 @@ describe("a run whose monitoring fails", () => {
     esc.abort();
     await beforeEnd(remote.stopReceived, pending, "stop request to arrive");
     const handed = await returned(pending, "a call whose stop was refused is handed back");
-    const id = runId(await status(capture));
+    const id = runId(await session.status());
     expect(text(handed)).toContain(`Workflow "${WORKFLOW}" ${id}: stop failed - HTTP 409: workflow is not running.`);
 
     // The outage continues after the hand-back: the unknown state must not bury the stop failure.
@@ -476,23 +353,23 @@ describe("a run whose monitoring fails", () => {
       if (ordinal > 1) await vi.advanceTimersByTimeAsync([2_000, 4_000, 8_000, 16_000][ordinal - 2]!);
       await readReply(exchanges, remote, ordinal);
     }
-    expect(row(lastPaint(paints)), "the row carries the note while the settlement is still open").toContain(
+    expect(row(session, lastPaint(paints)), "the row carries the note while the settlement is still open").toContain(
       "stop failed",
     );
-    expect(await status(capture)).toContain("stop failed");
-    expect(await status(capture)).not.toMatch(/unknown/i);
+    expect(await session.status()).toContain("stop failed");
+    expect(await session.status()).not.toMatch(/unknown/i);
 
     // The read that says the run is live changes nothing about a standing stop failure: only
     // settlement clears it. Still no notification, still one stop request, still the same note.
     await readAgain(exchanges, remote, 6);
-    expect(row(lastPaint(paints)), "the standing note outlives the read that says the run is live").toContain(
+    expect(row(session, lastPaint(paints)), "the standing note outlives the read that says the run is live").toContain(
       "stop failed",
     );
-    expect(row(lastPaint(paints))).toMatch(new RegExp(`^${id} \\(${WORKFLOW} workflow\\) running`));
-    expect(await status(capture)).toContain("stop failed");
-    expect(await status(capture), "the endpoint answered, so the state is no longer unknown").not.toMatch(/unknown/i);
-    expect(await status(capture)).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
-    expect(nudges(capture), "a recovered run is not an outcome the parent is notified of").toEqual(NO_NUDGE);
+    expect(row(session, lastPaint(paints))).toMatch(new RegExp(`^${id} \\(${WORKFLOW} workflow\\) running`));
+    expect(await session.status()).toContain("stop failed");
+    expect(await session.status(), "the endpoint answered, so the state is no longer unknown").not.toMatch(/unknown/i);
+    expect(await session.status()).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
+    expect(session.nudges(), "a recovered run is not an outcome the parent is notified of").toEqual(NO_NUDGE);
     expect(stopRequests(remote), "a run whose stop was refused is not stopped again").toHaveLength(1);
   }, 60_000);
 
@@ -502,32 +379,33 @@ describe("a run whose monitoring fails", () => {
       streams: QUIET_STREAMS,
       reads: Array.from({ length: 8 }, () => OUTAGE),
     });
-    install(remote);
-    const started = await start();
-    const capture = started.capture;
+    installWorkflow(ws, remote);
+    const session = await start();
     const exchanges = clockedLoopback();
     const paints: Result[] = [];
     const live = deferred<void>();
-    const pending = run(undefined, (update) => {
+    const pending = run(session, undefined, (update) => {
       paints.push(update!);
       live.resolve();
     });
     await beforeEnd(live.promise, pending, "the held stream painted live progress");
-    const id = runId(await status(capture));
+    const id = runId(await session.status());
     // Read the row while the record still holds no note: after the hand-back a row that reads the
     // record - which is what 2-2 builds - paints the note for any snapshot it is given.
-    const beforeNote = row(lastPaint(paints));
+    const beforeNote = row(session, lastPaint(paints));
 
     const handed = await handedBack(exchanges, remote, pending, 90_000);
-    expect(started.widgetText(), "the widget lists the run the caller no longer holds").toContain(id);
+    expect(session.widgetText(), "the widget lists the run the caller no longer holds").toContain(id);
     expect(beforeNote, "the row before the note is the plain live row").toMatch(
       new RegExp(`^${id} \\(${WORKFLOW} workflow\\) running`),
     );
     expect(beforeNote, "the row a reader sees before the note was written names no failure").not.toMatch(
       /state is unknown/i,
     );
-    expect(row(handed), "the row carries the note the caller needs").toContain("state is unknown after 5 observations");
-    expect(row(handed), "the whole note rides this one row, to its last line").toContain(checkLater(id));
+    expect(row(session, handed), "the row carries the note the caller needs").toContain(
+      "state is unknown after 5 observations",
+    );
+    expect(row(session, handed), "the whole note rides this one row, to its last line").toContain(checkLater(id));
     // Observation continues on the read channel: the hand-back carries the delay its failed reads
     // owed, and the reads resume after it. No stream reopens - the last known state is unknown, and
     // only an authoritative `running` read makes it running again (ADR-0013, US-19).
@@ -544,13 +422,13 @@ describe("a stop the endpoint did not confirm", () => {
       reads: [RUNNING],
       stopRejection: REFUSAL,
     });
-    install(remote);
-    const capture = (await start()).capture;
+    installWorkflow(ws, remote);
+    const session = await start();
     clockedLoopback();
     const esc = new AbortController();
     const paints: Result[] = [];
     const live = deferred<void>();
-    const pending = run(esc.signal, (update) => {
+    const pending = run(session, esc.signal, (update) => {
       paints.push(update!);
       live.resolve();
     });
@@ -559,7 +437,7 @@ describe("a stop the endpoint did not confirm", () => {
     esc.abort();
     await beforeEnd(remote.stopReceived, pending, "stop request to arrive");
     const handed = await returned(pending, "a call whose stop was refused is handed back");
-    const id = runId(await status(capture));
+    const id = runId(await session.status());
     expect(text(handed)).toBe(
       `Workflow "${WORKFLOW}" ${id}: stop failed - HTTP 409: workflow is not running. ` +
         `Nothing was stopped, and this session has not seen the run end.\n${checkLater(id)}`,
@@ -569,10 +447,10 @@ describe("a stop the endpoint did not confirm", () => {
     expect(text(handed), "an endpoint that refused the stop supplied no run state to publish").not.toMatch(
       /running remotely/i,
     );
-    expect(row(lastPaint(paints)), "the row carries the stop failure").toContain("stop failed");
-    expect(await status(capture)).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
-    expect(await status(capture)).toContain("stop failed");
-    expect(nudges(capture), "a run the endpoint refuses to stop has not settled").toEqual(NO_NUDGE);
+    expect(row(session, lastPaint(paints)), "the row carries the stop failure").toContain("stop failed");
+    expect(await session.status()).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
+    expect(await session.status()).toContain("stop failed");
+    expect(session.nudges(), "a run the endpoint refuses to stop has not settled").toEqual(NO_NUDGE);
     expect(stopRequests(remote), "an interrupted call whose stop was refused stops nothing further").toHaveLength(1);
   }, 60_000);
 
@@ -583,15 +461,15 @@ describe("a stop the endpoint did not confirm", () => {
       reads: [RUNNING, declaredOutputRead()],
       stopOutcome: "interrupted",
     });
-    install(remote);
-    const capture = (await start()).capture;
+    installWorkflow(ws, remote);
+    const session = await start();
     const exchanges = clockedLoopback();
     const esc = new AbortController();
     const live = deferred<void>();
-    const pending = run(esc.signal, () => live.resolve());
+    const pending = run(session, esc.signal, () => live.resolve());
 
     await beforeEnd(live.promise, pending, "the held stream painted live progress");
-    const id = runId(await status(capture));
+    const id = runId(await session.status());
     esc.abort();
     await beforeEnd(remote.stopReceived, pending, "stop request to arrive");
     remote.releaseStream();
@@ -601,7 +479,7 @@ describe("a stop the endpoint did not confirm", () => {
     const handed = await handedOver(pending, "the read that says the run is live hands the interrupted call back");
     const note = text(handed);
 
-    expect(nudges(capture), "a hand-back is not a settlement").toEqual(NO_NUDGE);
+    expect(session.nudges(), "a hand-back is not a settlement").toEqual(NO_NUDGE);
     expect(note, "the caller keeps the id the run is addressed by").toContain(id);
     expect(note, "what the endpoint did not confirm was the stop").toMatch(/stop/i);
     expect(note, "the run is still live on the endpoint").toMatch(/still running remotely/i);
@@ -610,15 +488,15 @@ describe("a stop the endpoint did not confirm", () => {
     expect(note, "and it routes the caller back to AgentStatus, like every other note").toContain(checkLater(id));
     expect(claimsAStop(note), "a stop the endpoint did not confirm is never reported as done").toEqual([]);
     expect(note, "the note sends the caller to no handle the tool would reject").not.toContain("wait_for");
-    expect(row(handed), "the note paints as the run's live health").toContain("still running remotely");
-    expect(await status(capture)).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
+    expect(row(session, handed), "the note paints as the run's live health").toContain("still running remotely");
+    expect(await session.status()).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
     expect(stopRequests(remote), "the interrupted turn's stop is sent once").toHaveLength(1);
 
     // Observation continues, and the read that answers is notified exactly once - in the one shape
     // every settlement delivery has.
     await vi.advanceTimersByTimeAsync(2_000);
     await readReply(exchanges, remote, 2);
-    expect(await settled(capture)).toEqual([
+    expect(await settled(session)).toEqual([
       {
         message: {
           customType: "subagent-result",
@@ -638,31 +516,31 @@ describe("a stop the endpoint did not confirm", () => {
       reads: [...Array.from({ length: 12 }, () => RUNNING), declaredOutputRead()],
       stopOutcome: "interrupted",
     });
-    install(remote);
-    const capture = (await start({ parentIdle: false })).capture;
+    installWorkflow(ws, remote);
+    const session = await start({ parentIdle: false });
     const exchanges = clockedLoopback();
     const turn = new AbortController();
     const live = deferred<void>();
-    const pending = run(turn.signal, () => live.resolve());
+    const pending = run(session, turn.signal, () => live.resolve());
 
     await beforeEnd(live.promise, pending, "the held stream painted live progress");
-    const id = runId(await status(capture));
+    const id = runId(await session.status());
     // A stop the caller asked for while its turn is still running: nothing here aborts the parent
     // signal, and that is what separates it from the Esc above.
-    await stop(capture, id);
+    await session.stop(id);
     await beforeEnd(remote.stopReceived, pending, "the hand-requested stop to arrive");
     remote.releaseStream();
     // The dead-runner acknowledgement is a GET trigger, and the read says the run is live: the call
     // keeps waiting for the run, and a run that is waited for is never enrolled for a notification.
     await readReply(exchanges, remote, 1);
     await stillWaiting(pending, "a hand-requested stop of a run the read says is live keeps its call waiting");
-    expect(await status(capture)).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
+    expect(await session.status()).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) running`));
 
     // Twelve reads say `running`, then one answers: the settlement lands in the call that waited.
     const settledInline = text(await returned(pending, "the read that answers settles the waiting call"));
     expect(settledInline).toBe(ANSWER);
-    expect(nudges(capture), "the caller holds the outcome, so the parent is not told").toEqual(NO_NUDGE);
-    expect(await status(capture)).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) completed`));
+    expect(session.nudges(), "the caller holds the outcome, so the parent is not told").toEqual(NO_NUDGE);
+    expect(await session.status()).toMatch(new RegExp(`${id} \\(${WORKFLOW} workflow\\) completed`));
     expect(stopRequests(remote), "the hand-requested stop is sent once").toHaveLength(1);
   }, 60_000);
 
@@ -671,26 +549,23 @@ describe("a stop the endpoint did not confirm", () => {
       streams: QUIET_STREAMS,
       reads: [...Array.from({ length: 5 }, () => OUTAGE), RUNNING],
     });
-    install(remote);
-    const capture = (await start()).capture;
+    installWorkflow(ws, remote);
+    const session = await start();
     const exchanges = clockedLoopback();
-    const pending = run();
+    const pending = run(session);
 
     const handed = await handedBack(exchanges, remote, pending);
-    const id = runId(await status(capture));
+    const id = runId(await session.status());
     expect(text(handed)).toContain(id);
     expect(stopRequests(remote)).toHaveLength(0);
 
     await readAgain(exchanges, remote, 6);
-    expect(nudges(capture), "a run the endpoint says is live gets no completion notification").toEqual(NO_NUDGE);
+    expect(session.nudges(), "a run the endpoint says is live gets no completion notification").toEqual(NO_NUDGE);
 
-    await shutdown();
+    await session.shutdown();
     expect(stopRequests(remote), "a run whose state is unknown stops nothing on cleanup").toHaveLength(0);
     const reopened = await start();
-    expect(
-      await status(reopened.capture),
-      "a run whose state was never confirmed is not a live local run",
-    ).not.toContain(id);
+    expect(await reopened.status(), "a run whose state was never confirmed is not a live local run").not.toContain(id);
     expect(stopRequests(remote)).toHaveLength(0);
   }, 60_000);
 });
