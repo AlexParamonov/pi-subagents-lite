@@ -283,11 +283,15 @@ function partsFor(item: WorkflowDisplayItem, state?: WorkflowNodeStatus): RowPar
   const role = state === undefined ? "toolOutput" : NODE_STATE_COLOR[state];
   if (item.type === "node-status" || item.node === null) return [{ text: lineFor(item), role }];
   const label = item.type === "text" ? `  ${item.node}  ` : `  ${item.node} `;
-  const produced = item.type === "text" ? item.text : `tool ${item.activity}`;
-  return [
-    { text: label, role },
-    { text: produced, role: "toolOutput" },
-  ];
+  return [{ text: label, role }, { text: producedFor(item), role: "toolOutput" }];
+}
+
+/**
+ * What an entry produced, spelled the way the row under its node's own row spells it: no node name
+ * and no indent, because that row names the node above and insets every line it paints.
+ */
+function producedFor(item: Exclude<WorkflowDisplayItem, { type: "node-status" }>): string {
+  return item.type === "activity" ? `tool ${item.activity}` : item.text;
 }
 
 /** The entry's row as a display surface spells it: the stored line, its text entry naming its node too. */
@@ -314,10 +318,16 @@ export function displayRows(items: readonly WorkflowDisplayItem[], theme: Theme)
   );
 }
 
+/** A node's own row of the details view, with the lines it produced folded under it. */
+interface WorkflowNodeRow {
+  kind: "node";
+  state: WorkflowNodeStatus;
+  title: string;
+  body: string[];
+}
+
 /** One row of a run's details view: a node's own row and the lines it produced, or one entry. */
-export type WorkflowDetailRow =
-  | { kind: "node"; state: WorkflowNodeStatus; title: string; body: string[] }
-  | { kind: "entry"; line: string };
+export type WorkflowDetailRow = WorkflowNodeRow | { kind: "entry"; line: string };
 
 /**
  * The rows a run's details view shows: one per node that reported a state, holding the activity and
@@ -326,10 +336,10 @@ export type WorkflowDetailRow =
  */
 export function detailRows(items: readonly WorkflowDisplayItem[]): WorkflowDetailRow[] {
   const rows: WorkflowDetailRow[] = [];
-  const groups = new Map<string, Extract<WorkflowDetailRow, { kind: "node" }>>();
+  const groups = new Map<string, WorkflowNodeRow>();
   for (const item of items) {
     if (item.type === "node-status") {
-      const row: WorkflowDetailRow = {
+      const row: WorkflowNodeRow = {
         kind: "node",
         state: item.status,
         title: plainText(displayLineFor(item)),
@@ -341,15 +351,7 @@ export function detailRows(items: readonly WorkflowDisplayItem[]): WorkflowDetai
     }
     const group = item.node === null ? undefined : groups.get(item.node);
     if (group === undefined) rows.push({ kind: "entry", line: plainText(displayLineFor(item)) });
-    else group.body.push(plainText(bodyLineFor(item)));
+    else group.body.push(plainText(producedFor(item)));
   }
   return rows;
-}
-
-/**
- * The entry's line inside its node's own rows: what it produced, with no node name and no indent -
- * the row painting it names the node above, and insets every line it paints.
- */
-function bodyLineFor(item: Exclude<WorkflowDisplayItem, { type: "node-status" }>): string {
-  return item.type === "activity" ? `tool ${item.activity}` : item.text;
 }
