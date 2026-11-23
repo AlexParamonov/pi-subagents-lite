@@ -63,6 +63,9 @@ interface NudgeMessage {
 /** Batch delay for nudges — only emit one update per batch window (ms). */
 const NUDGE_DELAY_MS = 200;
 
+/** The word each kind wears: the message header's, the card's box label, the notify fallback's. */
+const KIND_LABEL = { agent: "Subagent", workflow: "Workflow" } as const;
+
 // --- SpawnCoordinator ---
 
 export class SpawnCoordinator {
@@ -285,8 +288,10 @@ export class SpawnCoordinator {
       const spawnCtx = message.spawnCtx;
       if (spawnCtx?.ui?.notify) {
         try {
-          const box = message.kind === "workflow" ? "Workflow" : "Subagent";
-          spawnCtx.ui.notify(`[${box} "${message.label}" ${message.status}] Result available`, "info");
+          spawnCtx.ui.notify(
+            `[${KIND_LABEL[message.kind]} "${message.label}" ${message.status}] Result available`,
+            "info",
+          );
         } catch {
           // ctx may also be stale if session was replaced
         }
@@ -304,16 +309,17 @@ export class SpawnCoordinator {
     const label = workflow?.name ?? record.display.type;
     const status = record.lifecycle.status;
     const body = workflow ? (record.result ?? record.error ?? "") : formatResultContent(record);
+    // A remote run has no usage accounting: its snapshot asks for none rather than carrying zeros.
     const details = workflow
       ? buildAgentDetails(record, { includeStatus: true, includeStats: false })
-      : buildAgentDetails(record, { includeStats: true, includeStatus: true });
+      : buildAgentDetails(record, { includeStatus: true, includeStats: true });
     details.kind = kind;
     return {
       agentId: record.id,
       kind,
       label,
       status,
-      content: `[${workflow ? "Workflow" : "Subagent"} "${label}" ${record.id.slice(0, SHORT_ID_LENGTH)} ${status}]\n\n${body}`,
+      content: `[${KIND_LABEL[kind]} "${label}" ${record.id.slice(0, SHORT_ID_LENGTH)} ${status}]\n\n${body}`,
       details,
       spawnCtx: record.execution.spawnCtx,
     };
