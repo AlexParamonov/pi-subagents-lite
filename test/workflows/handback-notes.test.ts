@@ -21,6 +21,7 @@ import {
   installWorkflow,
   readRequests,
   RECORDED,
+  runPath,
   stateReply,
   stopRequests,
   workspace,
@@ -118,7 +119,7 @@ function run(of: WorkflowSession, signal?: AbortSignal, update?: Update): Promis
 async function readReply(exchanges: Exchanges, remote: TestEndpoint, ordinal: number): Promise<void> {
   for (let index = 0, seen = 0; ; index += 1) {
     const request = await remote.requestAt(index);
-    if (request.method !== "GET" || request.path !== `${remote.prefix}/api/workflows/${remote.segment}`) continue;
+    if (request.method !== "GET" || request.path !== runPath(remote)) continue;
     seen += 1;
     if (seen < ordinal) continue;
     await exchanges[index].bodyRead;
