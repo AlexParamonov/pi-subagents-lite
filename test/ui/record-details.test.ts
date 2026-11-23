@@ -270,13 +270,16 @@ describe("a Workflow run's details", () => {
       { type: "node-status", node: "report", status: "completed" },
       { type: "node-status", node: "writer", status: "failed" },
       { type: "text", node: "writer", text: "the endpoint refused it" },
+      { type: "text", node: null, text: "a chunk naming no node" },
     ];
-    const opened = openRecordDetails(uiWith(paint.theme), liveRun(states).record);
     paint.roles.length = 0;
+    const opened = openRecordDetails(uiWith(paint.theme), liveRun(states).record);
 
     shown!.render(120);
 
     expect(paint.roles.filter((role) => RUN_ROLES.test(role))).toEqual([
+      // The row nothing groups is coloured once, as the snapshot is read; the viewer paints it as it stands.
+      "fg toolOutput   a chunk naming no node",
       "fg toolTitle  ▶ analysis dispatched",
       "bg toolPendingBg  ▶ analysis dispatched",
       "fg toolTitle  ✓ report completed",
@@ -286,6 +289,30 @@ describe("a Workflow run's details", () => {
       "fg toolOutput the endpoint refused it",
       "bg toolErrorBg  the endpoint refused it",
     ]);
+    await opened;
+  });
+
+  it("gives a node's row no click target, because a node is no tool call the reader can open", async () => {
+    const opened = openRecordDetails(uiWith(paint.theme), liveRun().record);
+    const rows = shown!.render(120);
+    const y = rows.findIndex((line) => line.includes("analysis dispatched"));
+    expect(y, "the node's own row is on screen").toBeGreaterThan(0);
+
+    const click = shown!.handleMouse({
+      type: "click",
+      button: "left",
+      x: 5,
+      y,
+      screenX: 5,
+      screenY: y,
+      width: 120,
+      height: rows.length,
+      shift: false,
+      alt: false,
+      ctrl: false,
+    });
+
+    expect(click, "a node row opens nothing and expands nothing of its own").toBeUndefined();
     await opened;
   });
 
