@@ -33,7 +33,7 @@ The per-project override file `.pi/subagents-lite.json` in a trusted project. Ho
 _Avoid_: Project settings, local config
 
 **Model override**:
-A user-configured model preference (per-type or global) set at session, global, or project level. A session per-type **Model override** beats every other source; a session default beats config per-type overrides and frontmatter models; the config default key applies only to types with no session default, no per-type override, and no frontmatter model. Set via `/agents` > Model settings.
+A per-type or default model preference configured at session, project, or global scope via `/agents` > Model settings.
 _Avoid_: Model injection, model preference
 
 **Grace turns**:
@@ -93,7 +93,7 @@ A linked git worktree of the same repository as the parent, distinguished by its
 _Avoid_: Git worktree, sibling worktree
 
 **Worktree path**:
-The resolved absolute filesystem path passed to the `worktree_path` param. Must be inside a git repository (any repo on disk, not only the parent's). Used as the subagent's working directory for its session, resource loader, and system prompt.
+The absolute resolved `worktree_path` param; must be inside any git repo on disk. Sets the subagent session, resource-loader and system-prompt working directory. The Agent briefing teaches this parameter.
 **Worktree label**:
 A short human-readable identifier derived from the worktree path. `basename(root)` when targeting the root, else `basename(root)/<relative subpath>`.
 _Avoid_: Worktree name
@@ -101,7 +101,7 @@ _Avoid_: Worktree name
 ### Runtime
 
 **Activity tracker**:
-Per-agent transient display state (active tools, streaming response text) bridging spawn callbacks and the TUI widget renderer. Accumulated stats live on the AgentRecord, not here.
+Per-agent transient display state (active tools, streaming response text) bridging spawn callbacks and the TUI widget renderer; cleared on completion. Accumulated stats live on the AgentRecord.
 _Avoid_: Agent monitor, agent stats
 
 **Nudge**:
@@ -127,44 +127,6 @@ _Avoid_: SteerAgent, agent messaging tool, follow-up
 **Watchdog**:
 Time-based stuck-agent detection that stops a running agent when a single tool call exceeds the tool timeout, or when the agent produces no activity (tool events or streamed response text) for longer than the idle timeout. Both thresholds are configurable in minutes; a watchdog stop is recorded with a reason distinct from a user stop.
 _Avoid_: Timeout killer, stuck-agent detector
-
-## Relationships
-
-- An **Agent type** has an optional **Model override**
-- An **Agent type** with frontmatter tools omitted resolves its tool set via **Implicit tool loading**
-- An **Agent type**'s frontmatter `extensions` list selects and deselects **Built-in extensions** by bare name
-- A **Subagent** session loads **Built-in extensions** unless its **Agent type** resolves `extensions` to false
-- A **Project config** overrides the **Global config** per key, for model and concurrency settings only
-- A **Subagent** is spawned from one **Agent type**
-- A **Subagent** may run in a **Worktree** of the parent's repo or in a directory inside any other git repo on disk
-- An **Agent briefing** describes all available **Agent types** to the LLM
-- A **Stealth tool** requires an **Agent briefing** before the LLM can use it
-- An **Activity tracker** is created per spawn and cleaned up on completion
-- A **Nudge** is emitted on the first settlement of a run launched in the background or handed back mid-run, and on every settlement of a continued agent
-- **Grace turns** are added to the max turns limit to determine when a steered agent is hard-aborted
-- A **Watchdog** stops a **Subagent** when a tool call or inactivity exceeds its configured thresholds
-- A **Parent interrupt binding** stops a foreground **Subagent** when the parent run is interrupted; background **Subagents** are never bound
-- A **Subagent** that is not in progress is **Settled** (completed, turn_limited, aborted, stopped, or error)
-- A **Watchdog** stop records a reason distinct from a user stop
-- A **Worktree path** is the absolute resolved path passed via `worktree_path`
-- A **Worktree label** is derived from a **Worktree path** for compact display
-- The `worktree_path` tool param is taught to the LLM via the **Agent briefing**
-- An **Agent type** has one **Resolved model**; its **Thinking level** is clamped to that model's supported levels
-- A **Thinking level** of `parent` is a value on an existing chain position, not a position of its own, and is resolved before the **Subagent** session exists so no surface can show it as a level
-- The Model settings menu lists only Agent types with an explicit per-type **Model override** at the session, project, or global layer; frontmatter-only and inheriting types are never listed
-- A running **Subagent** takes a **MessageAgent** message even before its session exists (buffered for the session's start); a **Subagent** that is not running takes one only through a live session
-- A **MessageAgent** message lands after the current turn's tool calls finish, never mid-tool-call, and is dropped if the run settles before that boundary
-- **MessageAgent** continues any **Settled** **Subagent** with a live session, including one a human stopped: the model can restart a deliberately stopped agent
-- Only the main session agent holds **MessageAgent**, `StopAgent` and `AgentStatus`; a **Subagent** never does, so cross-**Subagent** messaging and stopping are unreachable
-- A **Nudge** carries a settled **Subagent**'s or **Workflow** run's outcome parent-ward; **MessageAgent** carries input the other way
-- **Compact tool calls** and **Ungrouped tools** live in the **Global config** only: a **Project config** cannot carry either, and clearing **Model override**s keeps both
-- A **Workflow** is spawned from one **Workflow file** and runs on one **Workflow endpoint** via **Push-per-run**; the file's `endpoint` key is stripped before the config is sent
-- The `Workflow` tool's `path` param (default: parent session cwd) reaches the run only as the `working_dir` prompt var in prompt text (`${working_dir}`), never in node params or context messages
-- A **Workflow file**'s prompt material lives server-side (`prompt_key` files); the extension never ships prompt content
-- A **Workflow** run is tracked in the agent record store, kind-tagged: **AgentStatus** lists it, `StopAgent` and Esc on a foreground run call the API stop endpoint
-- A **Workflow** run has no **Watchdog**, **Model override**, **Thinking level**, or **Worktree**; among **Settled** statuses, `failed` and `interrupted` map to error, `interrupted` keeping its reason
-- The `Workflow` tool's task text obeys the endpoint's 10,000-byte create limit, enforced before sending
-- A **Workflow** run renders node lifecycle events as status lines and progress chunks as streamed text; thinking deltas are never displayed
 
 ### Navigation
 
