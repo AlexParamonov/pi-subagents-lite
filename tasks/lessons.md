@@ -992,3 +992,7 @@ Pi's `triggerTurn: false` commits a busy-session notification without waking the
 ## A reserved slot needs an owner before a run promise exists - 2026-11-24
 
 Reservation must precede callbacks that could start another run, but synchronous setup can throw before attaching the promise that normally releases the slot. Release it on that path; test that the next queued record actually starts rather than just asserting that the failed start was reported.
+
+## Measure a steady-state refresh with one representative tick - 2026-11-24
+
+Warm the widget past registration and the first themed status, then count expensive boundary calls for one unchanged tick. Repeating hundreds of identical ticks is slower and detects no extra regression: removing snapshot reuse still turned the one-tick check red. For invalidation and liveness, change an input or jump the clock, then assert what the user sees.
