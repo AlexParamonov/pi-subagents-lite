@@ -7,12 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-11-24
+
 ### Added
 
 - Main-session compaction now removes only completed subagents from `AgentStatus`, whether triggered automatically or by `/compact`, just like `/agents` → Clear done.
 - On Linux, the widget can show which programs a subagent's `bash` calls are running.
   - `widgetShowBashPrograms` is off by default. Toggle it in `/agents` → Settings → Widget → Display → Show bash programs. See [widget activity](README.md#usage).
 - The conversation viewer shows a [live `codemode` trace](README.md#conversation-viewer-display) instead of escaped script text; expanding the call reveals the script and nested failures.
+- An experimental `Workflow` tool runs, watches and stops remote workflow runs from Pi the way `Agent` handles subagents. It is off by default, so Pi never registers it.
 
 ### Changed
 
