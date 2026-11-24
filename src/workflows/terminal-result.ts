@@ -49,8 +49,8 @@ export function formatTerminalResult(result: unknown): string {
 /**
  * Why the run ended, or nothing. Only a string is provenance text: a reason the wire delivered as a
  * value is producer data whose shape the producer chose, and an absent key, a `null` and an empty
- * string all say the same thing - the endpoint did not report how the run ended (anagen-x carries
- * `nil` there).
+ * string all say the same thing - the endpoint did not report how the run ended (the endpoint's own
+ * encoding carries `nil` there).
  */
 function provenance(reason: unknown): string {
   if (typeof reason !== "string" || reason === "" || reason === NATURAL_ANSWER) return "";

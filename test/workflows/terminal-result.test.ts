@@ -36,7 +36,7 @@ describe("the answer a completed run delivers", () => {
     expect(formatTerminalResult(result)).toBe("A partial answer.");
   });
 
-  // A strategy with no termination reason carries `nil` (measured on anagen-x: a completed ReAct run
+  // A strategy with no termination reason carries `nil` (measured on the workflow API: a completed ReAct run
   // answers `termination_reason: nil`). `null` and an absent key are the same fact to the reader - the
   // endpoint did not say how the run ended - and echoing the wire's `null` presented an internal
   // nothing as if it were a reason.
@@ -75,7 +75,7 @@ describe("the answer a completed run delivers", () => {
   });
 });
 
-// A `local` handler's stored output is its own value: anagen-x unwraps the inner `result` before
+// A `local` handler's stored output is its own value: the workflow API unwraps the inner `result` before
 // storing it, and its acceptance test pins a textless one (`{headline, chars}`). Forwarding that whole
 // would put arbitrary nested data - which can be an earlier node's reasoning - into the text the parent
 // agent reads, so an undeclared output says what it is and quotes none of it.

@@ -6,7 +6,7 @@
  * was written and only here is usability decided - the request base and the effective credential are
  * both derived here. Lookup uses own keys. Refusals explain the invalid selection or setting and
  * list the configured keys without quoting the configured URL. `validatedBase` is the only mint for
- * `ValidatedBase`; tasks/workflows/waves/1r-shared-boundaries/plan.md holds the measurements.
+ * `ValidatedBase`.
  */
 
 import type { SubagentsConfig } from "../models/model-precedence.ts";

@@ -3,7 +3,7 @@
  * (create, SSE follow, GET reconcile, stop) on a loopback socket, plus the file and config
  * workspace the extension scans.
  *
- * Defaults come from the anagen-x API captures in `recorded/` and the contract-derived output in
+ * Defaults come from the workflow API captures in `recorded/` and the contract-derived output in
  * `recorded/PROVENANCE.md`. Scripted responses keep the captured shapes; deliberately unknown SSE
  * names exercise forward compatibility and are not recordings. `lifecycle` and `progressFrame`
  * adapt recorded frames. The progress frames come from a hand-driven broadcast over the real

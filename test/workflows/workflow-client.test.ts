@@ -663,7 +663,7 @@ describe("monitor display", () => {
   });
 
   it("shows the turn that follows a node's tool turn", async () => {
-    // `SessionExecutor` closes a tool-invoking turn with one `assistant_turn` frame carrying its
+    // The producer closes a tool-invoking turn with one `assistant_turn` frame carrying its
     // text, and the turn after it streams on the same node: the boundary ends one turn's text.
     const secondTurn = "Three findings, one of them the parser";
     const frames =
@@ -739,7 +739,7 @@ describe("monitor display", () => {
   });
 
   it("shows both turns when a buffered run delivers the same text twice", async () => {
-    // A buffered run emits no chunks at all (`SessionExecutor`'s doc: "a buffered run emits no chunk
+    // A buffered run emits no chunks at all (the producer's doc: "a buffered run emits no chunk
     // events and stays silent"), so its turns arrive as consecutive full-turn frames, and two turns
     // can say the same thing. The producer's per-turn order: llm_completed, assistant_turn, tool_call,
     // tool_result.

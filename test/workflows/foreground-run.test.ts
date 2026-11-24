@@ -414,7 +414,7 @@ describe("foreground workflow execution", () => {
 
   it("runs against the built-in local endpoint when no endpoint is configured", async () => {
     // The fetch fake stands in for the socket: asserting the built-in default must never
-    // reach a real anagen-x listening on localhost:4001.
+    // reach a real workflow API listening on localhost:4001.
     const remote = fakeWorkflowFetch({
       stream: (push, close) => {
         push(DEFAULT_STREAM);
