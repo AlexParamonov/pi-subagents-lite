@@ -539,7 +539,7 @@ describe("showTextViewer — component behavior", () => {
 
   /** The text this viewer shows: its content window, with the frame above it, its separator, its footer
    * and the blank viewport rows below the text removed. */
-  function shownRows(frame: string[]): string[] {
+  function shownRows(frame: readonly string[]): string[] {
     return frame
       .slice(3, -2)
       .map(rowText)
@@ -547,7 +547,7 @@ describe("showTextViewer — component behavior", () => {
   }
 
   /** The viewer's own footer row, with the frame's borders removed. */
-  function footerRow(frame: string[]): string {
+  function footerRow(frame: readonly string[]): string {
     return rowText(frame.at(-2)!);
   }
 
