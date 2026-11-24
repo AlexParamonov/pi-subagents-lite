@@ -330,7 +330,7 @@ export class AgentManager {
 
     // startAgent can throw — clean up record so callers don't see an orphan
     try {
-      this.startAgent(id, record, args, concurrencySlot);
+      this.startAgent(record, args, concurrencySlot);
     } catch (err) {
       this.detachParentBinding(record);
       this.openGate(id, "");
@@ -340,15 +340,20 @@ export class AgentManager {
     return id;
   }
 
-  /** Start an agent now or from queue drain; manages the slot's running count when one is held. */
-  private startAgent(
-    id: string,
-    record: AgentRecord,
-    { pi, ctx, type, prompt, options }: SpawnArgs,
-    concurrencySlot?: ConcurrencySlot,
-  ) {
+  /** Reserve the slot until settlement, or release it immediately if setup throws before there is a run. */
+  private startAgent(record: AgentRecord, args: SpawnArgs, concurrencySlot?: ConcurrencySlot): void {
     if (concurrencySlot) concurrencySlot.running++;
+    try {
+      const run = this.launchAgent(record, args);
+      this.attachSettlementChain(record, run, concurrencySlot);
+    } catch (err) {
+      if (concurrencySlot) concurrencySlot.running--;
+      throw err;
+    }
+  }
 
+  private launchAgent(record: AgentRecord, { pi, ctx, type, prompt, options }: SpawnArgs): Promise<RunResult> {
+    const { id } = record;
     record.lifecycle.status = "running";
     record.lifecycle.startedAt = Date.now();
     // Set synchronously before the run so a stop before the session exists
@@ -367,7 +372,7 @@ export class AgentManager {
 
     this.onStart?.(record);
 
-    const promise = runAgent(ctx, type, prompt, {
+    return runAgent(ctx, type, prompt, {
       pi,
       agentId: id,
       model: options.model,
@@ -401,7 +406,6 @@ export class AgentManager {
         options.onSessionCreated?.(session);
       },
     });
-    this.attachSettlementChain(record, promise, concurrencySlot);
   }
 
   /**
@@ -619,7 +623,7 @@ export class AgentManager {
       if (slot.running >= slot.limit) continue;
 
       try {
-        this.startAgent(entry.id, record, entry.args, slot);
+        this.startAgent(record, entry.args, slot);
         started.add(entry.id);
       } catch (err) {
         // Late failure — surface on the record so the user can see it
