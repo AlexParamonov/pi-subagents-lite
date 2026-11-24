@@ -1,6 +1,6 @@
 # pi-subagents-lite
 
-A lightweight pi extension that lets the LLM spawn autonomous child agents for complex tasks, and run remote anagen-x workflows through the same selection, update, and result flow. Focused fork of pi-subagents with reduced surface area — no scheduling, no join modes.
+A lightweight pi extension that lets the LLM spawn autonomous child agents for complex tasks, and run remote workflows through the same selection, update, and result flow. Focused fork of pi-subagents with reduced surface area — no scheduling, no join modes.
 
 ## Language
 
@@ -67,7 +67,7 @@ _Avoid_: Excluded tools, tool categories, grouping allowlist
 ### Workflows
 
 **Workflow**:
-A graph pipeline executed remotely by an anagen-x workflow API, triggered through the `Workflow` tool. Never a Pi session; tracked alongside Subagents in the agent record store, kind-tagged.
+A graph pipeline executed remotely by a workflow API, triggered through the `Workflow` tool. Never a Pi session; tracked alongside Subagents in the agent record store, kind-tagged.
 _Avoid_: Pipeline, flow job, remote agent
 
 **Workflow file**:

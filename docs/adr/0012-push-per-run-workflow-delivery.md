@@ -7,8 +7,8 @@ what exists.
 
 ## Why
 
-The anagen-x API accepts a complete workflow config per run but has no
-register or list endpoint — its only server-side fallback is one configured
+The workflow API accepts a complete workflow config per run but has no
+register or list endpoint, its only server-side fallback being one configured
 default YAML path. A server-side registry would need a new API surface plus a
 deployment/sync story. The extension already parses every local file at
 discovery (the `Workflow` tool schema lists each file's `name`/`description`),
@@ -18,8 +18,8 @@ exactly "what's on disk".
 The same reasoning places run context in the config we already own: the tool's
 `path` param travels as an injected workflow-level `prompt_vars.working_dir`
 entry rather than a new API field, and is interpolated server-side in prompt
-text only (`${working_dir}`; `ParamResolver` deliberately does not see
-prompt_vars, and `context_messages` are never interpolated). The briefing
+text only (`${working_dir}`; prompt vars are deliberately invisible to param
+resolution, and `context_messages` are never interpolated). The briefing
 teaches prompt-text reach only.
 
 ## Trade-off
@@ -35,8 +35,8 @@ rejects.
 - **Server-side registry with name-referenced runs** — rejected: no such API
   exists; adds deployment and drift machinery contradicting the stateless
   server.
-- **Strategy-only requests (pi-channel's model)** — rejected: the selected
+- **Strategy-only requests** — rejected: the selected
   YAML never reaches the server; a fixed strategy runs regardless of what the
   user picked.
-- **YAML text over the wire** — rejected: the API accepts objects only (the
-  controller's `is_map` check); local parsing is required anyway for discovery.
+- **YAML text over the wire** — rejected: the API accepts objects only; local
+  parsing is required anyway for discovery.
