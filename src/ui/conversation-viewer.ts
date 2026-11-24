@@ -275,9 +275,8 @@ export class ConversationViewer implements Component {
     width: 0,
     messagesRef: undefined,
   };
-  /** Full content lines from the last build — avoids re-iterating cached messages. */
-  private cachedContentLines: string[] | undefined;
-  private cachedNonStreamingCount = 0;
+  /** Cached transcript rows; streaming rows are built separately for the visible window. */
+  private cachedHistoryLines: readonly string[] | undefined;
 
   /** Two-press confirm guard for the stop key, so a stray key can't kill the agent. */
   private stopArmed = false;
@@ -308,7 +307,7 @@ export class ConversationViewer implements Component {
   private toolsExpanded = false;
   /** Per-call state set by clicking a call; wins over the global flag until that flag flips (as in pi). */
   private expandedByCall = new Map<string, boolean>();
-  /** Clickable (settled) tool blocks in `cachedContentLines` coordinates. */
+  /** Clickable (settled) tool blocks in `cachedHistoryLines` coordinates. */
   private toolBlocks: ToolBlock[] = [];
   /**
    * Content area of the last rendered frame: the viewer row the content starts
@@ -450,7 +449,7 @@ export class ConversationViewer implements Component {
         this.messageCache.delete(index);
       }
     });
-    this.cachedContentLines = undefined;
+    this.cachedHistoryLines = undefined;
     this.syncToolTimer();
     this.scheduleRender();
   }
@@ -505,7 +504,7 @@ export class ConversationViewer implements Component {
     this.toolsExpanded = expanded;
     this.expandedByCall.clear();
     this.messageCache.clear();
-    this.cachedContentLines = undefined;
+    this.cachedHistoryLines = undefined;
   }
 
   /** "Took 4.2s" for a settled call, "Elapsed 4.2s" for a running one, undefined when unknown. */
@@ -561,9 +560,8 @@ export class ConversationViewer implements Component {
     const messages = this.source.messages;
     if (messages.length === 0) return;
     const index = messages.length - 1;
-    // Force the next render through the slow path so the streaming suffix is
-    // re-spliced behind the refreshed entry.
-    this.cachedContentLines = undefined;
+    // The transcript portion must be rebuilt from the refreshed entry.
+    this.cachedHistoryLines = undefined;
     const msg = messages[index];
     if (this.lastInnerW > 0 && msg?.role === "assistant") {
       // No toolResults: the in-flight message's calls have no results yet
@@ -746,7 +744,7 @@ export class ConversationViewer implements Component {
 
     this.expandedByCall.set(block.id, !this.isCallExpanded(block.id));
     this.messageCache.clear();
-    this.cachedContentLines = undefined;
+    this.cachedHistoryLines = undefined;
     return { handled: true };
   }
 
@@ -824,8 +822,9 @@ export class ConversationViewer implements Component {
     lines.push(hrMid);
 
     // Content area
-    const contentLines = this.buildContentLines(innerW);
-    const totalContentLines = contentLines.length;
+    const history = this.buildHistoryLines(innerW);
+    const streaming = this.buildStreamingLines(innerW);
+    const totalContentLines = history.length + streaming.length;
     const viewportHeight = this.viewportHeight();
     const maxScroll = Math.max(0, totalContentLines - viewportHeight);
 
@@ -834,13 +833,13 @@ export class ConversationViewer implements Component {
     }
 
     const visibleStart = Math.min(this.scrollOffset, maxScroll);
-    const visible = contentLines.slice(visibleStart, visibleStart + viewportHeight);
     // Recorded from what is actually painted, so a click maps to the row under
     // the pointer even when auto-scroll or streaming moved the window.
     this.clickOrigin = { topRow: lines.length, firstLine: visibleStart, rows: viewportHeight };
 
-    for (let i = 0; i < viewportHeight; i++) {
-      lines.push(row(visible[i] ?? ""));
+    for (let i = visibleStart; i < visibleStart + viewportHeight; i++) {
+      const text = i < history.length ? history[i] : streaming[i - history.length];
+      lines.push(row(text ?? ""));
     }
 
     // Footer
@@ -925,10 +924,9 @@ export class ConversationViewer implements Component {
 
   invalidate(): void {
     this.messageCache.clear();
-    this.cachedContentLines = undefined;
+    this.cachedHistoryLines = undefined;
     this.clickOrigin = undefined; // no frame on screen, so the rows its blocks were mapped to are gone
     this.cacheMeta = { count: 0, width: 0, messagesRef: undefined };
-    this.cachedNonStreamingCount = 0;
   }
 
   dispose(): void {
@@ -959,10 +957,9 @@ export class ConversationViewer implements Component {
   }
 
   private scrollMax(): number {
-    // Derive from a fresh build, not cachedContentLines.length: that cache holds
-    // the last slow-path result and goes stale while streaming grows the suffix.
-    // buildContentLines takes its fast path when the cache is warm, so this is cheap.
-    const totalLines = this.buildContentLines(this.lastInnerW).length;
+    const width = this.lastInnerW;
+    if (width <= 0) return 0;
+    const totalLines = this.buildHistoryLines(width).length + this.buildStreamingLines(width).length;
     return Math.max(0, totalLines - this.viewportHeight());
   }
   /**
@@ -999,7 +996,7 @@ export class ConversationViewer implements Component {
   /** Record the messages array reference so array replacement (e.g. compaction) is detected. */
   private updateCacheMeta(messages: any[], width: number): void {
     this.cacheMeta = { count: messages.length, width, messagesRef: messages };
-    this.cachedContentLines = undefined;
+    this.cachedHistoryLines = undefined;
   }
 
   private wrapInBg(bg: string, inner: string[], width: number): string[] {
@@ -1319,21 +1316,13 @@ export class ConversationViewer implements Component {
     return (id !== undefined ? this.expandedByCall.get(id) : undefined) ?? this.toolsExpanded;
   }
 
-  private buildContentLines(width: number): string[] {
-    if (width <= 0) return [];
-
-    const th = this.theme;
+  private buildHistoryLines(width: number): readonly string[] {
     const messages = this.source.messages;
 
     if (messages.length === 0) {
-      this.cachedContentLines = undefined;
+      this.cachedHistoryLines = undefined;
       this.toolBlocks = []; // no calls on screen, so nothing to hit
-      const lines = [th.fg("dim", "(waiting for first message...)")];
-      const streamingLines = this.buildStreamingLines(width);
-      this.cachedNonStreamingCount = lines.length;
-      lines.push(...streamingLines);
-      this.cachedContentLines = lines;
-      return lines;
+      return [this.theme.fg("dim", "(waiting for first message...)")];
     }
 
     // Invalidate cache on array replacement or width change (both require full rebuild)
@@ -1347,18 +1336,9 @@ export class ConversationViewer implements Component {
       this.updateCacheMeta(messages, width);
     }
 
-    // Fast path: if we have cached content and only streaming text changed,
-    // splice new streaming lines into the cached result.
-    if (this.cachedContentLines) {
-      const streamingLines = this.buildStreamingLines(width);
-      const result = this.cachedContentLines.slice(0, this.cachedNonStreamingCount);
-      result.push(...streamingLines);
-      return result;
-    }
+    if (this.cachedHistoryLines) return this.cachedHistoryLines;
 
-    // Slow path: full rebuild. Only this path reads result status (for call-line
-    // coloring), so the call-id lookup is built here rather than paying a full
-    // transcript scan on the streaming fast path above.
+    // Only a rebuild needs the call-id lookup for result colors and text.
     const toolResults = new Map<string, ToolResultStatus>();
     for (const msg of messages) {
       if (msg.role === "toolResult" && msg.toolCallId) {
@@ -1383,12 +1363,7 @@ export class ConversationViewer implements Component {
     }
     this.toolBlocks = toolBlocks;
 
-    const streamingLines = this.buildStreamingLines(width);
-    this.cachedNonStreamingCount = lines.length;
-    lines.push(...streamingLines);
-
-    // Cache for fast-path streaming splice on next render
-    this.cachedContentLines = lines;
+    this.cachedHistoryLines = lines;
 
     return lines;
   }

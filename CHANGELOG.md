@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Workflow streaming checks for visible changes without rescanning earlier turns on every chunk.
+- The conversation viewer no longer copies the full transcript on each redraw or scroll.
 - `Workflow Result` completion cards use Pi's settled tool colors: `toolErrorBg` for failures and `toolSuccessBg` for completed or stopped runs. `Subagent Result` cards use their original custom-message colors (`customMessageBg` and `customMessageLabel`). Foreground result rows are unchanged.
 - Opening an agent's details is one wide overlay from either entry point: the widget's `Enter` now shows it over the conversation the way `/agents` does, at twice pi's default overlay width (never wider than the terminal), instead of replacing the editor area. A record's `View result` / `View error` text now wraps at the width it is shown at instead of being cut with `...`.
 - The `Completion cards` setting row names what it hides: the description now names the cards the toggle governs instead of only background agents.

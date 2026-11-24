@@ -441,6 +441,30 @@ describe("ConversationViewer", () => {
       expect(viewer.handleMouse(wheel(-1))).toBeUndefined();
     });
 
+    it("scrolls across the cached transcript and a live response as one continuous window", () => {
+      const { viewer } = setup();
+      const receive = mockSubscribe.mock.lastCall![0];
+      const live = Array.from({ length: 25 }, (_, i) => `live-${String(i).padStart(2, "0")}`);
+      try {
+        receive({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: live.join("\n") } });
+        expect(frameText(viewer).match(/\b(?:row|live)-\d\d\b/g)).toEqual(live.slice(-21));
+
+        viewer.handleMouse(wheel(-10));
+        expect(frameText(viewer).match(/\b(?:row|live)-\d\d\b/g)).toEqual([
+          "row-26",
+          "row-27",
+          "row-28",
+          "row-29",
+          ...live.slice(0, 15),
+        ]);
+
+        viewer.handleInput("G");
+        expect(frameText(viewer).match(/\b(?:row|live)-\d\d\b/g)).toEqual(live.slice(-21));
+      } finally {
+        viewer.dispose();
+      }
+    });
+
     it("uses navigation keys to reach and clamp at the transcript boundaries", () => {
       const { viewer } = setup();
       viewer.handleInput("g");
