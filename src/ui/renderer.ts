@@ -106,79 +106,30 @@ export function renderAgentToolCall(
   theme: Theme,
   context?: { state?: Record<string, unknown>; toolCallId?: string },
 ): Text {
-  const typeName = getDisplayName((args.agent as string) || "");
-  const label = typeName || "Agent";
+  const type = (args.agent as string) || undefined;
+  const label = getDisplayName(type ?? "") || "Agent";
+  const state = context?.state;
+  const isBackground = args.run_in_background === true || state?.isBackground === true;
 
-  // Background agents: show live status from manager, fallback to queued state
-  // Check args.run_in_background (initial render) OR context.state.isBackground (re-render after result)
-  const isBackground = args.run_in_background === true || context?.state?.isBackground === true;
-  let icon: string;
-
-  if (isBackground) {
-    // Look up live status from manager using stored agentId
-    // Try context.state first, then toolCallId from manager records
-    let agentId = context?.state?.agentId as string | undefined;
-    if (!agentId) {
-      // Find agent by toolCallId from context
-      const toolCallId = context?.toolCallId as string | undefined;
-      if (toolCallId) {
-        const manager = getManager();
-        if (manager) {
-          const record = manager.listAgents().find((r) => r.display.toolCallId === toolCallId);
-          if (record) {
-            agentId = record.id;
-            if (context?.state) {
-              context.state.agentId = agentId;
-              context.state.isBackground = true;
-            }
-          }
-        }
-      }
+  // Once a result identifies the record, look it up by id. Before then, the call id can link it.
+  const agentId = state?.agentId as string | undefined;
+  let record = agentId ? getManager()?.getRecord(agentId) : undefined;
+  const toolCallId = context?.toolCallId;
+  if (!agentId && toolCallId) {
+    record = getManager()
+      ?.listAgents()
+      .find((r) => r.display.toolCallId === toolCallId);
+    if (record && state) {
+      state.agentId = record.id;
+      if (isBackground) state.isBackground = true;
     }
-    const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
-    const status = liveRecord?.lifecycle.status ?? "queued";
-    icon = statusIcon(status, theme, (args.agent as string) || undefined);
-    let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
-
-    const modelOverride = args._modelOverride as string | undefined;
-    if (modelOverride) {
-      text += ` (${modelOverride})`;
-    }
-
-    return new Text(text, 0, 0);
-  } else {
-    // Foreground agents: look up live status from manager using stored agentId
-    let agentId = context?.state?.agentId as string | undefined;
-    if (!agentId) {
-      // Find agent by toolCallId from context
-      const toolCallId = context?.toolCallId as string | undefined;
-      if (toolCallId) {
-        const manager = getManager();
-        if (manager) {
-          const record = manager.listAgents().find((r) => r.display.toolCallId === toolCallId);
-          if (record) {
-            agentId = record.id;
-            if (context?.state) {
-              context.state.agentId = agentId;
-            }
-          }
-        }
-      }
-    }
-    const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
-    const status = liveRecord?.lifecycle.status;
-    icon = statusIcon(status, theme, (args.agent as string) || undefined);
   }
 
-  // Build the call line text
-  let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
-
+  const status = record?.lifecycle.status ?? (isBackground ? "queued" : undefined);
+  const icon = statusIcon(status, theme, type);
   const modelOverride = args._modelOverride as string | undefined;
-  if (modelOverride) {
-    text += ` (${modelOverride})`;
-  }
-
-  return new Text(text, 0, 0);
+  const model = modelOverride ? ` (${modelOverride})` : "";
+  return new Text(`${icon} ${theme.fg("accent", theme.bold(label))}${model}`, 0, 0);
 }
 
 export function renderAgentToolResult(

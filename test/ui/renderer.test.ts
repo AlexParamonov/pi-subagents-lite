@@ -96,7 +96,8 @@ import type { AgentLifecycle, AgentRecord } from "../../src/types.js";
 import { SHORT_ID_LENGTH } from "../../src/types.js";
 import type { Theme } from "../../src/ui/types.js";
 import { buildAgentDetails, formatResultContent } from "../../src/record-result.js";
-import { makeAgentRecord } from "../fixtures.js";
+import { AgentManager } from "../../src/agents/agent-manager.js";
+import { fakeCtx, fakePi, makeAgentRecord } from "../fixtures.js";
 import {
   renderSubagentResult,
   renderAgentToolCall,
@@ -1086,6 +1087,35 @@ describe("renderAgentToolCall — background agent icon", () => {
     const allText = renderedRows.map((r) => r.text).join("\n");
     expect(allText).toContain("▸");
   });
+
+  it.each([
+    { background: false, fallback: "▸" },
+    { background: true, fallback: "◆" },
+  ])(
+    "uses the call's actual record, then falls back after Clear (background=$background)",
+    async ({ background, fallback }) => {
+      const manager = new AgentManager();
+      vi.mocked(getManager).mockReturnValue(manager);
+      try {
+        const id = manager.spawn(fakePi(), fakeCtx(), "builder", "task", {
+          description: "task",
+          signal: AbortSignal.abort(),
+        });
+        const toolCallId = "call-1";
+        manager.getRecord(id)!.display.toolCallId = toolCallId;
+        const context = { toolCallId, state: {} };
+
+        renderAgentToolCall({ agent: "builder", run_in_background: background }, defaultTheme, context);
+        expect(manager.clear(id)).toBe(true);
+        renderAgentToolCall({ agent: "builder" }, defaultTheme, context);
+
+        expect(renderedRows.map((row) => row.text)).toEqual(["■ Builder", `${fallback} Builder`]);
+      } finally {
+        vi.mocked(getManager).mockReturnValue(null);
+        await manager.dispose();
+      }
+    },
+  );
 
   it("shows model override when present", () => {
     renderAgentToolCall({ agent: "builder", _modelOverride: "claude-3" }, defaultTheme);
