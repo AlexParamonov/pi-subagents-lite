@@ -17,6 +17,7 @@ import {
   DISPATCH,
   endpoint,
   installWorkflow,
+  stateReply,
   stopRequests,
   streamRequests,
   wire,
@@ -274,6 +275,20 @@ describe("the settlement notification", () => {
     expect(rows).toContain("✓");
     expect(rows).toContain(ANSWER);
     expect(rows, "a remote run spent no tokens, so the card invents no stats").not.toMatch(/\d+ uses/);
+  });
+
+  it("shows the same server-confirmed failure in the tool row and the notification", async () => {
+    const remote = await server({ reads: [stateReply({ status: "failed", error: "analysis timed out" })] });
+    installWorkflow(ws, remote);
+    const { session } = await start();
+    const args = { workflow: "audit", prompt: "Review changes", run_in_background: true };
+
+    const receipt = await run(session, args);
+    const [nudge] = await settled(session);
+
+    const reason = "Workflow run failed: analysis timed out";
+    expect(resultRow(session, args).paint(receipt)).toContain(reason);
+    expect(nudge.message.content).toBe(`[Workflow "audit" ${runId(await session.status())} error]\n\n${reason}`);
   });
 
   it("commits a busy parent's settlement instead of queueing it", async () => {

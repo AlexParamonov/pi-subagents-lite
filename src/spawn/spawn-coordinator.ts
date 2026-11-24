@@ -4,7 +4,7 @@ import { SHORT_ID_LENGTH } from "../types.ts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentRecord, AgentStatus, LiveView, SpawnConfig, ToolActivity } from "../types.ts";
 import type { AgentManager, SpawnOptions } from "../agents/agent-manager.ts";
-import { buildAgentDetails, formatResultContent } from "../agents/tool-execution.ts";
+import { buildAgentDetails, formatResultContent } from "../record-result.ts";
 
 /**
  * spawn-coordinator.ts — Spawn-and-track coordination for subagents.
@@ -308,7 +308,7 @@ export class SpawnCoordinator {
     const kind: NudgeMessage["kind"] = workflow ? "workflow" : "agent";
     const label = workflow?.name ?? record.display.type;
     const status = record.lifecycle.status;
-    const body = workflow ? (record.result ?? record.error ?? "") : formatResultContent(record);
+    const body = formatResultContent(record);
     // A remote run has no usage accounting: its snapshot asks for none rather than carrying zeros.
     const details = buildAgentDetails(record, { includeStatus: true, includeStats: !workflow });
     details.kind = kind;

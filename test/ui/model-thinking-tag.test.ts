@@ -9,7 +9,7 @@ import { describe, it, expect } from "vite-plus/test";
 import type { Theme } from "../../src/ui/types.js";
 import { buildModelThinkingTag } from "../../src/ui/format.js";
 import { agentNameLabel } from "../../src/ui/renderer.js";
-import { buildAgentDetails } from "../../src/agents/tool-execution.js";
+import { buildAgentDetails } from "../../src/record-result.js";
 import { makeAgentRecord } from "../fixtures.js";
 
 describe("buildModelThinkingTag", () => {

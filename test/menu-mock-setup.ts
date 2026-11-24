@@ -232,19 +232,6 @@ vi.mock("../src/config/config-io.js", async () => {
   };
 });
 
-vi.mock("../src/agents/tool-execution.js", () => ({
-  buildAgentDetails: vi.fn(() => ({})),
-  successResult: vi.fn((text: string, details?: Record<string, unknown>) => ({
-    content: [{ type: "text", text }],
-    details,
-  })),
-  errorResult: vi.fn((text: string, details?: Record<string, unknown>) => ({
-    content: [{ type: "text", text }],
-    isError: true,
-    details,
-  })),
-}));
-
 vi.mock("../src/shell.js", async () => {
   // Derive the getter defaults from src's real config constants (via the mocked
   // config-io module above) so menu tests pin src's defaults, not a hand copy.

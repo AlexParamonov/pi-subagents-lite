@@ -13,12 +13,8 @@ import type {
   AgentLifecycle,
   AgentRecord,
 } from "../../src/types.js";
-import { buildAgentDetails } from "../../src/agents/tool-execution.js";
+import { buildAgentDetails } from "../../src/record-result.js";
 import { asAgentSession } from "../pi-boundaries.js";
-
-// buildAgentDetails is a pure function. Importing tool-execution.ts is safe
-// without mocks because @earendil-works/pi-coding-agent has no top-level side
-// effects (getAgentDir is a runtime value import, but the package is side-effect free).
 
 /* ------------------------------------------------------------------ */
 /*  Tests                                                             */

@@ -1,10 +1,9 @@
-import { getStatusNote, formatStopReason } from "../status-note.ts";
 /**
  * tool-execution.ts — Agent tool execution handlers.
  *
  * Contains the execute callbacks registered for the Agent tool.
  * Spawn coordination, nudge scheduling, and live-view tracking have moved
- * to spawn-coordinator.ts. buildAgentDetails stays here as a pure helper.
+ * to spawn-coordinator.ts.
  */
 
 import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
@@ -15,14 +14,13 @@ import type { AgentRecord, ThinkingLevel } from "../types.ts";
 import { SHORT_ID_LENGTH } from "../types.ts";
 import type { AgentConfig } from "./types.ts";
 import { getAgentConfig, resolveTypeOrDiscover } from "./agent-types.ts";
-import { getSessionContextPercent } from "./usage.ts";
+import { buildAgentDetails, formatResultContent } from "../record-result.ts";
 import { computeSpawnTarget, surfaceSpawnTargetWarnings } from "../spawn/spawn-target.ts";
 
 import { parseModelKey, findModelInRegistry, parseThinkingChoice } from "../utils.ts";
 import { resolveThinkingLevel } from "../models/thinking-resolution.ts";
 import { getPiModelThinkingLevel } from "../pi-settings.ts";
 import { getPiInstance, getStore, getCoordinator, getManager } from "../shell.ts";
-import { workflowDisplayName } from "../ui/format.ts";
 import { formatAgentStatusList } from "./agent-status.ts";
 
 // --- Tool result helpers ---
@@ -91,77 +89,6 @@ async function resolveWorktree(
     worktreeLabel: target.worktreeLabel,
     projectTrusted: target.projectTrusted,
   };
-}
-
-/**
- * Build a details record from an AgentRecord. Always includes type, description
- * and the reply's opening line for the collapsed result rows; includeStatus adds
- * status/outputFile/stopReason, includeStats adds turn/token/cost/context/compaction/model fields.
- * A Workflow run's snapshot also carries displayName, the name agent-registry surfaces cannot
- * derive from the type.
- */
-export function buildAgentDetails(
-  record: AgentRecord,
-  opts?: { includeStats?: boolean; includeStatus?: boolean },
-): Record<string, unknown> {
-  const details: Record<string, unknown> = {
-    type: record.display.type,
-    description: record.display.description,
-  };
-
-  // A workflow name is not a registered agent type, so the surfaces that resolve names through the
-  // agent registry need the run's own name on the snapshot to avoid calling every run "Agent".
-  if (record.workflow) details.displayName = workflowDisplayName(record.workflow);
-
-  const openingLine = record.result?.split("\n").find((line) => line.trim());
-  if (openingLine) {
-    details.replyPreview = openingLine.trim();
-  }
-
-  if (record.display.worktreePath) {
-    details.worktreePath = record.display.worktreePath;
-  }
-
-  if (opts?.includeStatus) {
-    details.status = record.lifecycle.status;
-    details.outputFile = record.display.outputFile;
-    const stopReason = formatStopReason(record.lifecycle);
-    if (stopReason) details.stopReason = stopReason;
-  }
-
-  if (opts?.includeStats) {
-    const elapsedMs = record.lifecycle.completedAt ? record.lifecycle.completedAt - record.lifecycle.startedAt : 0;
-
-    details.turnCount = record.stats.turnCount;
-    details.maxTurns = record.stats.maxTurns;
-    details.toolUses = record.stats.toolUses;
-    details.input = record.stats.lifetimeUsage.input;
-    details.output = record.stats.lifetimeUsage.output;
-    details.contextPercent = getSessionContextPercent(record.execution.session);
-    details.durationMs = elapsedMs;
-    details.compactions = record.stats.compactionCount;
-    details.modelName = record.execution.session?.model?.name ?? record.display.invocation?.modelName;
-    details.modelId = record.execution.session?.model?.id ?? record.display.invocation?.modelName;
-    details.thinkingLevel = record.execution.session?.thinkingLevel ?? record.display.invocation?.thinkingLevel;
-    details.cost = record.stats.lifetimeUsage.cost;
-  }
-
-  return details;
-}
-
-/**
- * Result text plus status note, for display. For error status, appends the
- * recorded error message so the nudge explains the failure.
- *
- * Shared by the foreground tool result and the subagent-result nudge so both
- * callers stay in sync on the nullish default and separator handling — they
- * have diverged before. getStatusNote owns the leading separator.
- */
-export function formatResultContent(record: AgentRecord): string {
-  // Only the nudge path formats error-status records as text: the foreground
-  // handler intercepts error status earlier and throws instead.
-  const errorNote = record.lifecycle.status === "error" && record.error ? `\n\nError: ${record.error}` : "";
-  return (record.result ?? "") + errorNote + getStatusNote(record.lifecycle);
 }
 
 // --- Tool execute handlers ---

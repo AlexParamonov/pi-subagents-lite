@@ -7,7 +7,7 @@ import { describe, it, expect } from "vite-plus/test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { defaultTheme } from "../mock-utils.js";
 import { makeAgentRecord } from "../fixtures.js";
-import { buildAgentDetails, formatResultContent } from "../../src/agents/tool-execution.js";
+import { buildAgentDetails, formatResultContent } from "../../src/record-result.js";
 import { renderAgentToolResult } from "../../src/ui/renderer.js";
 import type { AgentLifecycle } from "../../src/types.js";
 

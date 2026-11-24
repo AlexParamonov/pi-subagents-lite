@@ -15,6 +15,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { getCoordinator, getManager, getPiInstance, getStore } from "../shell.ts";
+import { formatResultContent } from "../record-result.ts";
 import type { AgentRecord } from "../types.ts";
 import { notedRow } from "../ui/format.ts";
 import { plainText } from "../ui/sanitize.ts";
@@ -159,7 +160,7 @@ function entryRows(record: AgentRecord | undefined, details: Record<string, unkn
  * A run launched in the background keeps its launch receipt beside that, as a launch fact, not health. */
 function outcomeRows(record: AgentRecord | undefined, content: string): string[] {
   if (!record) return [content];
-  if (record.lifecycle.status !== "running") return [record.error ?? record.result ?? ""];
+  if (record.lifecycle.status !== "running") return [formatResultContent(record)];
   const rows = [notedRow(record, { oneLine: true })];
   return record.display.invocation?.runInBackground ? [...rows, content] : rows;
 }

@@ -95,7 +95,7 @@ vi.mock("../../src/ui/format.js", async (importOriginal) => {
 import type { AgentLifecycle, AgentRecord } from "../../src/types.js";
 import { SHORT_ID_LENGTH } from "../../src/types.js";
 import type { Theme } from "../../src/ui/types.js";
-import { buildAgentDetails, formatResultContent } from "../../src/agents/tool-execution.js";
+import { buildAgentDetails, formatResultContent } from "../../src/record-result.js";
 import { makeAgentRecord } from "../fixtures.js";
 import {
   renderSubagentResult,
