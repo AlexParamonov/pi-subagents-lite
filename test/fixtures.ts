@@ -233,7 +233,7 @@ export interface MockExtensionApi {
   registerTool: Mock<(tool: RegisteredTool) => void>;
   registerCommand: Mock<(name: string, options: Omit<RegisteredCommand, "name">) => void>;
   registerMessageRenderer: Mock<(customType: string, renderer: MessageRendererCapture) => void>;
-  on: Mock<(event: string, handler: ListenerHandler) => void>;
+  on: Mock<(event: string, handler: ListenerHandler) => () => void>;
   sendUserMessage: Mock;
   sendMessage: Mock;
   exec: Mock;
@@ -272,7 +272,12 @@ export function createMockExtensionAPI(): MockExtensionAPI {
         messageRenderers.push({ customType, renderer });
       }),
       on: vi.fn((event: string, handler: ListenerHandler) => {
-        listeners.push({ event, handler });
+        const listener = { event, handler };
+        listeners.push(listener);
+        return () => {
+          const index = listeners.indexOf(listener);
+          if (index !== -1) listeners.splice(index, 1);
+        };
       }),
       sendUserMessage: vi.fn(),
       sendMessage: vi.fn(),

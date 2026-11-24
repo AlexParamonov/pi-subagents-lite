@@ -212,6 +212,7 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
 
 export function setupEventListeners(pi: ExtensionAPI): void {
   pi.on("tool_call", toolCallListener);
+  pi.on("agent_settled", (event) => getCoordinator()?.onParentSettled(event.aborted));
 
   pi.on("turn_start", async (_event, ctx) => {
     // Set UI context on first turn

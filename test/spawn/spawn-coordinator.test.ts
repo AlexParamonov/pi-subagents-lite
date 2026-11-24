@@ -174,6 +174,7 @@ describe("SpawnCoordinator", () => {
     manager = makeMockManager();
     ctx = makeMockCtx();
     mockPi.sendMessage.mockReset();
+    mockPi.on.mockReset().mockReturnValue(() => {});
     mockGetPiInstance.mockReturnValue(mockPiApi);
     mockGetSessionCtx.mockReturnValue({ isIdle: () => true });
   });
@@ -469,7 +470,13 @@ describe("SpawnCoordinator", () => {
   });
 
   describe("nudge delivery options", () => {
-    // pi queues a custom message into agent.steer()/agent.followUp() whenever it is streaming and triggerTurn !== false.
+    function finishParentTurn(): void {
+      expect(mockPi.sendMessage).not.toHaveBeenCalled();
+      const [event, finish] = mockPi.on.mock.lastCall ?? [];
+      expect(event).toBe("turn_end");
+      expect(finish({ outcome: "completed" })).toEqual({ continue: true });
+    }
+
     async function nudgeOptions(parentIdle: boolean) {
       mockGetSessionCtx.mockReturnValue({ isIdle: () => parentIdle });
       const coordinator = new SpawnCoordinator(manager);
@@ -483,24 +490,41 @@ describe("SpawnCoordinator", () => {
 
       coordinator.onAgentComplete(result.record);
       vi.advanceTimersByTime(200);
+      if (!parentIdle) finishParentTurn();
 
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
       return mockPi.sendMessage.mock.calls[0][1] as Parameters<ExtensionAPI["sendMessage"]>[1];
     }
 
-    it("hands a busy parent a committing delivery, not a steered queue entry", async () => {
+    it("commits the result and requests continuation at a busy parent's turn boundary", async () => {
       expect(await nudgeOptions(false)).toEqual({ triggerTurn: false });
     });
 
     it("hands an idle parent a delivery that starts a turn", async () => {
       expect(await nudgeOptions(true)).toEqual({ triggerTurn: true });
     });
-    it("hands a busy parent's Workflow message the same committing delivery", async () => {
+    it("uses the same committing delivery and continuation for Workflow", async () => {
       expect(await nudgeWorkflowOptions(false)).toEqual({ triggerTurn: false });
     });
 
     it("hands an idle parent's Workflow message a delivery that starts a turn", async () => {
       expect(await nudgeWorkflowOptions(true)).toEqual({ triggerTurn: true });
+    });
+
+    it("starts a turn when compaction finishes without emitting a turn boundary", () => {
+      let parentIdle = false;
+      mockGetSessionCtx.mockReturnValue({ isIdle: () => parentIdle });
+      const coordinator = new SpawnCoordinator(manager);
+      const record = workflowRecord();
+      coordinator.enrollForNudge(record.id);
+      coordinator.onAgentComplete(record);
+      vi.advanceTimersByTime(200);
+      expect(mockPi.sendMessage).not.toHaveBeenCalled();
+
+      parentIdle = true;
+      vi.advanceTimersByTime(200);
+
+      expect(mockPi.sendMessage).toHaveBeenCalledExactlyOnceWith(expect.anything(), { triggerTurn: true });
     });
 
     /** The same pin driven by an enrolled Workflow run: one message type, one handoff. */
@@ -512,6 +536,7 @@ describe("SpawnCoordinator", () => {
 
       coordinator.onAgentComplete(record);
       vi.advanceTimersByTime(200);
+      if (!parentIdle) finishParentTurn();
 
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
       return mockPi.sendMessage.mock.calls[0][1] as Parameters<ExtensionAPI["sendMessage"]>[1];

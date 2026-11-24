@@ -76,6 +76,7 @@ export class SpawnCoordinator {
   private pendingNudges = new Map<string, NudgeMessage>();
 
   private nudgeTimer: ReturnType<typeof setTimeout> | null = null;
+  private stopWaitingForTurn?: () => void;
 
   /** Set during dispose to prevent nudge emission after session replacement. */
   private disposed = false;
@@ -193,24 +194,59 @@ export class SpawnCoordinator {
     this.backgroundAgentIds.add(agentId);
   }
 
-  /**
-   * Queue a settlement for delivery. Batches with NUDGE_DELAY_MS window to coalesce rapid
-   * completions, and keeps only the latest message per agent.
-   */
+  /** Coalesce rapid completions, keeping the latest settlement per record. */
   private scheduleNudge(message: NudgeMessage): void {
     this.pendingNudges.set(message.agentId, message);
+    this.armNudgeTimer();
+  }
 
+  private armNudgeTimer(): void {
     if (this.nudgeTimer) return;
-
     this.nudgeTimer = setTimeout(() => {
       this.nudgeTimer = null;
-      const batch = [...this.pendingNudges.values()];
-      this.pendingNudges.clear();
+      try {
+        const pi = getPiInstance();
+        if (!pi || getSessionCtx()?.isIdle?.() !== false) {
+          this.flushNudges(true);
+          return;
+        }
 
-      for (const message of batch) {
-        this.emitIndividualNudge(message);
+        // Pi can commit the results and continue together at a turn boundary, without its Esc-clearable queue.
+        this.stopWaitingForTurn ??= pi.on("turn_end", (event) => {
+          if (this.flushNudges(false) && event.outcome === "completed") return { continue: true };
+        });
+      } catch {
+        // A stale Pi context or listener registration still gets the normal send / notify fallback.
+        this.flushNudges(false);
+        return;
       }
+      // Work like manual compaction can make Pi busy without emitting a turn boundary.
+      this.armNudgeTimer();
     }, NUDGE_DELAY_MS);
+  }
+
+  /** The last turn boundary may have passed already. Esc still commits results but does not restart the parent. */
+  onParentSettled(aborted: boolean): void {
+    if (aborted || this.stopWaitingForTurn) this.flushNudges(!aborted);
+  }
+
+  private flushNudges(triggerTurn: boolean): boolean {
+    if (this.pendingNudges.size === 0) return false;
+    this.cancelNudgeFlush();
+    const batch = [...this.pendingNudges.values()];
+    this.pendingNudges.clear();
+    let delivered = false;
+    for (const [index, message] of batch.entries()) {
+      if (this.emitIndividualNudge(message, triggerTurn && index === batch.length - 1)) delivered = true;
+    }
+    return delivered;
+  }
+
+  private cancelNudgeFlush(): void {
+    if (this.nudgeTimer) clearTimeout(this.nudgeTimer);
+    this.nudgeTimer = null;
+    this.stopWaitingForTurn?.();
+    this.stopWaitingForTurn = undefined;
   }
 
   /**
@@ -219,6 +255,7 @@ export class SpawnCoordinator {
    * on the record — a settled agent can be continued and re-feeds it.
    */
   onAgentComplete(record: AgentRecord): void {
+    if (this.disposed) return;
     // One-shot background gate: the first settlement of a background agent
     // nudges and consumes the set entry. Continuation settlements (ordinal
     // >= 2, written by the manager before this callback fires) nudge for both
@@ -229,13 +266,10 @@ export class SpawnCoordinator {
   }
 
   dispose(): void {
-    if (this.nudgeTimer) {
-      clearTimeout(this.nudgeTimer);
-      this.nudgeTimer = null;
-    }
+    this.disposed = true;
+    this.cancelNudgeFlush();
     this.pendingNudges.clear();
     this.backgroundAgentIds.clear();
-    this.disposed = true;
   }
 
   // ── Private ──
@@ -265,23 +299,19 @@ export class SpawnCoordinator {
     };
   }
 
-  private emitIndividualNudge(message: NudgeMessage): void {
-    // Skip if disposed — prevents stale pi usage after session replacement
-    if (this.disposed) return;
+  private emitIndividualNudge(message: NudgeMessage, triggerTurn: boolean): boolean {
+    if (this.disposed) return false;
 
     // Read pi from shell at call time so we get a fresh reference after reload.
     const pi = getPiInstance();
-    if (!pi) return;
+    if (!pi) return false;
 
     try {
-      // Explicit triggerTurn and no deliverAs: pi's streaming queue branch (triggerTurn !== false) is emptied by an ordinary Esc.
-      const ctx = getSessionCtx();
-      const parentIdle = ctx?.isIdle?.() ?? true;
-
       pi.sendMessage(
         { customType: "subagent-result", content: message.content, details: message.details, display: true },
-        parentIdle ? { triggerTurn: true } : { triggerTurn: false },
+        { triggerTurn },
       );
+      return true;
     } catch {
       // sendMessage failed (shared runtime overwritten by subagent bindCore).
       // Fall back to UI notification using the captured spawning-session context.
@@ -296,6 +326,7 @@ export class SpawnCoordinator {
           // ctx may also be stale if session was replaced
         }
       }
+      return false;
     }
   }
 

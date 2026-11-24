@@ -66,6 +66,8 @@ export interface WorkflowSession {
   stop(id: string): Promise<string>;
   /** Everything this session was handed as a completion notification. */
   nudges(): Nudge[];
+  /** Deliver a busy parent's results at the extension's registered turn boundary. */
+  endTurn(): Promise<void>;
   /** The widget's rows, reached through `setWidget` as Pi reaches them. */
   widgetText(): string;
   /** End the session the way Pi does; a repeat call is the cleanup that finds it already ended. */
@@ -134,6 +136,9 @@ export async function startWorkflowSession(options: WorkflowSessionOptions): Pro
     },
     nudges() {
       return nudges(capture);
+    },
+    endTurn() {
+      return fire(capture, ctx, "turn_end", { type: "turn_end", outcome: "completed" });
     },
     widgetText() {
       expect(widget, "the extension must register a widget").toBeDefined();

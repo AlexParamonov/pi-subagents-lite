@@ -291,12 +291,14 @@ describe("the settlement notification", () => {
     expect(nudge.message.content).toBe(`[Workflow "audit" ${runId(await session.status())} error]\n\n${reason}`);
   });
 
-  it("commits a busy parent's settlement instead of queueing it", async () => {
+  it("commits a busy parent's settlement at its turn boundary instead of queueing it", async () => {
     const remote = await server({ streams: [DISPATCH] });
     installWorkflow(ws, remote);
     const { session } = await start({ parentIdle: false });
 
     await launch(session);
+    await vi.waitFor(() => expect(session.capture.listeners.some(({ event }) => event === "turn_end")).toBe(true));
+    await session.endTurn();
     const [first] = await settled(session);
 
     expect(first.options).toEqual({ triggerTurn: false });

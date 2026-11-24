@@ -136,6 +136,8 @@ Every agent whose frontmatter omits `tools` then starts with codemode active, ex
 - `run_in_background` requests that the agent return without waiting for completion and notify the parent when done. If the child has `MessageAgent` active, it is backgrounded regardless of this parameter, including an explicit `false`.
 - `worktree_path` is a directory inside any git repository on disk. Relative paths resolve against the parent's working directory. See [Worktree paths and trust](#worktree-paths-and-trust).
 
+Completion notifications from subagents and Workflows start a new turn if the parent is idle, or give a busy parent a turn to read the result. Esc saves notifications already pending without restarting the interrupted turn.
+
 `model`, `thinking`, `max_turns`, and `max_tokens` are injected from config and frontmatter, never passed by the LLM. Set them once and forget.
 
 Subagents cannot spawn further subagents.

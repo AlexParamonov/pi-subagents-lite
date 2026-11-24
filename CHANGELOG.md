@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Subagent and Workflow completion notifications now wake the main session, even when a result arrives during its last response. A result pending when you press Esc is saved without restarting the interrupted turn.
 - Failed `Agent` calls now show the reason in the tool row instead of only changing its background color.
 - A subagent that fails during startup no longer holds a concurrency slot or strands later subagents in the queue.
 - A failed Workflow run's details view shows **why** it failed: the record's failure reason is painted as its own row after the node rows (one row per line of the reason, wrapped like every other row), and it replaces the `(this run delivered no entries)` line when the run published nothing at all. Before, a run that died before its first `node_progress` showed an empty view.

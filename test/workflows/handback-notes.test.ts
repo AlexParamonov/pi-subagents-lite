@@ -595,9 +595,11 @@ describe("a stop the endpoint did not confirm", () => {
     expect(session.nudges(), "a hand-back is not a settlement").toEqual(NO_NUDGE);
     expect(stopRequests(remote), "the interrupt adds no stop to the one already on the wire").toHaveLength(1);
 
-    // Enrolled: the read that answers is the run's one notification, committed to the busy parent.
+    // Enrolled: the read that answers is the run's one notification, committed at the parent's turn boundary.
     await vi.advanceTimersByTimeAsync(2_000);
     await readReply(exchanges, remote, 2);
+    await vi.advanceTimersByTimeAsync(200);
+    await session.endTurn();
     expect(await settled(session)).toEqual([
       {
         message: {
