@@ -22,7 +22,8 @@ function mount(
   getLiveView: (id: string) => LiveView | undefined = () => undefined,
   configureWidget?: (widget: AgentWidget) => void,
 ) {
-  const widget = new AgentWidget(makeMockManager(agents), getLiveView);
+  const manager = makeMockManager(agents);
+  const widget = new AgentWidget(manager, getLiveView);
   configureWidget?.(widget);
   const theme = makeMockTheme();
   let component: WidgetComponent | undefined;
@@ -42,6 +43,7 @@ function mount(
   widget.update();
   return {
     widget,
+    manager,
     tui,
     theme,
     ui,
@@ -119,8 +121,10 @@ describe("widget redraw scheduling", () => {
     finished.lifecycle.completedAt = Date.now();
     const host = setup([finished]);
     const initial = [...host.lines];
+    const listAgents = vi.spyOn(host.manager, "listAgents");
     host.widget.ensureTimer();
     vi.advanceTimersByTime(60_000);
+    expect(listAgents).toHaveBeenCalledTimes(750);
     expect(host.requestRender).not.toHaveBeenCalled();
     expect(host.lines).toEqual(initial);
     vi.advanceTimersByTime(80);

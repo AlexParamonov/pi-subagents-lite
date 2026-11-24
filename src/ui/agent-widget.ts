@@ -938,8 +938,8 @@ export class AgentWidget {
     return lines;
   }
 
-  private renderWidget(tui: TUI, theme: Theme): string[] {
-    const { running, queued, finished } = this.categorizeAgents();
+  private renderWidget(tui: TUI, theme: Theme, snapshot = this.categorizeAgents()): string[] {
+    const { running, queued, finished } = snapshot;
     this.hasAnimatedRows = false;
 
     const hasActive = running.length > 0 || queued.length > 0;
@@ -1146,7 +1146,8 @@ export class AgentWidget {
     }
     if (!this.uiCtx) return;
 
-    const { running, queued, finished, hasRecords } = this.categorizeAgents();
+    const snapshot = this.categorizeAgents();
+    const { running, queued, finished, hasRecords } = snapshot;
 
     if (!hasRecords) {
       // Zero records: the menu is empty — nothing to surface, clear both.
@@ -1205,7 +1206,7 @@ export class AgentWidget {
       const previous = this.lastWidgetLines;
       if ((running.length === 0 || !this.hasAnimatedRows) && this.tui && this.theme && previous) {
         try {
-          const lines = this.renderWidget(this.tui, this.theme);
+          const lines = this.renderWidget(this.tui, this.theme, snapshot);
           if (lines.length === previous.length && lines.every((line, i) => line === previous[i])) return;
         } catch {
           // Preflight is only an optimization; the component render boundary reports failures.
