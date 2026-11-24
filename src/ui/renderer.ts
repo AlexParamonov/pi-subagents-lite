@@ -297,10 +297,8 @@ function pathRows(d: Record<string, unknown> | undefined, theme: Theme): string 
   return rows.join("\n");
 }
 
-/** The card's fill. It is injected when a run settles, so nothing here is in flight: only a status the
- * status table marks as an error claims a failure, as pi's rule for a settled call, and the glyph still
- * says which status it was. */
-function cardBackground(status: string | undefined): ToolBg {
+/** A Workflow card is already settled. Its fill distinguishes failure, not stopped from completed. */
+function workflowCardBackground(status: string | undefined): ToolBg {
   return statusColor(status) === "error" ? "toolErrorBg" : "toolSuccessBg";
 }
 
@@ -318,10 +316,13 @@ export function renderSubagentResult(
 
   const d = message.details;
   const text = (message.content as string)?.trim() || "";
+  const isWorkflow = d?.kind === "workflow";
+  const title = isWorkflow
+    ? theme.fg("toolTitle", theme.bold("Workflow Result"))
+    : theme.fg("customMessageLabel", "Subagent Result");
 
   const inner = new Container();
-  const label = d?.kind === "workflow" ? "Workflow Result" : "Subagent Result";
-  inner.addChild(new Text(theme.fg("toolTitle", theme.bold(label)), 0, 0));
+  inner.addChild(new Text(title, 0, 0));
   inner.addChild(new Spacer(1));
 
   // One card for every settlement message. The stats row is the only part a message may not carry:
@@ -353,7 +354,8 @@ export function renderSubagentResult(
     inner.addChild(new Text(indentedBody(text), 0, 0));
   }
 
-  const box = new Box(1, 1, (t) => theme.bg(cardBackground(status), t));
+  const background = isWorkflow ? workflowCardBackground(status) : "customMessageBg";
+  const box = new Box(1, 1, (t) => theme.bg(background, t));
   box.addChild(inner);
 
   const outer = new Container();

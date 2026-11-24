@@ -289,61 +289,38 @@ function withoutPreview(details: Record<string, unknown>): Record<string, unknow
   return stored;
 }
 
-describe("renderSubagentResult — the tool call's row treatment", () => {
-  // The card is injected at settlement, so these are the only statuses one can carry.
-  it.each([
-    ["completed", "toolSuccessBg"],
-    ["turn_limited", "toolSuccessBg"],
-    ["stopped", "toolSuccessBg"],
-    ["error", "toolErrorBg"],
-    ["aborted", "toolErrorBg"],
-  ] as [AgentLifecycle["status"], string][])(
-    "shows status %s on the %s fill a tool call's own row gets",
-    (status, fill) => {
-      renderSubagentResult(nudge("Done.", { status }), { expanded: false }, markingTheme, SHOW_COST);
+describe("completion card theme roles", () => {
+  it.each(["completed", "turn_limited", "stopped", "error", "aborted"] as const)(
+    "uses the custom-message theme for Subagent Result (status: %s)",
+    (status) => {
+      const message = nudge("Done.", { status });
+      renderSubagentResult(
+        { ...message, details: { ...message.details, kind: "agent" } },
+        { expanded: false },
+        markingTheme,
+        SHOW_COST,
+      );
 
-      expect(boxFills).toEqual([`[${fill}:]`]);
+      expect(boxFills).toEqual(["[customMessageBg:]"]);
+      expect(renderedRows[0]).toEqual({ kind: "Text", text: "[customMessageLabel:Subagent Result]" });
     },
   );
 
-  it("paints a settled run's card on the fill its own status names", () => {
-    renderSubagentResult(workflowNudge("error"), { expanded: false }, markingTheme, SHOW_COST);
+  it("uses the same theme for old Subagent Result messages with no kind or status", () => {
+    renderSubagentResult({ content: "Done." }, { expanded: false }, markingTheme, SHOW_COST);
 
-    expect(boxFills).toEqual(["[toolErrorBg:]"]);
+    expect(boxFills).toEqual(["[customMessageBg:]"]);
   });
 
-  it("paints a stopped run's Workflow card on the finished fill, not the in-flight one", () => {
-    renderSubagentResult(workflowNudge("stopped"), { expanded: false }, markingTheme, SHOW_COST);
+  it.each([
+    ["completed", "toolSuccessBg"],
+    ["stopped", "toolSuccessBg"],
+    ["error", "toolErrorBg"],
+  ] as const)("keeps the %s Workflow Result on the %s fill", (status, fill) => {
+    renderSubagentResult(workflowNudge(status), { expanded: false }, markingTheme, SHOW_COST);
 
-    expect(boxFills).toEqual(["[toolSuccessBg:]"]);
-  });
-
-  it("paints a message with no status on the completed fill its own icon claims", () => {
-    renderSubagentResult(
-      { content: "Done.", details: { type: "builder" } },
-      { expanded: false },
-      markingTheme,
-      SHOW_COST,
-    );
-
-    expect(boxFills).toEqual(["[toolSuccessBg:]"]);
-  });
-
-  it("paints a status it does not know as a finished run, since nothing reports an error", () => {
-    renderSubagentResult(
-      { content: "Done.", details: { type: "builder", status: "no-such-status" } },
-      { expanded: false },
-      markingTheme,
-      SHOW_COST,
-    );
-
-    expect(boxFills).toEqual(["[toolSuccessBg:]"]);
-  });
-
-  it("paints the card's title with the tool-call title role", () => {
-    renderSubagentResult(nudge("Done.", { status: "completed" }), { expanded: false }, markingTheme, SHOW_COST);
-
-    expect(renderedRows[0]).toEqual({ kind: "Text", text: "[toolTitle:*Subagent Result*]" });
+    expect(boxFills).toEqual([`[${fill}:]`]);
+    expect(renderedRows[0]).toEqual({ kind: "Text", text: "[toolTitle:*Workflow Result*]" });
   });
 });
 
