@@ -984,3 +984,11 @@ reflex shortcuts (`checkout --`, `stash`) were the ones that could have dropped 
 **What worked:** Kept the mapping, replaced the equivalence with the rule the code owns - the fill follows the colour of the card's own status mark, true for all five statuses and for the next one added - and added one clause stating the divergence and its cause (on the host, only the call's own failure reddens a row). Renamed the pin to the two fills it actually reads. Both sentences were checked against the host's sources first: `agent-loop.js` returns `isError: result.isError === true` and `tool-execution.js` picks the fill from `isPartial`/`result.isError`, so no amount of reading this extension can prove the host's half.
 
 **Next time:** Before publishing "the same as the host for these statuses", check each status named in the host's own source. State the rule plus a named exception rather than an equivalence: the rule is checkable from one file and the equivalence breaks silently with the next status. Apply the same test to a test name - a fact that needs another repo's source to see does not belong in it.
+
+## A committed notification is not a model turn - 2026-11-24
+
+Pi's `triggerTurn: false` commits a busy-session notification without waking the model, and `triggerTurn: true` while busy sends it through a queue that Esc can empty. A temporary `turn_end` handler can send the durable message and request continuation together; a batch that missed that boundary can wake the idle session from `agent_settled`. Keep the handler temporary because Pi builds a session projection when an actionable boundary has handlers. Verify both the saved entry and the next provider request with a real Pi session. A mock `sendMessage` call proves neither.
+
+## A reserved slot needs an owner before a run promise exists - 2026-11-24
+
+Reservation must precede callbacks that could start another run, but synchronous setup can throw before attaching the promise that normally releases the slot. Release it on that path; test that the next queued record actually starts rather than just asserting that the failed start was reported.
