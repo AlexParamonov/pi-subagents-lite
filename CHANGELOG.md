@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Failed `Agent` calls now show the reason in the tool row instead of only changing its background color.
 - A failed Workflow run's details view shows **why** it failed: the record's failure reason is painted as its own row after the node rows (one row per line of the reason, wrapped like every other row), and it replaces the `(this run delivered no entries)` line when the run published nothing at all. Before, a run that died before its first `node_progress` showed an empty view.
 - Opening the details of a subagent that failed **before it had a session** (a bad model, a refused spawn) shows its failure reason instead of failing with `has nothing to show`; a record with neither a session nor a reason still reports that way, so the caller can.
 - Parallel tool calls starting in the same millisecond no longer overwrite each other in the widget's active-tool list.

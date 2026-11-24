@@ -18,6 +18,7 @@ import {
   statusColor,
   statusIcon,
 } from "./format.ts";
+import { plainText } from "./sanitize.ts";
 import { getManager } from "../shell.ts";
 
 // --- Stats rendering helpers ---
@@ -210,6 +211,9 @@ export function renderAgentToolResult(
     }
     return rows;
   }
+
+  // Pi turns a thrown call into an error result without agent details.
+  if (result.isError) return new Text(`${theme.fg("error", "✗")} ${plainText(text)}`, 0, 0);
 
   // Background agents — description only (icon + status are in the call line)
   // The call renderer handles the icon and status text
