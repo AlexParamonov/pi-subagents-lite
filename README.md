@@ -33,7 +33,9 @@ The LLM calls `Agent` like any other tool. Foreground agents return inline with 
   └ Now I have enough information to provide a comprehensive answer.
 ```
 
-The widget shows running and recently finished agents above the editor. With `widgetShowBashPrograms` on (default off; `/agents` → Settings → Widget → Display → Show bash programs), the activity line names the programs an agent's running `bash` call has started (`└ running: sleep ×10, cat (12s)…`: repeats counted, at most four names, then `+N`, and the oldest call's elapsed time once it passes a second). Programs are read from `/proc` at most once a second while the same `bash` calls are running (a new call costs a read of its own), and only while a `bash` call runs and the widget is visible; with the setting off nothing is sampled and the activity line keeps its generic `running command…`. Linux only: a platform without `/proc` (anything but Linux) stays generic. `↓`/`↑` highlights an agent, `Enter` opens the conversation viewer, `Esc` closes navigation. The viewer streams the live transcript — thinking blocks, tool calls, and compaction summaries. Mouse gestures (scrolling, clicking) need pi's fullscreen TUI: under `tuiMode: "regular"` the terminal reports no mouse events.
+The widget shows running and recently finished agents above the editor. With `widgetShowBashPrograms` on (default off; `/agents` → Settings → Widget → Display → Show bash programs), the activity line names the programs a subagent's running `bash` calls have started (`└ running: sleep ×10, cat (12s)…`: repeats counted, at most four names, then `+N`, and the oldest call's elapsed time from one second onward). On Linux, the widget samples `/proc` only while visible and a `bash` call is running: at most once per second per agent while the same calls run, with a fresh sample when the set of calls changes. If the setting is off or the Linux probe is unavailable, the widget keeps the generic command label without sampling.
+
+`↓`/`↑` highlights an agent, `Enter` opens the conversation viewer, and `Esc` closes navigation. The viewer streams thinking blocks, tool calls, and compaction summaries. Mouse gestures (scrolling, clicking) need pi's fullscreen TUI: under `tuiMode: "regular"` the terminal reports no mouse events.
 
 The `/agents` menu covers active and settled agents (view, steer or continue, stop, clear), manual spawns without an LLM round-trip, model and concurrency settings, agent behavior, system prompts, widget settings, and diagnostics.
 
@@ -203,7 +205,9 @@ Every call row reads the way pi writes that tool: `bash` shows `$ <command>` and
 
 `compactToolCalls` (default on) presents tool calls compactly. A run of two or more consecutive eligible calls — in the order the viewer already shows them, across turns — becomes one row such as `5 tools (read, grep, find)`.
 
-`ungroupedTools` (default `write`, `edit`, `replace`, `bash`, `codemode`, `Agent`, `StopAgent`, `MessageAgent`) names the tools that keep their normal call block
+`ungroupedTools` (default `write`, `edit`, `replace`, `bash`, `codemode`, `Agent`, `StopAgent`, `MessageAgent`) names the tools that keep their normal call block.
+
+A `codemode` call stays separate even if you remove it from `ungroupedTools`. It shows a live trace of its nested calls in the usual tool row format, such as `read package.json:1-12`. In compact mode, adjacent eligible nested calls group into a single row that counts running, failed, and cancelled calls; ungrouped calls show their own status icons. Expand `codemode` to see the script, individual calls, and any reported failure reasons.
 
 ### Project-level config
 

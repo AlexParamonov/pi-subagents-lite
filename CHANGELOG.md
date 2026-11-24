@@ -9,30 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Every successful compaction of the main agent session (manual `/compact` or automatic) clears completed subagents, like `/agents` → Clear done, so `AgentStatus` no longer lists them. Stopped, failed and running agents are kept; subagents' own compactions don't trigger it.
-- The widget's activity line can show which programs a running `bash` call has started, behind the new `widgetShowBashPrograms` setting (`/agents` → Settings → Widget → Display → Show bash programs; global config, off by default) (`running: sleep ×10, cat (12s)…`: repeats counted, first four names then `+N`, plus how long the oldest running call has gone once it passes a second) instead of just `running command…`. It reads `/proc` at most once a second while the same `bash` calls are running (a new call costs a read of its own) and only while a `bash` call is running and the widget is visible, so the setting takes effect on the next read; with it off nothing is sampled and the activity line keeps its generic `running command…`. Linux only: it finds the call's shell through `/proc` by its `PI_SESSION_ID` and walks through subshells and wrappers like `timeout`/`env`/`tokf`/`rtk` to the program on each branch; other platforms have no probe and keep `running command…` even with the setting on.
-- The compact conversation viewer collapses a `codemode` call to its nested tool rows instead of an escaped `code=...` argument, and shows the script itself when expanded. Those rows use the same form as the top-level rows (`read package.json:1-12`, `$ rm -f file`), consecutive eligible calls group into the same summary row the viewer uses elsewhere, counting the calls that failed or were cancelled, excluded calls stay individually visible with Pi-style status icons, expanding reveals why a nested call failed, and the trace updates live while the script runs.
+- Main-session compaction now removes only completed subagents from `AgentStatus`, whether triggered automatically or by `/compact`, just like `/agents` → Clear done.
+- On Linux, the widget can show which programs a subagent's `bash` calls are running.
+  - `widgetShowBashPrograms` is off by default. Toggle it in `/agents` → Settings → Widget → Display → Show bash programs. See [widget activity](README.md#usage).
+- The conversation viewer shows a [live `codemode` trace](README.md#conversation-viewer-display) instead of escaped script text; expanding the call reveals the script and nested failures.
 
 ### Changed
 
-- Workflow streaming checks for visible changes without rescanning earlier turns on every chunk.
-- The conversation viewer no longer copies the full transcript on each redraw or scroll.
-- The widget checks unchanged rows without sorting the record list a second time. Its regression test measures the work done in one simulated refresh, with no wall-clock benchmark.
-- `Workflow Result` completion cards use Pi's settled tool colors: `toolErrorBg` for failures and `toolSuccessBg` for completed or stopped runs. `Subagent Result` cards use their original custom-message colors (`customMessageBg` and `customMessageLabel`). Foreground result rows are unchanged.
-- Opening an agent's details is one wide overlay from either entry point: the widget's `Enter` now shows it over the conversation the way `/agents` does, at twice pi's default overlay width (never wider than the terminal), instead of replacing the editor area. A record's `View result` / `View error` text now wraps at the width it is shown at instead of being cut with `...`.
-- The `Completion cards` setting row names what it hides: the description now names the cards the toggle governs instead of only background agents.
-
-- The package now requires **pi >= 1.5.1** (was `>=0.99.0`).
+- The package now requires **Pi 1.5.1 or later**.
+  - If you use an older Pi, upgrade it before updating the package. The previous minimum was `0.99.0`.
+- Agent details open in the same wide overlay from the widget's `Enter` key and `/agents`, without replacing the editor.
+- The conversation viewer scrolls and refreshes live text without copying the rendered history.
+- The `Completion cards` setting description now names both subagent and Workflow cards.
 
 ### Fixed
 
-- Subagent and Workflow completion notifications now wake the main session, even when a result arrives during its last response. A result pending when you press Esc is saved without restarting the interrupted turn.
-- Failed `Agent` calls now show the reason in the tool row instead of only changing its background color.
-- A subagent that fails during startup no longer holds a concurrency slot or strands later subagents in the queue.
-- A failed Workflow run's details view shows **why** it failed: the record's failure reason is painted as its own row after the node rows (one row per line of the reason, wrapped like every other row), and it replaces the `(this run delivered no entries)` line when the run published nothing at all. Before, a run that died before its first `node_progress` showed an empty view.
-- Opening the details of a subagent that failed **before it had a session** (a bad model, a refused spawn) shows its failure reason instead of failing with `has nothing to show`; a record with neither a session nor a reason still reports that way, so the caller can.
-- Parallel tool calls starting in the same millisecond no longer overwrite each other in the widget's active-tool list.
-- Two `bash` calls running at once read `running 2 commands…` in the widget's activity line instead of `running command 2 files…`.
+- Subagent completion notifications now prompt a follow-up turn even if they arrive during the parent's final response.
+- Pressing `Esc` preserves pending subagent completion notifications without restarting the interrupted turn.
+- Failed `Agent` calls now show the failure reason in the tool row.
+- Queued subagents can still start after an earlier subagent fails during startup.
+- The details view shows why a subagent failed even if it never opened a session.
+- `View result` and `View error` wrap long lines instead of truncating them.
+- The widget counts parallel tool calls correctly even when they start in the same millisecond.
+- The widget counts parallel `bash` calls as commands, not files.
 
 ## [1.19.0] - 2026-11-15
 
