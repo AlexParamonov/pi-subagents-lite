@@ -11,14 +11,9 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { SubagentAgentManager } from "./subagent-context.ts";
-import type { AgentRecord } from "../types.ts";
+import { isActiveRecord, type AgentRecord } from "../types.ts";
 import { notedRow } from "../ui/format.ts";
 import { getManager, getStore } from "../shell.ts";
-
-/** In-progress agents are always shown; every other status is settled (issue constraints). */
-function isActive(record: AgentRecord): boolean {
-  return record.lifecycle.status === "running" || record.lifecycle.status === "queued";
-}
 
 /** Most recently settled first. completedAt is stamped on every terminal path
  * (settlement chain, stop, queued failure, dispose) and cleared on continue, so
@@ -37,7 +32,7 @@ export function formatAgentStatusList(agents: AgentRecord[], limit: number): str
   const active: AgentRecord[] = [];
   const settled: AgentRecord[] = [];
   for (const record of agents) {
-    if (isActive(record)) active.push(record);
+    if (isActiveRecord(record)) active.push(record);
     else settled.push(record);
   }
 

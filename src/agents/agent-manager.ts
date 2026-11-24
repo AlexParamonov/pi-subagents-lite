@@ -12,8 +12,8 @@ import { AgentOutputLog } from "./output-file.ts";
 import { Watchdog } from "./watchdog.ts";
 import { getStore } from "../shell.ts";
 import {
+  isActiveRecord,
   type AgentRecord,
-  type AgentStatus,
   type RunCallbacks,
   type StopInitiator,
   type WatchdogStopDetail,
@@ -39,11 +39,6 @@ const DISPOSE_QUEUED_MESSAGE = "Agent manager disposed before the queued agent c
 const AGENT_ID_PREFIX_LENGTH = 17;
 
 const DEFAULT_CONCURRENCY_LIMIT = 4;
-
-/** Whether the agent status is terminal (no longer running or queued). */
-function isTerminalStatus(status: AgentStatus): boolean {
-  return status !== "running" && status !== "queued";
-}
 
 function formatModelError(
   type: SubagentType,
@@ -800,7 +795,7 @@ export class AgentManager {
    * nothing, so no run is ever reported twice.
    */
   settleWorkflowRun(record: AgentRecord, status: WorkflowSettlementStatus, text: string): boolean {
-    if (isTerminalStatus(record.lifecycle.status)) return false;
+    if (!isActiveRecord(record)) return false;
     record.lifecycle.status = status;
     record.lifecycle.completedAt = Date.now();
     if (status === "error") record.error = text;
@@ -837,7 +832,7 @@ export class AgentManager {
    */
   clear(id: string): boolean {
     const record = this.agents.get(id);
-    if (!record || !isTerminalStatus(record.lifecycle.status)) return false;
+    if (!record || isActiveRecord(record)) return false;
     this.removeRecord(id, record);
     return true;
   }

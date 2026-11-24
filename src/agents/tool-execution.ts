@@ -10,8 +10,7 @@ import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-
 
 import type { AgentManager } from "./agent-manager.ts";
 import type { SubagentAgentManager } from "./subagent-context.ts";
-import type { AgentRecord, ThinkingLevel } from "../types.ts";
-import { SHORT_ID_LENGTH } from "../types.ts";
+import { isActiveRecord, SHORT_ID_LENGTH, type AgentRecord, type ThinkingLevel } from "../types.ts";
 import type { AgentConfig } from "./types.ts";
 import { getAgentConfig, resolveTypeOrDiscover } from "./agent-types.ts";
 import { buildAgentDetails, formatResultContent } from "../record-result.ts";
@@ -215,9 +214,7 @@ function shortId(record: AgentRecord): string {
  * Format: "short_id (type), short_id (type)" — one line, easy for LLM to parse.
  */
 function formatRunningAgents(): string {
-  const agents = getManager()!
-    .listAgents()
-    .filter((a) => a.lifecycle.status === "running" || a.lifecycle.status === "queued");
+  const agents = getManager()!.listAgents().filter(isActiveRecord);
 
   if (agents.length === 0) return "none";
 
@@ -263,7 +260,7 @@ export async function executeStopAgentTool(
   const manager = getManager()!;
   const record = resolveAgent(params.agent_id, () => `Running agents: ${formatRunningAgents()}`);
 
-  if (record.lifecycle.status !== "running" && record.lifecycle.status !== "queued") {
+  if (!isActiveRecord(record)) {
     const name = record.workflow ? `Workflow run ${shortId(record)}` : `Agent ${shortId(record)}`;
     return successResult(`${name} is already ${record.lifecycle.status}. Running agents: ${formatRunningAgents()}`);
   }

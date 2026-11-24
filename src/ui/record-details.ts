@@ -9,7 +9,7 @@
 
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { getManager, getStore } from "../shell.ts";
-import { SHORT_ID_LENGTH, type AgentRecord } from "../types.ts";
+import { isActiveRecord, SHORT_ID_LENGTH, type AgentRecord } from "../types.ts";
 import { detailRows, type WorkflowNodeStatus } from "../workflows/stream-view.ts";
 import {
   ConversationViewer,
@@ -111,12 +111,7 @@ function rowsOf(record: AgentRecord, theme: Theme): TranscriptEntry[] {
       rows.push({ role: "row", text: theme.fg("error", line) });
     }
   }
-  if (rows.length > 0 || isActive(record)) return rows;
+  if (rows.length > 0 || isActiveRecord(record)) return rows;
   // A settled run is waiting for nothing, so its empty view says so in the record's own words.
   return [{ role: "row", text: theme.fg("dim", "(this run delivered no entries)") }];
-}
-
-/** Running or queued - the only non-terminal statuses (ADR-0006: active work is never cleared). */
-function isActive(record: AgentRecord): boolean {
-  return record.lifecycle.status === "running" || record.lifecycle.status === "queued";
 }

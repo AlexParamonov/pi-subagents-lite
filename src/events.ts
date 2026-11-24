@@ -1,4 +1,4 @@
-import type { AgentRecord } from "./types.ts";
+import { isActiveRecord, type AgentRecord } from "./types.ts";
 
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -252,8 +252,7 @@ export function setupEventListeners(pi: ExtensionAPI): void {
   pi.on("session_shutdown", async (_event: unknown, ctx: ExtensionContext) => {
     const currentManager = getManager();
     if (currentManager) {
-      const records = currentManager.listAgents();
-      const active = records.filter((r) => r.lifecycle.status === "running" || r.lifecycle.status === "queued");
+      const active = currentManager.listAgents().filter(isActiveRecord);
       if (active.length > 0 && ctx.hasUI) {
         // Pi's teardown aborts the active turn and awaits it before emitting this event, and that
         // abort is what stops a bound Workflow run. A run still running here is one whose stop was

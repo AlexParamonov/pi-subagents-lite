@@ -27,8 +27,7 @@ import {
   type Component,
   type SelectItem,
 } from "@earendil-works/pi-tui";
-import type { AgentRecord } from "../../types.ts";
-import { SHORT_ID_LENGTH } from "../../types.ts";
+import { isActiveRecord, SHORT_ID_LENGTH, type AgentRecord } from "../../types.ts";
 import { openRecordDetails } from "../record-details.ts";
 import { getDisplayName, recordDisplayName, agentBulletPrefix, formatMs } from "../format.ts";
 import { plainText } from "../sanitize.ts";
@@ -36,11 +35,6 @@ import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installS
 import { overlayViewportRows } from "../overlay.ts";
 import { getManager } from "../../shell.ts";
 import type { Theme } from "../types.ts";
-
-/** Running or queued — the only non-terminal statuses (ADR-0006: active work is never cleared). */
-function isActive(record: AgentRecord): boolean {
-  return record.lifecycle.status === "running" || record.lifecycle.status === "queued";
-}
 
 /** The frozen text a record ends with, in a scrolling overlay of its own. */
 async function showTextViewer(
@@ -165,7 +159,7 @@ export function buildAgentActionsList(
 ): SelectList {
   const items: SelectItem[] = [];
   const shortId = record.id.slice(0, SHORT_ID_LENGTH);
-  const isRunning = isActive(record);
+  const active = isActiveRecord(record);
   const hasSession = !!record.execution.session;
   const hasResult = !!record.result && record.result.length > 0;
   const hasError = !!record.error && record.error.length > 0;
@@ -177,7 +171,7 @@ export function buildAgentActionsList(
   if (record.lifecycle.status === "running" && hasSession) {
     items.push({ value: "view-snapshot", label: "View snapshot" });
   }
-  if (hasSession && !isRunning) {
+  if (hasSession && !active) {
     items.push({ value: "view-conversation", label: "View conversation" });
   }
   if (hasResult) {
@@ -186,7 +180,7 @@ export function buildAgentActionsList(
   if (hasError) {
     items.push({ value: "view-error", label: "View error" });
   }
-  if (isRunning) {
+  if (active) {
     // US-29: a workflow run has no session to steer — it takes input when it is created and nothing
     // after. Stopping it is offered because the endpoint does answer a stop.
     if (!record.workflow) items.push({ value: "steer", label: "Steer" });
@@ -250,8 +244,8 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
     ctx.ui.notify("No agents have been spawned this session", "info");
     return;
   }
-  const running = agents.filter(isActive);
-  const finished = agents.filter((r) => !isActive(r));
+  const running = agents.filter(isActiveRecord);
+  const finished = agents.filter((r) => !isActiveRecord(r));
   const completed = agents.filter((r) => r.lifecycle.status === "completed");
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
@@ -262,7 +256,7 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
       const items: SelectItem[] = agents.map((record) => {
         // Finished runs freeze at completion; the now fallback is defensive only
         // (completedAt is stamped on every terminal path and cleared on continue).
-        const active = isActive(record);
+        const active = isActiveRecord(record);
         const end = active ? now : (record.lifecycle.completedAt ?? now);
         const duration = formatMs(end - record.lifecycle.startedAt);
         const ago = active ? "" : ` ${formatMs(now - end)} ago`;

@@ -137,6 +137,11 @@ export interface CompactionInfo {
 
 export type AgentStatus = "queued" | "running" | "completed" | "turn_limited" | "aborted" | "stopped" | "error";
 
+/** Retention and management classify by the record's status, not by execution cleanup. */
+export function isActiveRecord(record: AgentRecord): boolean {
+  return record.lifecycle.status === "running" || record.lifecycle.status === "queued";
+}
+
 /**
  * The states a Workflow run settles in (US-18): GET's `completed`, GET's failure (`failed` and
  * `interrupted` both map here with their reason), and an acknowledged remote stop. A run whose

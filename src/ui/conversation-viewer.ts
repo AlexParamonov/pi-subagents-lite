@@ -21,7 +21,7 @@ import {
   visibleWidth,
   wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
-import type { AgentRecord } from "../types.ts";
+import { isActiveRecord, type AgentRecord } from "../types.ts";
 import { getSessionContextPercent, type SessionLike } from "../agents/usage.ts";
 import { extractText } from "../prompt/context.ts";
 import type { Theme, ToolBg } from "./types.ts";
@@ -847,7 +847,7 @@ export class ConversationViewer implements Component {
     lines.push(hrMid);
     // US-2: the action verb distinguishes steering a running agent from
     // continuing a settled one.
-    const steerVerb = this.isActive() ? "steer" : "continue";
+    const steerVerb = isActiveRecord(this.record) ? "steer" : "continue";
     if (this.composer) {
       // Composer row: the Input renders its own `> ` prompt and cursor.
       lines.push(row(this.composer.render(innerW)[0] ?? ""));
@@ -889,17 +889,13 @@ export class ConversationViewer implements Component {
     return lines;
   }
 
-  private isActive(): boolean {
-    return this.record.lifecycle.status === "running" || this.record.lifecycle.status === "queued";
-  }
-
   /** The record's session is the capability flag: steering, thinking blocks and tool calls exist only behind one. */
   private sessionBacked(): boolean {
     return !!this.record.execution.session;
   }
 
   private isStoppable(): boolean {
-    return !!this.onStop && this.isActive();
+    return !!this.onStop && isActiveRecord(this.record);
   }
 
   private canSteer(): boolean {

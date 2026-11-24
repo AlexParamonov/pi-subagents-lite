@@ -10,6 +10,7 @@ import type { ExtensionCommandContext, SessionEntry } from "@earendil-works/pi-c
 import type { UICtx } from "../ui/agent-widget.ts";
 import type { ToolCall } from "@earendil-works/pi-ai";
 import { getCoordinator, getManager, getPiInstance, getStore, getWidget } from "../shell.ts";
+import { isActiveRecord } from "../types.ts";
 import { parseThinkingChoice, findModelInRegistry } from "../utils.ts";
 import { resolveTypeOrDiscover, getAgentConfig } from "./agent-types.ts";
 import { computeSpawnTarget, surfaceSpawnTargetWarnings } from "../spawn/spawn-target.ts";
@@ -182,7 +183,7 @@ export async function handleRestartLastAgents(ctx: ExtensionCommandContext): Pro
   const running = new Set(
     manager
       .listAgents()
-      .filter((a) => !a.workflow && (a.lifecycle.status === "running" || a.lifecycle.status === "queued"))
+      .filter((a) => !a.workflow && isActiveRecord(a))
       .map((a) => `${a.display.type}::${a.display.description}`),
   );
 
