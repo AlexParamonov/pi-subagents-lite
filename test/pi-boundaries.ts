@@ -20,6 +20,7 @@ import type {
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
+  ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { SelectItem, SelectList, TUI } from "@earendil-works/pi-tui";
@@ -42,6 +43,13 @@ export function asExtensionContext<S extends object>(fake: S): ExtensionContext 
 /** Assert a partial command context against the real ExtensionCommandContext. */
 export function asCommandContext<S extends object>(fake: S): ExtensionCommandContext & S {
   return fake as ExtensionCommandContext & S;
+}
+
+/** Assert a fake ui.custom against the real member: pi types it generically over its result. */
+export function asUiCustom(
+  fake: (factory: never, options?: unknown) => Promise<unknown>,
+): ExtensionUIContext["custom"] {
+  return fake as unknown as ExtensionUIContext["custom"];
 }
 
 /** Assert a fake terminal against the real TUI: components read requestRender and terminal rows/cols. */

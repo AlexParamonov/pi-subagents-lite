@@ -133,7 +133,8 @@ vi.mock("../../src/agents/usage.js", () => ({
 }));
 
 // Import after mocks are in place
-import { executeAgentTool, formatResultContent } from "../../src/agents/tool-execution.js";
+import { executeAgentTool } from "../../src/agents/tool-execution.js";
+import { formatResultContent } from "../../src/record-result.js";
 
 /* ------------------------------------------------------------------ */
 /*  Factories                                                         */

@@ -156,6 +156,8 @@ const { mutableStore } = vi.hoisted(() => ({
       exposeDescriptions: false,
       showCompletionCards: true,
     },
+    // The Workflow tool is registered only when a file turns it on; a flip needs a pi restart.
+    workflows: { enabled: false },
     modelFor: () => "anthropic/claude-sonnet-4-6",
   },
 }));
@@ -280,7 +282,11 @@ describe("tool registration", () => {
     expect(names).toEqual(["Agent", "StopAgent", "MessageAgent", "AgentStatus"]);
   });
 
-  it("registers every tool with the dot description", () => {
+  it("registers no Workflow tool while workflows are off", () => {
+    expect(findTool(api, "Workflow")).toBeUndefined();
+  });
+
+  it("registers the subagent tools with the dot description", () => {
     for (const toolName of ["Agent", "StopAgent", "MessageAgent", "AgentStatus"]) {
       expect(findTool(api, toolName)!.description).toBe(".");
     }
@@ -298,6 +304,26 @@ describe("tool registration", () => {
     expect(tool.parameters.required).toEqual(["agent_id", "message"]);
     expect(tool.promptSnippet).toBeUndefined();
     expect(tool.promptGuidelines).toBeUndefined();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Workflow tool — the niche flip                                    */
+/* ------------------------------------------------------------------ */
+
+describe("workflow tool registration — workflows.enabled", () => {
+  it("registers the Workflow tool once a file turns it on", async () => {
+    mutableStore.workflows.enabled = true;
+    try {
+      vi.resetModules();
+      const onApi = createMockExtensionAPI();
+      await loadExtension(onApi.api);
+
+      expect(onApi.tools.map((tool) => tool.name)).toContain("Workflow");
+    } finally {
+      mutableStore.workflows.enabled = false;
+      vi.resetModules();
+    }
   });
 });
 

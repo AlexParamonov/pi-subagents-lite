@@ -171,7 +171,9 @@ export class ConfigStore {
 
   constructor(io: ConfigIO = fileConfigIO) {
     this.io = io;
-    const loaded = io.load();
+    // events.ts loadConfigAndRegisterAgents reloads these layers at session_start and reports what it
+    // finds there; a reporting read here would print the same diagnostics twice per Pi start.
+    const loaded = io.load({ report: false });
     this.globalRaw = loaded.global;
     this.projectRaw = loaded.project;
     this.projectStatus = loaded.projectStatus;
@@ -265,6 +267,11 @@ export class ConfigStore {
       providers: { ...base.providers, ...session.providers },
       models: { ...base.models, ...session.models },
     };
+  }
+
+  /** Effective Workflow endpoints: named targets merged project-over-global, plus the default. */
+  get workflows(): SubagentsConfig["workflows"] {
+    return this.config.workflows;
   }
 
   get sessionDefaultModel(): string | null {

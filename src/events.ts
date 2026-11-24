@@ -1,4 +1,4 @@
-import type { AgentRecord } from "./types.ts";
+import { isActiveRecord, type AgentRecord } from "./types.ts";
 
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -7,12 +7,14 @@ import { matchesKey, isKeyRelease, getKeybindings } from "@earendil-works/pi-tui
 import { registerAgents, setAgentScanDirs, scanAndMerge } from "./agents/agent-types.ts";
 import { AgentManager } from "./agents/agent-manager.ts";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.ts";
-import { ConversationViewer } from "./ui/conversation-viewer.ts";
-import { viewerToolDisplay, viewerPresentation } from "./ui/tool-display.ts";
+import { openRecordDetails } from "./ui/record-details.ts";
 import { SpawnCoordinator } from "./spawn/spawn-coordinator.ts";
 import { toolCallListener } from "./agents/tool-execution.ts";
 import { invalidateAgentRow, cleanupInvalidations } from "./ui/renderer.ts";
 import { registerAgentTool } from "./registration.ts";
+import { registerWorkflowTool } from "./workflows/workflow-tool.ts";
+import { setWorkflowScanDirs, scanWorkflows } from "./workflows/workflow-registry.ts";
+import { workflowWarningSink } from "./workflows/workflow-notices.ts";
 import {
   getManager,
   getWidget,
@@ -32,11 +34,19 @@ export function ensureManagerAndWidget(): void {
   const currentWidget = getWidget();
 
   if (!currentManager) {
-    // Coordinator needs the manager, so wire onComplete after creating it.
-    // Invalidate row when agent starts running (queued → running transition)
-    const onStart = (record: AgentRecord) => {
+    // A record's row is stale after any of its writes, and every surface reads the record itself.
+    const repaintRow = (record: AgentRecord) => {
       invalidateAgentRow(record.id);
       getWidget()?.update();
+    };
+
+    // Coordinator needs the manager, so wire onComplete after creating it. Invalidate the row on the
+    // queued → running transition, and arm the widget's refresh: registering a record is the first
+    // thing a workflow-only session ever does, and with no interval armed its rows would never
+    // refresh and its finished row never expire while idle.
+    const onStart = (record: AgentRecord) => {
+      getWidget()?.ensureTimer();
+      repaintRow(record);
     };
 
     const newManager = new AgentManager(
@@ -53,9 +63,11 @@ export function ensureManagerAndWidget(): void {
 
     newManager.setOnComplete((record) => {
       coordinator.onAgentComplete(record);
-      invalidateAgentRow(record.id);
-      getWidget()?.update();
+      repaintRow(record);
     });
+    // A run owner that has no waiter left paints nothing: its record writes are what the row and the
+    // widget read, so the same invalidation is the only repaint they get.
+    newManager.setOnRecordTouched(repaintRow);
   }
 
   if (!currentWidget) {
@@ -83,6 +95,21 @@ export async function scanAndRegisterAgents(ctx: ExtensionContext): Promise<void
   registerAgents(merged, { disableDefaultAgents: disableDefaults });
 }
 
+/** Trust-gated Workflow scan plus the schema that lists what was found. */
+async function scanAndRegisterWorkflows(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+  // Nothing consumes the listing while the tool is unregistered, so off means the folders are not read and
+  // their warnings are not shown to a session that has no Workflow tool at all.
+  if (!getStore().workflows.enabled) return;
+  const trusted = ctx.isProjectTrusted();
+  setWorkflowScanDirs({
+    global: path.join(getAgentDir(), "workflows"),
+    shared: trusted ? path.join(ctx.cwd, ".agents", "workflows") : "",
+    project: trusted ? path.join(ctx.cwd, ".pi", "workflows") : "",
+  });
+  await scanWorkflows(workflowWarningSink(ctx));
+  registerWorkflowTool(pi);
+}
+
 export async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promise<void> {
   // Project config (.pi/subagents-lite.json) loads only in trusted projects,
   // mirroring the .pi/agents scan-dir gate in scanAndRegisterAgents.
@@ -97,28 +124,15 @@ export async function loadConfigAndRegisterAgents(ctx: ExtensionContext): Promis
 
 // --- Event listener setup ---
 
-/** Open the viewer overlay; the viewerOpen flag prevents nav deactivation while open. */
+/** Open the record's details over the conversation; the viewerOpen flag prevents nav deactivation while open. */
 async function openViewer(ctx: ExtensionContext, record: AgentRecord | null): Promise<void> {
   if (!record) return;
-  if (!record.execution?.session) return;
   const widget = getWidget();
   if (!widget) return;
-  const manager = getManager();
 
   try {
     widget.setViewerOpen(true);
-
-    await ctx.ui.custom<void>((tui, theme, kb, done) => {
-      const viewer = new ConversationViewer(tui, record.execution.session!, record, theme, done, {
-        onStop: () => manager?.abort(record.id, "user"),
-        keybindings: kb,
-        onSteer: (msg: string) => manager?.steer(record.id, msg),
-        toolDisplay: viewerToolDisplay(ctx, manager, record.id),
-        ...viewerPresentation(getStore()),
-      });
-      viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
-      return viewer;
-    });
+    await openRecordDetails(ctx.ui, record);
   } finally {
     widget.setViewerOpen(false);
   }
@@ -169,7 +183,7 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
         if (matchesKey(data, "enter")) {
           const record = widget.navSelect();
           openViewer(ctx, record).catch((err) => {
-            ctx.ui.notify(`Failed to open agent viewer: ${String(err)}`, "error");
+            ctx.ui.notify(`Failed to open details: ${String(err)}`, "error");
           });
           return { consume: true };
         }
@@ -198,6 +212,7 @@ export function createNavInputHandler(ctx: ExtensionContext): (data: string) => 
 
 export function setupEventListeners(pi: ExtensionAPI): void {
   pi.on("tool_call", toolCallListener);
+  pi.on("agent_settled", (event) => getCoordinator()?.onParentSettled(event.aborted));
 
   pi.on("turn_start", async (_event, ctx) => {
     // Set UI context on first turn
@@ -214,6 +229,7 @@ export function setupEventListeners(pi: ExtensionAPI): void {
     await loadConfigAndRegisterAgents(ctx);
     // Re-register with updated agent type list (now includes user/project agents)
     registerAgentTool(pi);
+    await scanAndRegisterWorkflows(pi, ctx);
     // ctrl+o syncs compact mode with tool expansion (push-based, no polling)
     if (ctx.hasUI && !unregisterTerminalInput) {
       unregisterTerminalInput = ctx.ui.onTerminalInput(createNavInputHandler(ctx));
@@ -236,10 +252,19 @@ export function setupEventListeners(pi: ExtensionAPI): void {
   pi.on("session_shutdown", async (_event: unknown, ctx: ExtensionContext) => {
     const currentManager = getManager();
     if (currentManager) {
-      const records = currentManager.listAgents();
-      const active = records.filter((r) => r.lifecycle.status === "running" || r.lifecycle.status === "queued");
+      const active = currentManager.listAgents().filter(isActiveRecord);
       if (active.length > 0 && ctx.hasUI) {
-        ctx.ui.notify(`${active.length} agent(s) killed by reload`, "warning");
+        // Pi's teardown aborts the active turn and awaits it before emitting this event, and that
+        // abort is what stops a bound Workflow run. A run still running here is one whose stop was
+        // never acknowledged, or one whose call already handed the wait back, so this notice claims
+        // only that watching ended.
+        const killed = active.filter((r) => !r.workflow).length;
+        const detached = active.length - killed;
+        const claims: string[] = [];
+        if (killed > 0) claims.push(`${killed} agent(s) killed by reload`);
+        if (detached > 0)
+          claims.push(`${detached} workflow run(s) are no longer watched; their remote outcomes are unknown`);
+        ctx.ui.notify(claims.join(". "), "warning");
       }
     }
     // Dispose coordinator, store, widget, then manager

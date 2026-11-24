@@ -1,21 +1,19 @@
-import { getStatusNote, formatStopReason } from "../status-note.ts";
 /**
  * tool-execution.ts — Agent tool execution handlers.
  *
  * Contains the execute callbacks registered for the Agent tool.
  * Spawn coordination, nudge scheduling, and live-view tracking have moved
- * to spawn-coordinator.ts. buildAgentDetails stays here as a pure helper.
+ * to spawn-coordinator.ts.
  */
 
 import type { ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 
 import type { AgentManager } from "./agent-manager.ts";
 import type { SubagentAgentManager } from "./subagent-context.ts";
-import type { AgentRecord, ThinkingLevel } from "../types.ts";
-import { SHORT_ID_LENGTH } from "../types.ts";
+import { isActiveRecord, SHORT_ID_LENGTH, type AgentRecord, type ThinkingLevel } from "../types.ts";
 import type { AgentConfig } from "./types.ts";
 import { getAgentConfig, resolveTypeOrDiscover } from "./agent-types.ts";
-import { getSessionContextPercent } from "./usage.ts";
+import { buildAgentDetails, formatResultContent } from "../record-result.ts";
 import { computeSpawnTarget, surfaceSpawnTargetWarnings } from "../spawn/spawn-target.ts";
 
 import { parseModelKey, findModelInRegistry, parseThinkingChoice } from "../utils.ts";
@@ -90,71 +88,6 @@ async function resolveWorktree(
     worktreeLabel: target.worktreeLabel,
     projectTrusted: target.projectTrusted,
   };
-}
-
-/**
- * Build a details record from an AgentRecord. Always includes type, description
- * and the reply's opening line for the collapsed result rows; includeStatus adds
- * status/outputFile/stopReason, includeStats adds turn/token/cost/context/compaction/model fields.
- */
-export function buildAgentDetails(
-  record: AgentRecord,
-  opts?: { includeStats?: boolean; includeStatus?: boolean },
-): Record<string, unknown> {
-  const details: Record<string, unknown> = {
-    type: record.display.type,
-    description: record.display.description,
-  };
-
-  const openingLine = record.result?.split("\n").find((line) => line.trim());
-  if (openingLine) {
-    details.replyPreview = openingLine.trim();
-  }
-
-  if (record.display.worktreePath) {
-    details.worktreePath = record.display.worktreePath;
-  }
-
-  if (opts?.includeStatus) {
-    details.status = record.lifecycle.status;
-    details.outputFile = record.display.outputFile;
-    const stopReason = formatStopReason(record.lifecycle);
-    if (stopReason) details.stopReason = stopReason;
-  }
-
-  if (opts?.includeStats) {
-    const elapsedMs = record.lifecycle.completedAt ? record.lifecycle.completedAt - record.lifecycle.startedAt : 0;
-
-    details.turnCount = record.stats.turnCount;
-    details.maxTurns = record.stats.maxTurns;
-    details.toolUses = record.stats.toolUses;
-    details.input = record.stats.lifetimeUsage.input;
-    details.output = record.stats.lifetimeUsage.output;
-    details.contextPercent = getSessionContextPercent(record.execution.session);
-    details.durationMs = elapsedMs;
-    details.compactions = record.stats.compactionCount;
-    details.modelName = record.execution.session?.model?.name ?? record.display.invocation?.modelName;
-    details.modelId = record.execution.session?.model?.id ?? record.display.invocation?.modelName;
-    details.thinkingLevel = record.execution.session?.thinkingLevel ?? record.display.invocation?.thinkingLevel;
-    details.cost = record.stats.lifetimeUsage.cost;
-  }
-
-  return details;
-}
-
-/**
- * Result text plus status note, for display. For error status, appends the
- * recorded error message so the nudge explains the failure.
- *
- * Shared by the foreground tool result and the subagent-result nudge so both
- * callers stay in sync on the nullish default and separator handling — they
- * have diverged before. getStatusNote owns the leading separator.
- */
-export function formatResultContent(record: AgentRecord): string {
-  // Only the nudge path formats error-status records as text: the foreground
-  // handler intercepts error status earlier and throws instead.
-  const errorNote = record.lifecycle.status === "error" && record.error ? `\n\nError: ${record.error}` : "";
-  return (record.result ?? "") + errorNote + getStatusNote(record.lifecycle);
 }
 
 // --- Tool execute handlers ---
@@ -281,9 +214,7 @@ function shortId(record: AgentRecord): string {
  * Format: "short_id (type), short_id (type)" — one line, easy for LLM to parse.
  */
 function formatRunningAgents(): string {
-  const agents = getManager()!
-    .listAgents()
-    .filter((a) => a.lifecycle.status === "running" || a.lifecycle.status === "queued");
+  const agents = getManager()!.listAgents().filter(isActiveRecord);
 
   if (agents.length === 0) return "none";
 
@@ -329,13 +260,19 @@ export async function executeStopAgentTool(
   const manager = getManager()!;
   const record = resolveAgent(params.agent_id, () => `Running agents: ${formatRunningAgents()}`);
 
-  if (record.lifecycle.status !== "running" && record.lifecycle.status !== "queued") {
-    return successResult(
-      `Agent ${shortId(record)} is already ${record.lifecycle.status}. Running agents: ${formatRunningAgents()}`,
-    );
+  if (!isActiveRecord(record)) {
+    const name = record.workflow ? `Workflow run ${shortId(record)}` : `Agent ${shortId(record)}`;
+    return successResult(`${name} is already ${record.lifecycle.status}. Running agents: ${formatRunningAgents()}`);
   }
 
   if (manager.abort(record.id, "agent")) {
+    // A remote run is stopped by the endpoint and its answer arrives later, so this reports the
+    // request for a workflow run and never the outcome.
+    if (record.workflow) {
+      return successResult(
+        `Stop requested for workflow run ${shortId(record)}. Its status follows the endpoint's answer, not this call.`,
+      );
+    }
     return successResult(`Stopped agent ${shortId(record)}`);
   }
 
@@ -375,6 +312,12 @@ export async function executeMessageAgentTool(
   if (!manager) throw new Error("Agent manager is unavailable");
   const limit = agentStatusLimit ?? getStore().agent.agentStatusLimit;
   const record = resolveAgent(params.agent_id, () => `Known agents: ${formatKnownAgents(manager, limit)}`, manager);
+  if (record.workflow) {
+    // US-29: a remote run has no session and no steer API, so nothing is queued and nothing is confirmed.
+    throw new Error(
+      `Workflow run ${shortId(record)} cannot be steered: a workflow run has no session to receive a message.`,
+    );
+  }
   const wasRunning = record.lifecycle.status === "running";
 
   if (!wasRunning && !record.execution.session) {

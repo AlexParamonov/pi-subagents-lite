@@ -9,3 +9,6 @@ export type Theme = {
   bold(text: string): string;
   italic?: (text: string) => string;
 };
+
+/** The three backgrounds a tool call's own row is painted on, named for the state they stand for. */
+export type ToolBg = "toolPendingBg" | "toolSuccessBg" | "toolErrorBg";

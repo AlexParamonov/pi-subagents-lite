@@ -1,6 +1,6 @@
 # pi-subagents-lite
 
-A lightweight pi extension that lets the LLM spawn autonomous child agents for complex tasks. Focused fork of pi-subagents with reduced surface area — no scheduling, no join modes.
+A lightweight pi extension that lets the LLM spawn autonomous child agents for complex tasks, and run remote anagen-x workflows through the same selection, update, and result flow. Focused fork of pi-subagents with reduced surface area — no scheduling, no join modes.
 
 ## Language
 
@@ -64,6 +64,28 @@ _Avoid_: Compact mode (that is the widget's own state), condensed view
 Global comma-editable list of tool names the **Compact tool calls** presentation keeps whole, in their normal call block minus its result body, ending the **Call run** around them. An absent key means `write`, `edit`, `replace`, `bash`, `codemode`, `Agent`, `StopAgent`, `MessageAgent`; an empty list groups every call, `AgentStatus` included. Names match exactly and case-sensitively, custom and MCP names included. Its settings row appears only while **Compact tool calls** is on.
 _Avoid_: Excluded tools, tool categories, grouping allowlist
 
+### Workflows
+
+**Workflow**:
+A graph pipeline executed remotely by an anagen-x workflow API, triggered through the `Workflow` tool. Never a Pi session; tracked alongside Subagents in the agent record store, kind-tagged.
+_Avoid_: Pipeline, flow job, remote agent
+
+**Workflow file**:
+A `.yaml` file in graph's own workflow schema (`name`, `description`, `nodes`, `edges`, `entry_node`), discovered in `~/.pi/agent/workflows/`, `<project>/.agents/workflows/`, and `<project>/.pi/workflows/` with the same trust gating as agent files. Same-name collisions resolve by whole-file replacement, project > shared > global.
+_Avoid_: Workflow definition, workflow agent
+
+**Workflow endpoint**:
+A named `url` + `apiKey` pair under `workflows.endpoints` in the Global config, chosen per run by a Workflow file's `endpoint` key, else `workflows.defaultEndpoint`. A Project config may override a URL but never a key.
+_Avoid_: Graph connection, provider config
+
+**Push-per-run**:
+The delivery model where every Workflow run sends its full parsed Workflow file as the create request's `workflow_config`; the server holds no workflow registry and the local folders are the single source of truth.
+_Avoid_: Workflow registration, deployment
+
+**Poll-reconcile**:
+The client discipline for Workflow runs: `GET /api/workflows/:id` is the authority for run state; SSE is a display-only push channel, reconciled after a silence window or any reconnect, and SSE event ids are never trusted.
+_Avoid_: SSE-driven state, stream trust
+
 ### Worktrees
 
 **Worktree**:
@@ -83,7 +105,7 @@ Per-agent transient display state (active tools, streaming response text) bridgi
 _Avoid_: Agent monitor, agent stats
 
 **Nudge**:
-A completion notification delivered to the parent session when a background agent settles (first settlement only), or when any agent settles after a continuation. A foreground agent's initial result returns inline through the tool call and delivers no nudge. Batched with a 200ms hold to coalesce rapid completions.
+A completion notification delivered to the parent session for a settlement that has no tool call left to answer in: the first settlement of a run launched in the background, the settlement of a **Workflow** run whose call handed the run back for any reason (its reads exhausted, a stop the endpoint refused or left unanswered, an `Esc` whose stop the endpoint did not confirm), and every settlement of a continued agent. What decides it is that the call stopped waiting, not how the run was launched: a run whose own call still waits answers inside that call and delivers no nudge, and a closed session delivers nothing into its replacement. A 200ms hold coalesces rapid completions. The batch starts a turn if the parent is idle; if busy, Pi commits it at a turn boundary and takes another turn. An interrupted parent keeps the results without restarting that turn.
 _Avoid_: Callback, notification
 
 **Parent interrupt binding**:
@@ -118,7 +140,7 @@ _Avoid_: Timeout killer, stuck-agent detector
 - An **Agent briefing** describes all available **Agent types** to the LLM
 - A **Stealth tool** requires an **Agent briefing** before the LLM can use it
 - An **Activity tracker** is created per spawn and cleaned up on completion
-- A **Nudge** is emitted when a background agent completes, errors, or is stopped (first settlement), and on every settlement of a continued agent
+- A **Nudge** is emitted on the first settlement of a run launched in the background or handed back mid-run, and on every settlement of a continued agent
 - **Grace turns** are added to the max turns limit to determine when a steered agent is hard-aborted
 - A **Watchdog** stops a **Subagent** when a tool call or inactivity exceeds its configured thresholds
 - A **Parent interrupt binding** stops a foreground **Subagent** when the parent run is interrupted; background **Subagents** are never bound
@@ -134,8 +156,15 @@ _Avoid_: Timeout killer, stuck-agent detector
 - A **MessageAgent** message lands after the current turn's tool calls finish, never mid-tool-call, and is dropped if the run settles before that boundary
 - **MessageAgent** continues any **Settled** **Subagent** with a live session, including one a human stopped: the model can restart a deliberately stopped agent
 - Only the main session agent holds **MessageAgent**, `StopAgent` and `AgentStatus`; a **Subagent** never does, so cross-**Subagent** messaging and stopping are unreachable
-- A **Nudge** carries a **Subagent** result parent-ward; **MessageAgent** carries input the other way
+- A **Nudge** carries a settled **Subagent**'s or **Workflow** run's outcome parent-ward; **MessageAgent** carries input the other way
 - **Compact tool calls** and **Ungrouped tools** live in the **Global config** only: a **Project config** cannot carry either, and clearing **Model override**s keeps both
+- A **Workflow** is spawned from one **Workflow file** and runs on one **Workflow endpoint** via **Push-per-run**; the file's `endpoint` key is stripped before the config is sent
+- The `Workflow` tool's `path` param (default: parent session cwd) reaches the run only as the `working_dir` prompt var in prompt text (`${working_dir}`), never in node params or context messages
+- A **Workflow file**'s prompt material lives server-side (`prompt_key` files); the extension never ships prompt content
+- A **Workflow** run is tracked in the agent record store, kind-tagged: **AgentStatus** lists it, `StopAgent` and Esc on a foreground run call the API stop endpoint
+- A **Workflow** run has no **Watchdog**, **Model override**, **Thinking level**, or **Worktree**; among **Settled** statuses, `failed` and `interrupted` map to error, `interrupted` keeping its reason
+- The `Workflow` tool's task text obeys the endpoint's 10,000-byte create limit, enforced before sending
+- A **Workflow** run renders node lifecycle events as status lines and progress chunks as streamed text; thinking deltas are never displayed
 
 ### Navigation
 
@@ -158,7 +187,7 @@ Rebuilding the roster into live display order (finished → running → queued) 
 _Avoid_: Re-sort, refresh
 
 **ConversationViewer overlay**:
-Live, scrollable view of an agent's conversation, streamed from session events. Opened from the running-agents menu; owns input while open (`Enter` steers, `s` stops). Its footer names the toggles it owns in short key notation (`C-t thinking`, `C-o tools`): a hint shows the key the user has actually bound to that action, several keys joined, and nothing at all when the action is unbound.
+Live, scrollable view of an agent's conversation, streamed from session events. Opened from the widget or the running-agents menu, always as an overlay twice pi's default overlay width and never wider than the terminal; owns input while open (`Enter` steers, `s` stops). Its footer names the toggles it owns in short key notation (`C-t thinking`, `C-o tools`): a hint shows the key the user has actually bound to that action, several keys joined, and nothing at all when the action is unbound.
 _Avoid_: ResultViewer, snapshot viewer
 
 **Call run**:

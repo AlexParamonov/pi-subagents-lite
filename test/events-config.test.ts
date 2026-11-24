@@ -41,6 +41,7 @@ vi.mock("../src/agents/agent-discovery.js", () => ({
 vi.mock("../src/agents/agent-manager.js", () => ({
   AgentManager: class AgentManager {
     setOnComplete(): void {}
+    setOnRecordTouched(): void {}
   },
 }));
 

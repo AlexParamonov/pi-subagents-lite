@@ -398,6 +398,87 @@ describe("ConfigStore override layers", () => {
     expect(saves[1].config.agent).toEqual({});
   });
 
+  // Endpoint configuration is not model state: clear-all reaches layer.agent and nothing else, so a
+  // saved Workflow section - the flip, names, URLs, keys and the default - comes back out of every
+  // level intact.
+  const WORKFLOWS_GLOBAL = {
+    enabled: true,
+    endpoints: { "anagen-x.local": { url: "http://localhost:4001", apiKey: "global-key" } },
+    defaultEndpoint: "anagen-x.local",
+  };
+  const WORKFLOWS_PROJECT = { endpoints: { "anagen-x.local": { url: "http://localhost:4101" } } };
+  // The project URL wins over the global one, the global key and default are inherited (ADR-0008).
+  const WORKFLOWS_EFFECTIVE = {
+    enabled: true,
+    endpoints: { "anagen-x.local": { url: "http://localhost:4101", apiKey: "global-key" } },
+    defaultEndpoint: "anagen-x.local",
+  };
+
+  it("clearAllModelOverrides at global clears global model keys and keeps both Workflow layers", () => {
+    const { io, saves, global, project } = memIO({
+      global: { agent: { default: "g/default", Explore: "g/explore", graceTurns: 7 }, workflows: WORKFLOWS_GLOBAL },
+      project: { agent: { default: "p/default" }, workflows: WORKFLOWS_PROJECT },
+      projectStatus: "loaded",
+    });
+    const store = new ConfigStore(io);
+
+    store.mutate.agent.clearAllModelOverrides("global");
+
+    expect(saves).toEqual([{ layer: "global", config: { agent: { graceTurns: 7 }, workflows: WORKFLOWS_GLOBAL } }]);
+    expect(global()).toEqual({ agent: { graceTurns: 7 }, workflows: WORKFLOWS_GLOBAL });
+    expect(project()).toEqual({ agent: { default: "p/default" }, workflows: WORKFLOWS_PROJECT });
+    expect(store.workflows).toEqual(WORKFLOWS_EFFECTIVE);
+    expect(store.hasGlobalModelSettings).toBe(false);
+    expect(store.agentConfigSnapshot().default).toBe("p/default");
+    expect(store.agentConfigSnapshot().Explore).toBeUndefined();
+    expect(store.agentConfigSnapshot().graceTurns).toBe(7);
+  });
+
+  it("clearAllModelOverrides at project clears project model keys and keeps both Workflow layers", () => {
+    const { io, saves, global } = memIO({
+      global: { agent: { default: "g/default", Explore: "g/explore", graceTurns: 7 }, workflows: WORKFLOWS_GLOBAL },
+      project: { agent: { default: "p/default" }, workflows: WORKFLOWS_PROJECT },
+      projectStatus: "loaded",
+    });
+    const store = new ConfigStore(io);
+
+    store.mutate.agent.clearAllModelOverrides("project");
+
+    expect(saves).toEqual([{ layer: "project", config: { agent: {}, workflows: WORKFLOWS_PROJECT } }]);
+    expect(global()).toEqual({
+      agent: { default: "g/default", Explore: "g/explore", graceTurns: 7 },
+      workflows: WORKFLOWS_GLOBAL,
+    });
+    expect(store.workflows).toEqual(WORKFLOWS_EFFECTIVE);
+    expect(store.hasProjectModelSettings).toBe(false);
+    expect(store.agentConfigSnapshot().default).toBe("g/default");
+    expect(store.agentConfigSnapshot().Explore).toBe("g/explore");
+  });
+
+  it("clearAllModelOverrides at all levels clears every model key and keeps both Workflow layers", () => {
+    const { io, saves, global, project } = memIO({
+      global: { agent: { default: "g/default", Explore: "g/explore", graceTurns: 7 }, workflows: WORKFLOWS_GLOBAL },
+      project: { agent: { default: "p/default" }, workflows: WORKFLOWS_PROJECT },
+      projectStatus: "loaded",
+    });
+    const store = new ConfigStore(io);
+    store.mutate.session.setOverride("Explore", "s/explore");
+
+    store.mutate.agent.clearAllModelOverrides("all");
+
+    expect(saves).toEqual([
+      { layer: "global", config: { agent: { graceTurns: 7 }, workflows: WORKFLOWS_GLOBAL } },
+      { layer: "project", config: { agent: {}, workflows: WORKFLOWS_PROJECT } },
+    ]);
+    expect(global()).toEqual({ agent: { graceTurns: 7 }, workflows: WORKFLOWS_GLOBAL });
+    expect(project()).toEqual({ agent: {}, workflows: WORKFLOWS_PROJECT });
+    expect(store.workflows).toEqual(WORKFLOWS_EFFECTIVE);
+    expect(store.sessionModelOverride("Explore")).toBeNull();
+    expect(store.agentConfigSnapshot().default).toBeNull();
+    expect(store.agentConfigSnapshot().Explore).toBeUndefined();
+    expect(store.agentConfigSnapshot().graceTurns).toBe(7);
+  });
+
   it("clear-all at all levels skips the project layer when it is not offered", () => {
     const { io, saves } = memIO({ global: { agent: { Explore: "g/explore" } } });
     const store = new ConfigStore(io);

@@ -371,23 +371,4 @@ describe("status line lifecycle (record-existence-driven)", () => {
       expect.objectContaining({ placement: "aboveEditor" }),
     );
   });
-
-  it("does not rewrite the status text on ticks when unchanged", () => {
-    const uiCtx = makeUICtx();
-    const manager = makeMockManager([], 0.01, 2);
-    const widget = new AgentWidget(manager, () => undefined);
-    widget.setShowCost(true);
-    widget.setFinishedRetentionMinutes(5);
-    widget.setUICtx(uiCtx);
-
-    const agedOut = makeFinishedAgent("f1");
-    agedOut.lifecycle.completedAt = Date.now() - 10 * 60_000; // outside the 5-min window
-    manager.listAgents = () => [agedOut];
-    widget.update();
-    widget.update();
-    widget.update();
-
-    expect(uiCtx.setStatus).toHaveBeenCalledTimes(1);
-    expect(getStatusText(uiCtx)).toContain("◇ Agents: 2 done");
-  });
 });

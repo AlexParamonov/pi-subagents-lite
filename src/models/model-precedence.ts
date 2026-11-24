@@ -30,7 +30,7 @@ export interface SubagentsConfig {
     widgetMaxLines?: number;
     widgetMaxLinesCompact?: number;
     widgetCompact?: boolean;
-    /** Show background completion cards in the TUI. Default: true. */
+    /** Show the subagent and Workflow run completion cards in the transcript. Default: true. */
     showCompletionCards?: boolean;
     widgetShortcut?: boolean;
     /** System prompt mode: replace (default), inherit parent, or custom file. */
@@ -94,6 +94,21 @@ export interface SubagentsConfig {
     default: number;
     providers?: Record<string, number>;
     models?: Record<string, number>;
+  };
+  /**
+   * Workflow endpoints, resolved per run (US-6). The merged settings retain unusable URL, key and
+   * default values. `workflows/endpoints.ts` refuses the run rather than falling back to another
+   * endpoint or sending it unauthenticated (US-34, US-8).
+   */
+  workflows: {
+    /**
+     * Whether the `Workflow` tool is registered at all. OFF by default: the feature needs a Workflow
+     * endpoint the typical consumer does not have. Read once when the extension registers its tools,
+     * so flipping it takes effect on the next pi start.
+     */
+    enabled: boolean;
+    endpoints: Record<string, { url?: unknown; apiKey?: unknown }>;
+    defaultEndpoint: unknown;
   };
 }
 

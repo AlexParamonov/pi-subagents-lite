@@ -11,19 +11,9 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { SubagentAgentManager } from "./subagent-context.ts";
-import type { AgentRecord } from "../types.ts";
-import { SHORT_ID_LENGTH } from "../types.ts";
+import { isActiveRecord, type AgentRecord } from "../types.ts";
+import { notedRow } from "../ui/format.ts";
 import { getManager, getStore } from "../shell.ts";
-
-function formatAgent(record: AgentRecord): string {
-  const shortId = record.id.slice(0, SHORT_ID_LENGTH);
-  return `${shortId} (${record.display.type}) ${record.lifecycle.status}`;
-}
-
-/** In-progress agents are always shown; every other status is settled (issue constraints). */
-function isActive(record: AgentRecord): boolean {
-  return record.lifecycle.status === "running" || record.lifecycle.status === "queued";
-}
 
 /** Most recently settled first. completedAt is stamped on every terminal path
  * (settlement chain, stop, queued failure, dispose) and cleared on continue, so
@@ -42,7 +32,7 @@ export function formatAgentStatusList(agents: AgentRecord[], limit: number): str
   const active: AgentRecord[] = [];
   const settled: AgentRecord[] = [];
   for (const record of agents) {
-    if (isActive(record)) active.push(record);
+    if (isActiveRecord(record)) active.push(record);
     else settled.push(record);
   }
 
@@ -52,7 +42,7 @@ export function formatAgentStatusList(agents: AgentRecord[], limit: number): str
   const shownSettled = settled.slice(0, limit);
   const hidden = settled.length - shownSettled.length;
 
-  const lines = [...active, ...shownSettled].map(formatAgent).join(", ");
+  const lines = [...active, ...shownSettled].map((record) => notedRow(record)).join("\n");
   return hidden > 0 ? `${lines}\nand ${hidden} more settled agents` : lines;
 }
 
@@ -71,9 +61,7 @@ export async function executeAgentStatusTool(
   if (!manager) throw new Error("Agent manager is unavailable");
   const agents = manager.listAgents();
 
-  const nudge = receivesCompletionNotifications
-    ? "Don't poll — you'll receive notifications when agents complete."
-    : "Don't poll — completion notifications are delivered to the parent agent.";
+  const nudge = notificationLine(receivesCompletionNotifications);
 
   if (agents.length === 0) {
     return {
@@ -85,4 +73,14 @@ export async function executeAgentStatusTool(
   return {
     content: [{ type: "text", text: `${listText}\n\n${nudge}` }],
   };
+}
+
+/**
+ * How this session delivers outcomes, stated as a rule and never as a promise about one record: no
+ * kind is named, because which of the two answers a record gives is its own posture, not its kind.
+ */
+function notificationLine(receivesCompletionNotifications: boolean): string {
+  return receivesCompletionNotifications
+    ? "Don't poll \u2014 a run answers inside the call that started it, or as a notification when it ends."
+    : "Don't poll \u2014 completion notifications are delivered to the parent agent.";
 }

@@ -138,6 +138,27 @@ export function makeQueuedAgent(id: string, opts?: { type?: string }): AgentReco
   };
 }
 
+/** A remote Workflow run: no session, so no live view feeds its row. */
+export function makeWorkflowRun(id: string, opts?: { note?: string; progress?: string[] }): AgentRecord {
+  return {
+    id,
+    display: { type: "audit" as AgentRecord["display"]["type"], description: "audit the diff" },
+    lifecycle: { status: "running", startedAt: Date.now() - 60_000, started: true },
+    execution: { settled: false, settlementCount: 0 },
+    workflow: {
+      name: "audit",
+      remoteId: `wf-${id}`,
+      progress: opts?.progress ?? [],
+      ...(opts?.note ? { note: opts.note } : {}),
+    },
+    stats: {
+      toolUses: 0,
+      compactionCount: 0,
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
+    },
+  };
+}
+
 export function makeActivity(_agentId: string): LiveView {
   return { activeTools: new Map([["read", "reading"]]), responseText: "" };
 }

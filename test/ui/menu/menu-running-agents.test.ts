@@ -14,6 +14,7 @@ import { expectNoTerminalControls } from "../../fixtures.js";
 import { defaultTheme } from "../../mock-utils.js";
 import type { AgentRecord, AgentDisplayInfo, AgentExecutionState, AgentLifecycle } from "../../../src/types.js";
 import type { Component, Input, SelectItem, SelectListTheme } from "@earendil-works/pi-tui";
+import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 
 /** The mocked SelectList surface the tests drive: the items the menu built
  * plus the selection state the navigation tests step by hand. */
@@ -28,53 +29,59 @@ interface SelectListCapture {
 // Capture SelectList constructor calls
 let selectListCalls: SelectListCapture[] = [];
 
-vi.mock("@earendil-works/pi-tui", () => ({
-  SettingsList: class MockSettingsList {
-    constructor() {}
-  },
-  SelectList: class MockSelectList {
-    items: SelectItem[];
-    maxVisible: number;
-    selectedIndex = 0;
-    onSelect?: (item: SelectItem) => void;
-    onCancel?: () => void;
-    constructor(items: SelectItem[], maxVisible: number, _theme: SelectListTheme) {
-      this.items = items;
-      this.maxVisible = maxVisible;
-      selectListCalls.push(this);
-    }
-    render() {
-      return [];
-    }
-    handleInput() {}
-  },
-  Input: class MockInput {
-    value = "";
-    onSubmit?: (v: string) => void;
-    onEscape?: () => void;
-    setValue(v: string) {
-      this.value = v;
-    }
-    getValue() {
-      return this.value;
-    }
-  },
-  matchesKey: vi.fn((data: string, key: string) => {
-    const map: Record<string, string[]> = {
-      up: ["\x1b[A", "k"],
-      down: ["\x1b[B", "j"],
-      pageUp: ["\x1b[5~"],
-      pageDown: ["\x1b[6~"],
-      home: ["\x1b[H"],
-      escape: ["\x1b"],
-      q: ["q"],
-      s: ["s"],
-    };
-    return (map[key] ?? [key]).includes(data);
-  }),
-  truncateToWidth: vi.fn((s: string, w: number) => (s.length > w ? s.slice(0, w - 3) + "..." : s)),
-  visibleWidth: vi.fn((s: string) => s.length),
-}));
+vi.mock("@earendil-works/pi-tui", async (importActual) => {
+  // The real wrap, not a stand-in: these tests pin how the text a record ends with is laid out at the
+  // width it is rendered at, so the wrapping itself must come from the library that does it in pi.
+  const actual = await importActual<typeof import("@earendil-works/pi-tui")>();
+  return {
+    SettingsList: class MockSettingsList {
+      constructor() {}
+    },
+    SelectList: class MockSelectList {
+      items: SelectItem[];
+      maxVisible: number;
+      selectedIndex = 0;
+      onSelect?: (item: SelectItem) => void;
+      onCancel?: () => void;
+      constructor(items: SelectItem[], maxVisible: number, _theme: SelectListTheme) {
+        this.items = items;
+        this.maxVisible = maxVisible;
+        selectListCalls.push(this);
+      }
+      render() {
+        return [];
+      }
+      handleInput() {}
+    },
+    Input: class MockInput {
+      value = "";
+      onSubmit?: (v: string) => void;
+      onEscape?: () => void;
+      setValue(v: string) {
+        this.value = v;
+      }
+      getValue() {
+        return this.value;
+      }
+    },
+    matchesKey: vi.fn((data: string, key: string) => {
+      const map: Record<string, string[]> = {
+        up: ["\x1b[A", "k"],
+        down: ["\x1b[B", "j"],
+        pageUp: ["\x1b[5~"],
+        pageDown: ["\x1b[6~"],
+        home: ["\x1b[H"],
+        escape: ["\x1b"],
+        q: ["q"],
+        s: ["s"],
+      };
+      return (map[key] ?? [key]).includes(data);
+    }),
+    truncateToWidth: vi.fn((s: string, w: number) => (s.length > w ? s.slice(0, w - 3) + "..." : s)),
+    visibleWidth: vi.fn((s: string) => s.length),
+    wrapTextWithAnsi: actual.wrapTextWithAnsi,
+  };
+});
 
 vi.mock("../../../src/ui/conversation-viewer.js", () => ({
   ConversationViewer: class MockConversationViewer {
@@ -101,6 +108,7 @@ interface RecordOverrides {
   execution?: Partial<AgentExecutionState>;
   result?: string;
   error?: string;
+  workflow?: AgentRecord["workflow"];
 }
 
 /** A session handle the menu only checks for truthiness; the mocked
@@ -284,6 +292,117 @@ describe("buildAgentActionsList — actions submenu", () => {
   });
 });
 
+describe("buildAgentActionsList — a workflow run", () => {
+  /** A live remote run whose note says its state is unknown: no session, and still the caller's to stop. */
+  function remoteRun(): AgentRecord {
+    return makeRecord({
+      display: { type: "audit", description: "audit the diff" },
+      lifecycle: { status: "running", startedAt: Date.now() - 20000, started: true },
+      execution: {},
+      result: "",
+      error: "",
+      workflow: {
+        name: "audit",
+        remoteId: "wf-1",
+        progress: [],
+        note: "Workflow run test-id-1 is still running remotely. Its state is unknown after 5 observations.",
+      },
+    });
+  }
+
+  beforeEach(() => {
+    selectListCalls = [];
+    vi.clearAllMocks();
+  });
+
+  it("offers its details and Stop: no Steer and no conversation viewer for a run with no session", () => {
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      remoteRun(),
+      defaultTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+
+    expect(selectListView(list).items.map((item) => item.value)).toEqual(["view-details", "stop"]);
+  });
+
+  it("offers its details and Clear once it has settled", () => {
+    const settled = {
+      ...remoteRun(),
+      lifecycle: { ...remoteRun().lifecycle, status: "completed" as const, completedAt: Date.now() },
+    };
+    const list = buildAgentActionsList(
+      createMockCtx(),
+      settled,
+      defaultTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+
+    expect(selectListView(list).items.map((item) => item.value)).toEqual(["view-details", "clear"]);
+  });
+
+  it("opens the run's details, for a settled run as for a live one", async () => {
+    let opened = 0;
+    const ctx = createMockCtx([], [], [], {
+      ui: {
+        custom: vi.fn(async () => {
+          opened += 1;
+          return undefined;
+        }),
+      },
+    });
+
+    const list = buildAgentActionsList(
+      ctx,
+      remoteRun(),
+      defaultTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+    await list.onSelect!({ value: "view-details", label: "View details" });
+
+    const settled = { ...remoteRun(), lifecycle: { ...remoteRun().lifecycle, status: "completed" as const } };
+    const settledList = buildAgentActionsList(
+      ctx,
+      settled,
+      defaultTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+    await settledList.onSelect!({ value: "view-details", label: "View details" });
+
+    expect(opened).toBe(2);
+  });
+
+  it("requests the stop, and reports the request rather than an outcome", async () => {
+    const notify = vi.fn<ExtensionUIContext["notify"]>();
+    const ctx = createMockCtx([], [], [], { ui: { notify } });
+    const onClose = vi.fn();
+    mockModules.mockManager.abort.mockReset();
+
+    const list = buildAgentActionsList(
+      ctx,
+      remoteRun(),
+      defaultTheme,
+      () => {},
+      () => {},
+      onClose,
+    );
+    await list.onSelect!({ value: "stop", label: "Stop" });
+
+    expect(mockModules.mockManager.abort).toHaveBeenCalledWith("test-id-123", "user");
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("Stop requested"), "info");
+    expect(notify.mock.calls[0]![0], "the endpoint's answer decides, not this menu").not.toMatch(/\bstopp?ed\b/i);
+    expect(onClose).toHaveBeenCalled();
+  });
+});
+
 describe("showTextViewer (via buildAgentActionsList)", () => {
   beforeEach(() => {
     selectListCalls = [];
@@ -410,6 +529,28 @@ describe("showTextViewer — component behavior", () => {
     return { component, done: doneFn };
   }
 
+  /** One frame row's own text: its border and the padding round it removed. */
+  function rowText(line: string): string {
+    return line
+      .replace(/^\u2502 /, "")
+      .replace(/ \u2502$/, "")
+      .trimEnd();
+  }
+
+  /** The text this viewer shows: its content window, with the frame above it, its separator, its footer
+   * and the blank viewport rows below the text removed. */
+  function shownRows(frame: readonly string[]): string[] {
+    return frame
+      .slice(3, -2)
+      .map(rowText)
+      .filter((line) => line !== "");
+  }
+
+  /** The viewer's own footer row, with the frame's borders removed. */
+  function footerRow(frame: readonly string[]): string {
+    return rowText(frame.at(-2)!);
+  }
+
   it("paints no terminal control from the text it shows", async () => {
     // One carrier per class the sanitizer claims to close: a DEC private mode
     // (alternate screen), a BEL-terminated string sequence, DEL, the 8-bit CSI
@@ -451,6 +592,42 @@ describe("showTextViewer — component behavior", () => {
     expect(text).toContain("line one");
     expect(text).toContain("line two");
     expect(text).toContain("line three");
+  });
+
+  it("wraps a long line at the width it renders at, instead of cutting it", async () => {
+    const long = "alpha beta gamma delta epsilon zeta eta theta";
+    const record = makeRecord({ result: long });
+    const { component } = await getComponent(record, "result", long);
+
+    // 40 columns of frame leaves 36 for the text, so the line breaks before `eta`.
+    expect(shownRows(component.render(40))).toEqual(["alpha beta gamma delta epsilon zeta", "eta theta"]);
+  });
+
+  it("scrolls the wrapped rows a long line becomes, not the source lines it came from", async () => {
+    // 20 source lines fit the viewport whole, so only the rows they wrap into can make this view scroll.
+    const wide = [...Array.from({ length: 20 }, () => "a".repeat(200)), "last"];
+    const record = makeRecord({ result: wide.join("\n") });
+    const { component } = await getComponent(record, "result", "");
+
+    expect(shownRows(component.render(40)).at(-1), "the view opens at the end of the text").toBe("last");
+
+    component.handleInput!("\x1b[A"); // up
+
+    expect(shownRows(component.render(40)).at(-1), "one row up uncovers the wrapped row above it").not.toBe("last");
+  });
+
+  it("re-wraps its rows and its row count when the frame width changes", async () => {
+    const long = "alpha beta gamma delta epsilon zeta eta theta";
+    const record = makeRecord({ result: long });
+    const { component } = await getComponent(record, "result", long);
+
+    // 40 columns of frame leaves 36 for the text, so the line breaks and the footer counts two rows.
+    expect(footerRow(component.render(40))).toMatch(/\b2 lines\b/);
+
+    const wide = component.render(80);
+
+    expect(shownRows(wide), "the same text whole where the wider frame fits it").toEqual([long]);
+    expect(footerRow(wide), "and counted as the one row it is").toMatch(/\b1 lines\b/);
   });
 
   it("renders error viewer with Error suffix", async () => {
@@ -757,7 +934,35 @@ describe("buildAgentActionsList — completed agent with session", () => {
     await list.onSelect!({ value: "view-conversation", label: "View conversation" });
 
     expect(capturedFactory).toBeDefined();
-    expect(ctx.ui.custom).toHaveBeenCalledWith(expect.any(Function), { overlay: true });
+    // The details open over the menu, at the width record-details asks pi for.
+    expect(ctx.ui.custom).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ overlay: true }));
+  });
+
+  it("reports a record whose session is gone by the time the row is chosen", async () => {
+    const notify = vi.fn<ExtensionUIContext["notify"]>();
+    const custom = vi.fn(async () => undefined);
+    const ctx = createMockCtx([], [], [], { ui: { notify, custom } });
+    const record = makeRecord({
+      lifecycle: { status: "completed", startedAt: Date.now() - 50000, completedAt: Date.now() - 10000 },
+      execution: { session: makeMockSession([{ role: "user", content: "hi" }]) },
+      result: "done",
+    });
+    // The items were built while the record had a session; Clear/dispose released it before the choice,
+    // and pi never awaits a selection callback, so a rejection here would end the process.
+    const list = buildAgentActionsList(
+      ctx,
+      record,
+      defaultTheme,
+      () => {},
+      () => {},
+      () => {},
+    );
+    record.execution.session = undefined;
+
+    await list.onSelect!({ value: "view-conversation", label: "View conversation" });
+
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("nothing to show"), "error");
+    expect(custom).not.toHaveBeenCalled();
   });
 
   it("hands the saved viewer presentation to the ConversationViewer", async () => {

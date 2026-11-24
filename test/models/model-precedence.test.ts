@@ -19,6 +19,7 @@ import type { SubagentsConfig } from "../../src/models/model-precedence.js";
 const baseConfig: SubagentsConfig = {
   agent: { default: null, forceBackground: false },
   concurrency: { default: 4 },
+  workflows: { enabled: false, endpoints: {}, defaultEndpoint: "anagen-x.local" },
 };
 
 describe("model resolution precedence chain", () => {

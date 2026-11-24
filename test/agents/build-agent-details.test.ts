@@ -13,12 +13,8 @@ import type {
   AgentLifecycle,
   AgentRecord,
 } from "../../src/types.js";
-import { buildAgentDetails } from "../../src/agents/tool-execution.js";
+import { buildAgentDetails } from "../../src/record-result.js";
 import { asAgentSession } from "../pi-boundaries.js";
-
-// buildAgentDetails is a pure function. Importing tool-execution.ts is safe
-// without mocks because @earendil-works/pi-coding-agent has no top-level side
-// effects (getAgentDir is a runtime value import, but the package is side-effect free).
 
 /* ------------------------------------------------------------------ */
 /*  Tests                                                             */
@@ -26,7 +22,7 @@ import { asAgentSession } from "../pi-boundaries.js";
 
 describe("buildAgentDetails", () => {
   /** Overrides may be partial: makeRecord deep-merges each sub-object into the base. */
-  interface RecordOverrides extends Partial<Pick<AgentRecord, "id" | "result" | "error">> {
+  interface RecordOverrides extends Partial<Pick<AgentRecord, "id" | "result" | "error" | "workflow">> {
     lifecycle?: Partial<AgentLifecycle>;
     display?: Partial<AgentDisplayInfo>;
     execution?: Partial<AgentExecutionState>;
@@ -289,6 +285,17 @@ describe("buildAgentDetails", () => {
     const details = buildAgentDetails(record);
 
     expect(details.worktreePath).toBeUndefined();
+  });
+
+  // --- displayName: a Workflow run's snapshot names the run itself ---
+
+  it("names a Workflow run's snapshot by the workflow, not by the agent naming", () => {
+    const record = makeRecord({
+      display: { type: "audit", description: "audit the diff" },
+      workflow: { name: "audit", remoteId: "wf-1", progress: [] },
+    });
+
+    expect(buildAgentDetails(record, { includeStatus: true }).displayName).toBe("audit workflow");
   });
 
   // --- replyPreview: the collapsed result surfaces read this field, never the composed text ---

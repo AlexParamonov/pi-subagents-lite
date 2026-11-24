@@ -203,34 +203,29 @@ describe("AgentManager", () => {
       expect(manager.getTotalAgentCount()).toBe(0);
     });
 
-    it("does not count queued agent that fails to start", async () => {
-      manager = new AgentManager(onComplete, { default: 1, models: { "test/model": 1 } });
-
-      const deferred = makeResolvablePromise();
-      mockModules.mockRunAgent.mockReturnValueOnce(deferred.promise);
-
-      const id1 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task1", {
-        description: "t1",
-        modelKey: "test/model",
+    it("gives the slot to the next queued agent when a start fails", async () => {
+      manager = new AgentManager(onComplete, { default: 1 }, (record) => {
+        if (record.display.description === "fails at startup") throw new Error("start failed");
       });
-      expect(manager.getRecord(id1)?.lifecycle.status).toBe("running");
+      const firstRun = makeResolvablePromise();
+      const nextRun = makeResolvablePromise();
+      mockModules.mockRunAgent.mockReturnValueOnce(firstRun.promise).mockReturnValueOnce(nextRun.promise);
 
-      mockModules.mockRunAgent.mockImplementationOnce(() => {
-        throw new Error("start failed");
-      });
-      const id2 = manager.spawn(fakePi(), fakeCtx(), "general-purpose", "task2", {
-        description: "t2",
-        modelKey: "test/model",
-      });
-      expect(manager.getRecord(id2)?.lifecycle.status).toBe("queued");
+      const first = spawnForeground("first");
+      const failing = spawnForeground("fails at startup");
+      const next = spawnForeground("next");
+      expect(manager.getRecord(failing)?.lifecycle.status).toBe("queued");
+      expect(manager.getRecord(next)?.lifecycle.status).toBe("queued");
 
-      // Complete first agent — triggers drainQueue, which tries to start id2
-      deferred.resolve(mockRunResult());
-
-      await manager.getRecord(id1)!.execution.promise;
+      firstRun.resolve(mockRunResult());
+      await manager.getRecord(first)!.execution.promise;
 
       expect(manager.getTotalAgentCount()).toBe(1);
-      expect(manager.getRecord(id2)?.lifecycle.status).toBe("error");
+      expect(manager.getRecord(failing)?.lifecycle.status).toBe("error");
+      expect(manager.getRecord(failing)?.error).toBe("start failed");
+      expect(manager.getRecord(next)?.lifecycle.status).toBe("running");
+      nextRun.resolve(mockRunResult());
+      await expect(manager.getRecord(next)!.execution.promise).resolves.toBe("done");
     });
   });
   // ── Model error handling (final assistant message stopReason "error") ──

@@ -137,7 +137,10 @@ describe("createConfigIO load — two-layer override model", () => {
       io.load();
       io.load();
       expect(warn).toHaveBeenCalledOnce();
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining("graceTurns"));
+      // The wording an ignored agent key has always had, byte for byte.
+      expect(warn).toHaveBeenCalledWith(
+        `[subagents] Ignoring unknown keys in project config ${join(projectDir, "subagents-lite.json")}: graceTurns`,
+      );
     } finally {
       warn.mockRestore();
     }

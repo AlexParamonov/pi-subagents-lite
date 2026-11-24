@@ -7,11 +7,13 @@
  *
  * Exports:
  *   - showRunningAgentsMenu: list running/queued/completed agents
- *   - buildAgentActionsList: per-agent action sub-menu (view result, steer, stop, clear)
+ *   - buildAgentActionsList: per-agent action sub-menu (view details/result, steer, stop, clear)
  *
  * Private helpers (single-consumer, co-located):
- *   - showConversationViewer: show ConversationViewer for agent snapshot
  *   - showTextViewer: show simple text viewer for result/error
+ *
+ * What a record's own details are - its conversation, a Workflow run's entries - is one open path in
+ * record-details.ts, shared with the widget.
  */
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -21,45 +23,20 @@ import {
   SelectList,
   truncateToWidth,
   visibleWidth,
+  wrapTextWithAnsi,
   type Component,
   type SelectItem,
 } from "@earendil-works/pi-tui";
-import type { AgentRecord } from "../../types.ts";
-import { SHORT_ID_LENGTH } from "../../types.ts";
-import { ConversationViewer } from "../conversation-viewer.ts";
-import { viewerToolDisplay, viewerPresentation } from "../tool-display.ts";
-import { getDisplayName, agentBulletPrefix, formatMs } from "../format.ts";
+import { isActiveRecord, SHORT_ID_LENGTH, type AgentRecord } from "../../types.ts";
+import { openRecordDetails } from "../record-details.ts";
+import { getDisplayName, recordDisplayName, agentBulletPrefix, formatMs } from "../format.ts";
 import { plainText } from "../sanitize.ts";
 import { SEPARATOR_ID, buildSelectListTheme, createDelegatingComponent, installSeparatorSkip } from "./helpers.ts";
 import { overlayViewportRows } from "../overlay.ts";
-import { getManager, getStore } from "../../shell.ts";
+import { getManager } from "../../shell.ts";
 import type { Theme } from "../types.ts";
 
-/** Running or queued — the only non-terminal statuses (ADR-0006: active work is never cleared). */
-function isActive(record: AgentRecord): boolean {
-  return record.lifecycle.status === "running" || record.lifecycle.status === "queued";
-}
-
-async function showConversationViewer(ctx: ExtensionCommandContext, record: AgentRecord): Promise<void> {
-  if (!record.execution?.session) return;
-  const manager = getManager();
-
-  await ctx.ui.custom<void>(
-    (tui, theme, kb, done) => {
-      const viewer = new ConversationViewer(tui, record.execution.session!, record, theme, done, {
-        onStop: () => manager?.abort(record.id, "user"),
-        keybindings: kb,
-        onSteer: (msg: string) => manager?.steer(record.id, msg),
-        toolDisplay: viewerToolDisplay(ctx, manager, record.id),
-        ...viewerPresentation(getStore()),
-      });
-      viewer.setModelDisplayStyle(getStore().agent.modelDisplayStyle);
-      return viewer;
-    },
-    { overlay: true },
-  );
-}
-
+/** The frozen text a record ends with, in a scrolling overlay of its own. */
 async function showTextViewer(
   ctx: ExtensionCommandContext,
   record: AgentRecord,
@@ -70,21 +47,33 @@ async function showTextViewer(
   // Error text carries provider bodies and child stderr, result text carries whatever the
   // agent echoed back: neither may reach the terminal with a control sequence intact.
   const textLines = text.split("\n").map((line) => plainText(line));
-  const displayName = getDisplayName(record.display.type);
+  const displayName = recordDisplayName(record, getDisplayName(record.display.type));
   const chromeLines = 5; // top border + title + sep + footer + bottom border
   let scrollOffset = 0;
   let autoScroll = true;
+  // The rows on screen: `textLines` wrapped at the width of the frame they were last painted in, so
+  // scrolling moves the rows the reader sees rather than the lines the text was written with. The wrap
+  // covers the whole text (~16ms for 2,000 lines of it) and pi composites an open overlay on every
+  // ~16ms frame, so it is redone on a width change only.
+  let rows = textLines;
+  let rowsInnerW = -1;
 
   await ctx.ui.custom<void>(
     (tui, theme, _kb, done) => {
       const border = theme.fg("border", "│");
 
       const viewportHeight = () => overlayViewportRows(tui.terminal.rows, chromeLines);
+      // How far the wrapped rows may scroll - the bound the painted frame and the scroll keys must agree on.
+      const scrollMax = () => Math.max(0, rows.length - viewportHeight());
 
       return {
         invalidate() {},
         render(width: number) {
           const innerW = width - 4;
+          if (innerW !== rowsInnerW) {
+            rowsInnerW = innerW;
+            rows = textLines.flatMap((line) => wrapTextWithAnsi(line, innerW));
+          }
           const out: string[] = [theme.fg("border", `\u256d${"\u2500".repeat(width - 2)}\u256e`)];
 
           // Title row: │ name · suffix pad │
@@ -97,21 +86,20 @@ async function showTextViewer(
 
           // Content with scrolling
           const vp = viewportHeight();
-          const maxScroll = Math.max(0, textLines.length - vp);
+          const maxScroll = scrollMax();
           if (autoScroll) scrollOffset = maxScroll;
           const vs = Math.min(scrollOffset, maxScroll);
-          const visible = textLines.slice(vs, vs + vp);
+          const visible = rows.slice(vs, vs + vp);
 
           for (let i = 0; i < vp; i++) {
             const line = visible[i] ?? "";
-            const truncated = truncateToWidth(line, innerW, "...", true);
-            const padLen = Math.max(0, innerW - visibleWidth(truncated));
-            out.push(`${border} ${truncated}${" ".repeat(padLen)} ${border}`);
+            const padLen = Math.max(0, innerW - visibleWidth(line));
+            out.push(`${border} ${line}${" ".repeat(padLen)} ${border}`);
           }
 
           // Footer
-          const scrollPct = textLines.length <= vp ? "100%" : `${Math.round(((vs + vp) / textLines.length) * 100)}%`;
-          const count = theme.fg("dim", `${textLines.length} lines \u00b7 ${scrollPct}`);
+          const scrollPct = rows.length <= vp ? "100%" : `${Math.round(((vs + vp) / rows.length) * 100)}%`;
+          const count = theme.fg("dim", `${rows.length} lines \u00b7 ${scrollPct}`);
           const footerText = theme.fg("dim", "q/Esc close");
           const gap = Math.max(1, innerW - visibleWidth(count) - visibleWidth(footerText));
           out.push(`${border} ${count}${" ".repeat(gap)}${footerText} ${border}`);
@@ -126,7 +114,7 @@ async function showTextViewer(
           }
 
           const vp = viewportHeight();
-          const maxScroll = Math.max(0, textLines.length - vp);
+          const maxScroll = scrollMax();
 
           if (matchesKey(data, "up")) {
             scrollOffset = Math.max(0, scrollOffset - 1);
@@ -171,15 +159,19 @@ export function buildAgentActionsList(
 ): SelectList {
   const items: SelectItem[] = [];
   const shortId = record.id.slice(0, SHORT_ID_LENGTH);
-  const isRunning = isActive(record);
+  const active = isActiveRecord(record);
   const hasSession = !!record.execution.session;
   const hasResult = !!record.result && record.result.length > 0;
   const hasError = !!record.error && record.error.length > 0;
 
+  if (record.workflow) {
+    // A run has no conversation to show, but it has what this client watched: its entries, one per row.
+    items.push({ value: "view-details", label: "View details" });
+  }
   if (record.lifecycle.status === "running" && hasSession) {
     items.push({ value: "view-snapshot", label: "View snapshot" });
   }
-  if (hasSession && !isRunning) {
+  if (hasSession && !active) {
     items.push({ value: "view-conversation", label: "View conversation" });
   }
   if (hasResult) {
@@ -188,8 +180,10 @@ export function buildAgentActionsList(
   if (hasError) {
     items.push({ value: "view-error", label: "View error" });
   }
-  if (isRunning) {
-    items.push({ value: "steer", label: "Steer" });
+  if (active) {
+    // US-29: a workflow run has no session to steer — it takes input when it is created and nothing
+    // after. Stopping it is offered because the endpoint does answer a stop.
+    if (!record.workflow) items.push({ value: "steer", label: "Steer" });
     items.push({ value: "stop", label: "Stop" });
   } else {
     items.push({ value: "clear", label: "Clear" });
@@ -203,8 +197,14 @@ export function buildAgentActionsList(
 
   const list = new SelectList(items, 10, buildSelectListTheme(theme));
   list.onSelect = async (item) => {
-    if (item.value === "view-snapshot" || item.value === "view-conversation") {
-      await showConversationViewer(ctx, record);
+    if (item.value === "view-snapshot" || item.value === "view-conversation" || item.value === "view-details") {
+      // pi never awaits a selection callback, so a rejection here would end the process: the session a
+      // record had when these items were built can be gone by the choice.
+      try {
+        await openRecordDetails(ctx.ui, record);
+      } catch (err) {
+        ctx.ui.notify(`Failed to open details: ${String(err)}`, "error");
+      }
     } else if (item.value === "view-result") {
       await showTextViewer(ctx, record, "result", record.result!);
     } else if (item.value === "view-error") {
@@ -225,7 +225,8 @@ export function buildAgentActionsList(
       setActive(input);
     } else if (item.value === "stop") {
       getManager()?.abort(record.id, "user");
-      ctx.ui.notify(`Stopped ${shortId}`, "info");
+      // A remote run's stop is the endpoint's answer, which arrives after the menu closes.
+      ctx.ui.notify(record.workflow ? `Stop requested for ${shortId}` : `Stopped ${shortId}`, "info");
       onClose();
     } else if (item.value === "clear") {
       getManager()?.clear(record.id);
@@ -243,8 +244,8 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
     ctx.ui.notify("No agents have been spawned this session", "info");
     return;
   }
-  const running = agents.filter(isActive);
-  const finished = agents.filter((r) => !isActive(r));
+  const running = agents.filter(isActiveRecord);
+  const finished = agents.filter((r) => !isActiveRecord(r));
   const completed = agents.filter((r) => r.lifecycle.status === "completed");
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
@@ -255,7 +256,7 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
       const items: SelectItem[] = agents.map((record) => {
         // Finished runs freeze at completion; the now fallback is defensive only
         // (completedAt is stamped on every terminal path and cleared on continue).
-        const active = isActive(record);
+        const active = isActiveRecord(record);
         const end = active ? now : (record.lifecycle.completedAt ?? now);
         const duration = formatMs(end - record.lifecycle.startedAt);
         const ago = active ? "" : ` ${formatMs(now - end)} ago`;
@@ -274,7 +275,7 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
         const bullet = agentBulletPrefix(record.display.type);
         return {
           value: record.id,
-          label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${bullet}${record.display.type}  ${record.lifecycle.status}  ${duration}${suffix}${ago}`,
+          label: `${statusIcon} ${record.id.slice(0, SHORT_ID_LENGTH)}  ${bullet}${recordDisplayName(record, record.display.type)}  ${record.lifecycle.status}  ${duration}${suffix}${ago}`,
         };
       });
       if (running.length > 0) {
@@ -306,7 +307,9 @@ export async function showRunningAgentsMenu(ctx: ExtensionCommandContext): Promi
         for (const r of running) {
           getManager()?.abort(r.id, "user");
         }
-        ctx.ui.notify(`Stopped ${running.length} agent(s)`, "info");
+        // Honest for the mixed case: a workflow run's stop is only requested here.
+        const wording = running.some((r) => r.workflow) ? "Stop requested for" : "Stopped";
+        ctx.ui.notify(`${wording} ${running.length} running agent(s)`, "info");
         done(undefined);
         return;
       }

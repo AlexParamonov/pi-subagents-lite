@@ -16,6 +16,7 @@ import {
   applyAgentColor,
   buildStatsParts,
   getDisplayName,
+  recordDisplayName,
   describeActivity,
   buildModelThinkingTag,
   resolveAgentModelThinking,
@@ -587,7 +588,7 @@ export class AgentWidget {
   }
 
   private renderFinishedLine(a: AgentRecord, theme: Theme, _w: number): string {
-    const name = getDisplayName(a.display.type);
+    const name = recordDisplayName(a, getDisplayName(a.display.type));
     const { icon, statusText } = this.finishedIconAndStatus(a.lifecycle, a.error, theme, a.display.type || undefined);
 
     const durationMs = (a.lifecycle.completedAt ?? Date.now()) - a.lifecycle.startedAt;
@@ -788,6 +789,17 @@ export class AgentWidget {
     return blocks;
   }
 
+  /** A remote run has no live view, so its row carries what the run itself said: its note, else its
+   * newest progress line. Only its first non-empty line fits the row. The row's header carries no id,
+   * so a run's management id reaches this row only when the note's first line names it. */
+  private runningActivity(a: AgentRecord, bg: LiveView | undefined): string {
+    const said = (a.workflow?.note ?? a.workflow?.progress?.at(-1) ?? "")
+      .split("\n")
+      .find((line) => line.trim() !== "");
+    if (said) return said;
+    return bg ? describeActivity(bg.activeTools, bg.responseText, this.bashActivity(a, bg.activeTools)) : "thinking…";
+  }
+
   /** Colored spinner frame for an agent: uses agent color when configured, else theme accent. */
   private coloredFrame(frame: string, agentType: string | undefined, theme: Theme): string {
     return applyAgentColor(frame, agentColorAnsi(agentType), () => theme.fg("accent", frame));
@@ -797,12 +809,10 @@ export class AgentWidget {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
     for (const a of running) {
-      const name = getDisplayName(a.display.type);
+      const name = recordDisplayName(a, getDisplayName(a.display.type));
       const bg = this.getLiveView(a.id);
       const statsLine = this.buildStatsLine(a, theme);
-      const activity = bg
-        ? describeActivity(bg.activeTools, bg.responseText, this.bashActivity(a, bg.activeTools))
-        : "thinking…";
+      const activity = this.runningActivity(a, bg);
       const coloredFrame = this.coloredFrame(frame, a.display.type || undefined, theme);
 
       if (this.isCompact()) {
@@ -928,8 +938,8 @@ export class AgentWidget {
     return lines;
   }
 
-  private renderWidget(tui: TUI, theme: Theme): string[] {
-    const { running, queued, finished } = this.categorizeAgents();
+  private renderWidget(tui: TUI, theme: Theme, snapshot = this.categorizeAgents()): string[] {
+    const { running, queued, finished } = snapshot;
     this.hasAnimatedRows = false;
 
     const hasActive = running.length > 0 || queued.length > 0;
@@ -1033,7 +1043,7 @@ export class AgentWidget {
     const truncate = (line: string) => truncateToWidth(line, w);
     const blocks: RenderBlock[] = [];
     for (const a of queued) {
-      const name = getDisplayName(a.display.type);
+      const name = recordDisplayName(a, getDisplayName(a.display.type));
       const desc = a.display.description;
       const header = `  ${theme.fg("muted", "◦")} ${theme.fg("dim", name)}  ${theme.fg("dim", desc)}`;
       blocks.push({ header: truncate(header), metadataLines: [] });
@@ -1136,7 +1146,8 @@ export class AgentWidget {
     }
     if (!this.uiCtx) return;
 
-    const { running, queued, finished, hasRecords } = this.categorizeAgents();
+    const snapshot = this.categorizeAgents();
+    const { running, queued, finished, hasRecords } = snapshot;
 
     if (!hasRecords) {
       // Zero records: the menu is empty — nothing to surface, clear both.
@@ -1195,7 +1206,7 @@ export class AgentWidget {
       const previous = this.lastWidgetLines;
       if ((running.length === 0 || !this.hasAnimatedRows) && this.tui && this.theme && previous) {
         try {
-          const lines = this.renderWidget(this.tui, this.theme);
+          const lines = this.renderWidget(this.tui, this.theme, snapshot);
           if (lines.length === previous.length && lines.every((line, i) => line === previous[i])) return;
         } catch {
           // Preflight is only an optimization; the component render boundary reports failures.

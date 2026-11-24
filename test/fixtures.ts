@@ -39,7 +39,7 @@ import type { AgentWidget } from "../src/ui/agent-widget.js";
 /* ------------------------------------------------------------------ */
 
 /** Partial overrides for makeAgentRecord; each sub-object merges into the base. */
-export interface AgentRecordOverrides extends Partial<Pick<AgentRecord, "id" | "result" | "error">> {
+export interface AgentRecordOverrides extends Partial<Pick<AgentRecord, "id" | "result" | "error" | "workflow">> {
   lifecycle?: Partial<AgentLifecycle>;
   display?: Partial<AgentDisplayInfo>;
   execution?: Partial<AgentExecutionState>;
@@ -83,6 +83,7 @@ export function makeAgentRecord(overrides: AgentRecordOverrides = {}): AgentReco
 export interface MockShellStore {
   agent: Partial<SubagentsConfig["agent"]>;
   modelFor?: (type: string, parentModelId: string, agentConfig?: { model?: string }) => string;
+  notifyToolsExpanded?: (expanded: boolean) => void;
 }
 
 export interface ShellMockFns {
@@ -139,6 +140,7 @@ export function shellMock(fns: ShellMockFns = {}) {
           exposeDescriptions: false,
         },
         modelFor: () => "anthropic/claude-sonnet-4-6",
+        notifyToolsExpanded: () => {},
       } satisfies MockShellStore),
     coordinator: fns.coordinator ?? { spawn: vi.fn() },
     widget: fns.widget ?? undefined,
@@ -231,7 +233,7 @@ export interface MockExtensionApi {
   registerTool: Mock<(tool: RegisteredTool) => void>;
   registerCommand: Mock<(name: string, options: Omit<RegisteredCommand, "name">) => void>;
   registerMessageRenderer: Mock<(customType: string, renderer: MessageRendererCapture) => void>;
-  on: Mock<(event: string, handler: ListenerHandler) => void>;
+  on: Mock<(event: string, handler: ListenerHandler) => () => void>;
   sendUserMessage: Mock;
   sendMessage: Mock;
   exec: Mock;
@@ -270,7 +272,12 @@ export function createMockExtensionAPI(): MockExtensionAPI {
         messageRenderers.push({ customType, renderer });
       }),
       on: vi.fn((event: string, handler: ListenerHandler) => {
-        listeners.push({ event, handler });
+        const listener = { event, handler };
+        listeners.push(listener);
+        return () => {
+          const index = listeners.indexOf(listener);
+          if (index !== -1) listeners.splice(index, 1);
+        };
       }),
       sendUserMessage: vi.fn(),
       sendMessage: vi.fn(),
@@ -600,7 +607,7 @@ export function createFlatSkill(tmpDir: string, name: string, description: strin
  * control may survive into a painted frame. Assert on the frame as painted — a
  * reader that strips styling can strip the leak it is checking for.
  */
-export function expectNoTerminalControls(frame: string[]): void {
+export function expectNoTerminalControls(frame: readonly string[]): void {
   // oxlint-disable-next-line no-control-regex -- asserting no control character survives is the point
   expect(frame.join("\n")).not.toMatch(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F\uFFF9-\uFFFB\p{Bidi_Control}]/u);
 }

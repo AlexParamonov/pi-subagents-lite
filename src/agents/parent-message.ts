@@ -1,5 +1,5 @@
 import type { AgentToolResult, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { buildAgentDetails } from "./tool-execution.ts";
+import { buildAgentDetails } from "../record-result.ts";
 import type { SubagentParentContext } from "./subagent-context.ts";
 
 export interface SubagentMessageDetails extends Record<string, unknown> {

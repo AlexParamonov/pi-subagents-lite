@@ -3,6 +3,7 @@ import type { AgentSession, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { AgentOutputLog } from "./agents/output-file.ts";
 import type { LifetimeUsage, AgentUsage } from "./agents/usage.ts";
 import type { SubagentType, AgentInvocation } from "./agents/types.ts";
+import type { WorkflowDisplayItem } from "./workflows/stream-view.ts";
 
 export type ThinkingLevel = ModelThinkingLevel;
 
@@ -42,12 +43,46 @@ export interface RunTunables {
 
 export interface AgentRecord {
   id: string;
+  /**
+   * Present only on a Workflow run record, and its presence is the kind tag: a run has no
+   * session, no watchdog, no model slot and no usage accounting. The facts are frozen at create.
+   */
+  workflow?: WorkflowRunInfo;
   result?: string;
   error?: string;
   lifecycle: AgentLifecycle;
   display: AgentDisplayInfo;
   execution: AgentExecutionState;
   stats: AgentAccumulatedStats;
+}
+
+/** One remote Workflow run, as the record has to remember it. The endpoint it went to is the
+ * record's `display.description`, written already safe. */
+export interface WorkflowRunInfo {
+  /** Workflow file name, as the agent selected it. */
+  name: string;
+  /** The server's own run id (`workflow_id`). */
+  remoteId: string;
+  /**
+   * The monitor's latest progress snapshot, kept current for the run's whole life, not just the
+   * tool call that first displayed it. Display data, never a status.
+   */
+  progress?: string[];
+  /**
+   * The same snapshot as the typed items `progress` spells, kept so a surface can label each entry
+   * with its node and colour it by that node's state. Every string in it already crossed the run's
+   * publisher, so it is as safe to paint as `progress`; the two are written together, from one
+   * snapshot. Display data, never a status.
+   */
+  items?: WorkflowDisplayItem[];
+  /**
+   * The monitor's latest running-state note, not a lifecycle status. Kinds and their clearing rules:
+   * `unknown` (reads failed) falls to an authoritative `running` read; `stop-failed` (the endpoint
+   * refused the stop) and `interrupted` (a parent interrupt's stop the endpoint did not confirm)
+   * stand until settlement, and a refused stop outranks a later note of either other kind. A later
+   * hand-back replaces a note of a lesser kind only. A noted run remains stoppable.
+   */
+  note?: string;
 }
 
 export interface EnvInfo {
@@ -101,6 +136,18 @@ export interface CompactionInfo {
 // --- Sub-object interfaces for decomposed AgentRecord ---
 
 export type AgentStatus = "queued" | "running" | "completed" | "turn_limited" | "aborted" | "stopped" | "error";
+
+/** Retention and management classify by the record's status, not by execution cleanup. */
+export function isActiveRecord(record: AgentRecord): boolean {
+  return record.lifecycle.status === "running" || record.lifecycle.status === "queued";
+}
+
+/**
+ * The states a Workflow run settles in (US-18): GET's `completed`, GET's failure (`failed` and
+ * `interrupted` both map here with their reason), and an acknowledged remote stop. A run whose
+ * state is unknown never settles — it stays running.
+ */
+export type WorkflowSettlementStatus = Extract<AgentStatus, "completed" | "error" | "stopped">;
 
 /** Who initiated an agent stop: "user" via UI menu, "agent" via StopAgent tool, or "watchdog" (stuck-agent detection). */
 export type StopInitiator = "user" | "agent" | "watchdog";
@@ -202,11 +249,22 @@ export interface AgentExecutionState {
    */
   liveView?: LiveView;
   /**
-   * Coordinator-supplied live-view bridge (tool activity + streamed text),
-   * captured at spawn and re-wired on continuation. Without it the widget
-   * would show a static "thinking…" while a continued agent runs.
+   * Coordinator-supplied live-view bridge (tool activity + streamed text), captured at spawn and
+   * re-wired on continuation. Without it the widget would show a static "thinking…" while a
+   * continued agent runs.
    */
   liveViewCallbacks?: Pick<RunCallbacks, "onToolActivity" | "onTextDelta">;
+  /**
+   * How a Workflow run's execution ends when the manager asks: "stop" requests the remote stop,
+   * "shutdown" ends this session's observation only. It never settles the record synchronously —
+   * a remote run's status follows the endpoint's answer.
+   */
+  endWorkflowRun?: (reason: "stop" | "shutdown") => void;
+  /**
+   * Be told this record's own display changed, by whoever is watching it live (a Workflow run's
+   * details view). Attached by the run next to its record; the returned function stops the watching.
+   */
+  watchSnapshot?: (onChange: () => void) => () => void;
 }
 
 /**

@@ -27,7 +27,7 @@ vi.mock("../../src/utils.js", () => ({
 }));
 
 // Hoist mock pi so shell mock can return it
-const { mockPi, mockGetPiInstance } = vi.hoisted(() => ({
+const { mockPi, mockGetPiInstance, mockGetSessionCtx } = vi.hoisted(() => ({
   mockPi: {
     sendMessage: vi.fn(),
     sendUserMessage: vi.fn(),
@@ -37,6 +37,7 @@ const { mockPi, mockGetPiInstance } = vi.hoisted(() => ({
     on: vi.fn(),
   },
   mockGetPiInstance: vi.fn<() => ExtensionAPI | null>(() => null),
+  mockGetSessionCtx: vi.fn<() => Pick<ExtensionContext, "isIdle">>(() => ({ isIdle: () => true })),
 }));
 // ExtensionAPI-typed view of the mock for the call boundary; mockPi stays a
 // raw Mock so tests can reach .mock calls and implementations.
@@ -44,7 +45,7 @@ const mockPiApi = asExtensionAPI(mockPi);
 
 vi.mock("../../src/shell.js", () => ({
   getPiInstance: () => mockGetPiInstance(),
-  getSessionCtx: () => ({ isIdle: () => true }),
+  getSessionCtx: () => mockGetSessionCtx(),
   getWidget: () => null,
 }));
 
@@ -82,6 +83,9 @@ function makeMockManager(opts: { pendingGate?: boolean } = {}): AgentManager & M
       return id;
     }),
     getRecord: vi.fn((id: string) => records.get(id)),
+    remove: vi.fn((id: string) => {
+      records.delete(id);
+    }),
     detachParentInterrupt: vi.fn(),
     getSpawnCalls: () => spawnCalls,
     getGateResolver: (id: string) => gateResolvers.get(id),
@@ -111,6 +115,8 @@ interface SpawnCall {
 interface MockManager {
   spawn: (pi: ExtensionAPI, ctx: ExtensionContext, type: string, prompt: string, options: SpawnOptions) => string;
   getRecord: (id: string) => AgentRecord | undefined;
+  /** Drop a record the way Clear does: the batch must still deliver what it promised. */
+  remove: (id: string) => void;
   detachParentInterrupt: (id: string) => void;
   getSpawnCalls: () => SpawnCall[];
   getGateResolver: (id: string) => ((value: string) => void) | undefined;
@@ -124,6 +130,20 @@ function asAgentManager<S extends object>(mock: S): AgentManager & S {
 
 function makeMockCtx() {
   return asExtensionContext({ cwd: "/test", model: undefined, modelRegistry: {} });
+}
+
+/** A Workflow run's record, as `createWorkflowRecord` + `settleWorkflowRun` leave one. */
+function workflowRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
+  return {
+    id: "01234567-89abc-01",
+    workflow: { name: "audit", remoteId: "wf-remote-1" },
+    result: "The declared output",
+    lifecycle: { status: "completed", startedAt: 1, completedAt: 2, started: true },
+    display: { type: "audit", description: "http://127.0.0.1:4100" },
+    execution: { settled: true, settlementCount: 1 },
+    stats: { lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 }, toolUses: 0, compactionCount: 0 },
+    ...overrides,
+  };
 }
 
 function childSession(activeTools: string[]) {
@@ -154,7 +174,9 @@ describe("SpawnCoordinator", () => {
     manager = makeMockManager();
     ctx = makeMockCtx();
     mockPi.sendMessage.mockReset();
+    mockPi.on.mockReset().mockReturnValue(() => {});
     mockGetPiInstance.mockReturnValue(mockPiApi);
+    mockGetSessionCtx.mockReturnValue({ isIdle: () => true });
   });
 
   it("spawns a background agent and returns result", async () => {
@@ -308,7 +330,7 @@ describe("SpawnCoordinator", () => {
         runInBackground: true,
       });
 
-      coordinator.scheduleNudge(result.agentId);
+      coordinator.onAgentComplete(result.record);
 
       expect(mockPi.sendMessage).not.toHaveBeenCalled();
 
@@ -336,23 +358,13 @@ describe("SpawnCoordinator", () => {
         runInBackground: true,
       });
 
-      coordinator.scheduleNudge(r1.agentId);
-      coordinator.scheduleNudge(r2.agentId);
+      coordinator.onAgentComplete(r1.record);
+      coordinator.onAgentComplete(r2.record);
 
       // Advance past the batch window
       vi.advanceTimersByTime(200);
 
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(2);
-    });
-
-    it("does not emit nudge for agent without record", () => {
-      const coordinator = new SpawnCoordinator(manager);
-      // agent-999 doesn't exist in the mock manager
-      coordinator.scheduleNudge("agent-999");
-
-      vi.advanceTimersByTime(200);
-
-      expect(mockPi.sendMessage).not.toHaveBeenCalled();
     });
 
     it("starts new batch window for nudges arriving after the previous window", async () => {
@@ -373,12 +385,12 @@ describe("SpawnCoordinator", () => {
         runInBackground: true,
       });
 
-      coordinator.scheduleNudge(r1.agentId);
+      coordinator.onAgentComplete(r1.record);
 
       vi.advanceTimersByTime(200);
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
 
-      coordinator.scheduleNudge(r2.agentId);
+      coordinator.onAgentComplete(r2.record);
 
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
 
@@ -401,7 +413,7 @@ describe("SpawnCoordinator", () => {
       result.record.lifecycle.status = "error";
       result.record.error = "model failed to load";
 
-      coordinator.scheduleNudge(result.agentId);
+      coordinator.onAgentComplete(result.record);
       vi.advanceTimersByTime(200);
 
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
@@ -423,7 +435,7 @@ describe("SpawnCoordinator", () => {
       });
       result.record.lifecycle.status = "completed";
 
-      coordinator.scheduleNudge(result.agentId);
+      coordinator.onAgentComplete(result.record);
       vi.advanceTimersByTime(200);
 
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
@@ -445,7 +457,7 @@ describe("SpawnCoordinator", () => {
       result.record.lifecycle.status = "stopped";
       result.record.lifecycle.stoppedBy = "user";
 
-      coordinator.scheduleNudge(result.agentId);
+      coordinator.onAgentComplete(result.record);
       vi.advanceTimersByTime(200);
 
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
@@ -454,6 +466,196 @@ describe("SpawnCoordinator", () => {
         '[Subagent "builder" agent-0 stopped]\n\ndone' +
           " (STOPPED BY THE USER before completion — output is partial; the task was NOT finished)",
       );
+    });
+  });
+
+  describe("nudge delivery options", () => {
+    function finishParentTurn(): void {
+      expect(mockPi.sendMessage).not.toHaveBeenCalled();
+      const [event, finish] = mockPi.on.mock.lastCall ?? [];
+      expect(event).toBe("turn_end");
+      expect(finish({ outcome: "completed" })).toEqual({ continue: true });
+    }
+
+    async function nudgeOptions(parentIdle: boolean) {
+      mockGetSessionCtx.mockReturnValue({ isIdle: () => parentIdle });
+      const coordinator = new SpawnCoordinator(manager);
+      const result = await coordinator.spawn(mockPiApi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
+      });
+
+      coordinator.onAgentComplete(result.record);
+      vi.advanceTimersByTime(200);
+      if (!parentIdle) finishParentTurn();
+
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      return mockPi.sendMessage.mock.calls[0][1] as Parameters<ExtensionAPI["sendMessage"]>[1];
+    }
+
+    it("commits the result and requests continuation at a busy parent's turn boundary", async () => {
+      expect(await nudgeOptions(false)).toEqual({ triggerTurn: false });
+    });
+
+    it("hands an idle parent a delivery that starts a turn", async () => {
+      expect(await nudgeOptions(true)).toEqual({ triggerTurn: true });
+    });
+    it("uses the same committing delivery and continuation for Workflow", async () => {
+      expect(await nudgeWorkflowOptions(false)).toEqual({ triggerTurn: false });
+    });
+
+    it("hands an idle parent's Workflow message a delivery that starts a turn", async () => {
+      expect(await nudgeWorkflowOptions(true)).toEqual({ triggerTurn: true });
+    });
+
+    it("starts a turn when compaction finishes without emitting a turn boundary", () => {
+      let parentIdle = false;
+      mockGetSessionCtx.mockReturnValue({ isIdle: () => parentIdle });
+      const coordinator = new SpawnCoordinator(manager);
+      const record = workflowRecord();
+      coordinator.enrollForNudge(record.id);
+      coordinator.onAgentComplete(record);
+      vi.advanceTimersByTime(200);
+      expect(mockPi.sendMessage).not.toHaveBeenCalled();
+
+      parentIdle = true;
+      vi.advanceTimersByTime(200);
+
+      expect(mockPi.sendMessage).toHaveBeenCalledExactlyOnceWith(expect.anything(), { triggerTurn: true });
+    });
+
+    /** The same pin driven by an enrolled Workflow run: one message type, one handoff. */
+    async function nudgeWorkflowOptions(parentIdle: boolean) {
+      mockGetSessionCtx.mockReturnValue({ isIdle: () => parentIdle });
+      const coordinator = new SpawnCoordinator(manager);
+      const record = workflowRecord();
+      coordinator.enrollForNudge(record.id);
+
+      coordinator.onAgentComplete(record);
+      vi.advanceTimersByTime(200);
+      if (!parentIdle) finishParentTurn();
+
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      return mockPi.sendMessage.mock.calls[0][1] as Parameters<ExtensionAPI["sendMessage"]>[1];
+    }
+  });
+
+  describe("the batch owns the message it delivers", () => {
+    it("delivers the run's published settlement text under a Workflow label", () => {
+      const coordinator = new SpawnCoordinator(manager);
+      const record = workflowRecord();
+      coordinator.enrollForNudge(record.id);
+
+      coordinator.onAgentComplete(record);
+      vi.advanceTimersByTime(200);
+
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockPi.sendMessage.mock.calls[0][0]).toEqual({
+        customType: "subagent-result",
+        content: `[Workflow "audit" ${record.id.slice(0, 8)} completed]\n\nThe declared output`,
+        display: true,
+        details: expect.objectContaining({ kind: "workflow", status: "completed" }),
+      });
+    });
+
+    it("claims no usage for a remote run that keeps no usage accounting", () => {
+      const coordinator = new SpawnCoordinator(manager);
+      const record = workflowRecord();
+      coordinator.enrollForNudge(record.id);
+
+      coordinator.onAgentComplete(record);
+      vi.advanceTimersByTime(200);
+
+      const details = mockPi.sendMessage.mock.calls[0][0].details as Record<string, unknown>;
+      for (const stat of ["input", "output", "cost", "toolUses", "turnCount", "durationMs"]) {
+        expect(details, `a workflow card may not claim ${stat}`).not.toHaveProperty(stat);
+      }
+    });
+
+    it("delivers a Subagent settlement its record no longer holds", async () => {
+      const coordinator = new SpawnCoordinator(manager);
+      const result = await coordinator.spawn(mockPiApi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
+      });
+
+      result.record.lifecycle.status = "completed";
+      coordinator.onAgentComplete(result.record);
+      manager.remove(result.agentId);
+      vi.advanceTimersByTime(200);
+
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockPi.sendMessage.mock.calls[0][0].content).toBe('[Subagent "builder" agent-0 completed]\n\ndone');
+    });
+
+    it("delivers a Workflow settlement its record no longer holds", () => {
+      const coordinator = new SpawnCoordinator(manager);
+      const record = workflowRecord();
+      coordinator.enrollForNudge(record.id);
+
+      coordinator.onAgentComplete(record);
+      manager.remove(record.id);
+      vi.advanceTimersByTime(200);
+
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockPi.sendMessage.mock.calls[0][0].content).toContain("The declared output");
+    });
+
+    it("keeps the latest settlement when one record settles twice inside a window", async () => {
+      const coordinator = new SpawnCoordinator(manager);
+      const result = await coordinator.spawn(mockPiApi, ctx, {
+        type: "builder",
+        prompt: "task",
+        description: "Test",
+        graceTurns: 6,
+        runInBackground: true,
+      });
+      coordinator.onAgentComplete(result.record);
+
+      result.record.execution.settlementCount = 2;
+      result.record.lifecycle.status = "stopped";
+      result.record.result = "the continued answer";
+      coordinator.onAgentComplete(result.record);
+      vi.advanceTimersByTime(200);
+
+      expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockPi.sendMessage.mock.calls[0][0].content).toBe(
+        '[Subagent "builder" agent-0 stopped]\n\nthe continued answer' +
+          " (STOPPED BY YOU before completion — output is partial; the task was NOT finished)",
+      );
+    });
+
+    it("enrols a run for its notification and nothing else", () => {
+      const coordinator = new SpawnCoordinator(manager);
+      const record = workflowRecord();
+
+      coordinator.enrollForNudge(record.id);
+
+      expect(record.display.invocation, "a handed-back run never gains a launch posture").toBeUndefined();
+      expect(manager.detachParentInterrupt, "enrolment leaves the run bound to its parent").not.toHaveBeenCalled();
+    });
+
+    it("labels the notify fallback by the kind it carries", () => {
+      const notify = vi.fn();
+      const coordinator = new SpawnCoordinator(manager);
+      const record = workflowRecord({
+        execution: { ...workflowRecord().execution, spawnCtx: asExtensionContext({ ui: { notify } }) },
+      });
+      coordinator.enrollForNudge(record.id);
+      mockPi.sendMessage.mockImplementation(() => {
+        throw new Error("stale context");
+      });
+
+      coordinator.onAgentComplete(record);
+      vi.advanceTimersByTime(200);
+
+      expect(notify).toHaveBeenCalledWith('[Workflow "audit" completed] Result available', "info");
     });
   });
 
@@ -469,7 +671,7 @@ describe("SpawnCoordinator", () => {
       });
       expect(coordinator.liveView(result.agentId)).toBeDefined();
 
-      coordinator.onAgentComplete({ id: result.agentId } as AgentRecord);
+      coordinator.onAgentComplete(result.record);
 
       expect(coordinator.liveView(result.agentId)).toBeDefined();
     });
@@ -485,7 +687,7 @@ describe("SpawnCoordinator", () => {
         runInBackground: true,
       });
 
-      coordinator.onAgentComplete({ id: result.agentId } as AgentRecord);
+      coordinator.onAgentComplete(result.record);
 
       vi.advanceTimersByTime(200);
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
@@ -504,7 +706,7 @@ describe("SpawnCoordinator", () => {
       });
       const spawn = manager.getSpawnCalls()[0];
 
-      coordinator.onAgentComplete({ id: result.agentId } as AgentRecord);
+      coordinator.onAgentComplete(result.record);
 
       // Continuation activity flows through the same spawn-time callbacks
       // into the retained live view.
@@ -687,7 +889,7 @@ describe("SpawnCoordinator", () => {
         throw new Error("stale context");
       });
 
-      coordinator.scheduleNudge(result.agentId);
+      coordinator.onAgentComplete(result.record);
       vi.advanceTimersByTime(200);
 
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
@@ -704,7 +906,7 @@ describe("SpawnCoordinator", () => {
         runInBackground: true,
       });
 
-      coordinator.scheduleNudge(result.agentId);
+      coordinator.onAgentComplete(result.record);
 
       // Dispose before timer fires — should prevent emission
       coordinator.dispose();
@@ -806,7 +1008,7 @@ describe("SpawnCoordinator", () => {
         graceTurns: 6,
         runInBackground: true,
       });
-      coordinator.scheduleNudge(result.agentId);
+      coordinator.onAgentComplete(result.record);
 
       coordinator.dispose();
 
@@ -847,7 +1049,7 @@ describe("SpawnCoordinator", () => {
       });
 
       // Nudge still works because it reads from shell at call time
-      coordinator.scheduleNudge(result.agentId);
+      coordinator.onAgentComplete(result.record);
       vi.advanceTimersByTime(200);
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
     });
@@ -867,7 +1069,7 @@ describe("SpawnCoordinator", () => {
       const freshPi = asExtensionAPI({ ...mockPi, sendMessage: vi.fn() });
       mockGetPiInstance.mockReturnValue(freshPi);
 
-      coordinator.scheduleNudge(result.agentId);
+      coordinator.onAgentComplete(result.record);
       vi.advanceTimersByTime(200);
 
       expect(freshPi.sendMessage).toHaveBeenCalledTimes(1);
@@ -890,7 +1092,7 @@ describe("SpawnCoordinator", () => {
       // Simulate shell having no pi at nudge time
       mockGetPiInstance.mockReturnValue(null);
 
-      coordinator.scheduleNudge(result.agentId);
+      coordinator.onAgentComplete(result.record);
       vi.advanceTimersByTime(200);
 
       // The record exists, so without the !pi guard the nudge would reach
@@ -926,7 +1128,7 @@ describe("SpawnCoordinator", () => {
         manager.getRecord(result.agentId)!.lifecycle.status = status;
         manager.getRecord(result.agentId)!.result = "Result text";
 
-        coordinator.scheduleNudge(result.agentId);
+        coordinator.onAgentComplete(result.record);
         vi.advanceTimersByTime(200);
 
         expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);
@@ -1011,7 +1213,7 @@ describe("SpawnCoordinator", () => {
       record.lifecycle.started = false;
       record.result = undefined;
 
-      coordinator.scheduleNudge(result.agentId);
+      coordinator.onAgentComplete(result.record);
       vi.advanceTimersByTime(200);
 
       expect(mockPi.sendMessage).toHaveBeenCalledTimes(1);

@@ -211,10 +211,10 @@ vi.mock("../src/ui/format.js", async () => {
   // in row labels instead of a hand-copied shape.
   const actual = await vi.importActual<typeof import("../src/ui/format.js")>("../src/ui/format.js");
   return {
+    ...actual,
     getDisplayName: vi.fn((t: string) => t),
     agentBulletPrefix: vi.fn(() => ""),
     agentColoredText: vi.fn((text: string) => text),
-    formatMs: actual.formatMs,
   };
 });
 
@@ -231,19 +231,6 @@ vi.mock("../src/config/config-io.js", async () => {
     },
   };
 });
-
-vi.mock("../src/agents/tool-execution.js", () => ({
-  buildAgentDetails: vi.fn(() => ({})),
-  successResult: vi.fn((text: string, details?: Record<string, unknown>) => ({
-    content: [{ type: "text", text }],
-    details,
-  })),
-  errorResult: vi.fn((text: string, details?: Record<string, unknown>) => ({
-    content: [{ type: "text", text }],
-    isError: true,
-    details,
-  })),
-}));
 
 vi.mock("../src/shell.js", async () => {
   // Derive the getter defaults from src's real config constants (via the mocked

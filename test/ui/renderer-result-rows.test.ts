@@ -7,7 +7,7 @@ import { describe, it, expect } from "vite-plus/test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { defaultTheme } from "../mock-utils.js";
 import { makeAgentRecord } from "../fixtures.js";
-import { buildAgentDetails, formatResultContent } from "../../src/agents/tool-execution.js";
+import { buildAgentDetails, formatResultContent } from "../../src/record-result.js";
 import { renderAgentToolResult } from "../../src/ui/renderer.js";
 import type { AgentLifecycle } from "../../src/types.js";
 
@@ -33,6 +33,21 @@ function rows(result: string, lifecycle: Partial<AgentLifecycle>, expanded = fal
 }
 
 describe("foreground result row — rendered at terminal width", () => {
+  it.each([false, true])("shows the failure reason when Pi supplies no agent details (expanded: %s)", (expanded) => {
+    const component = renderAgentToolResult(
+      {
+        content: [{ type: "text", text: "Agent failed: \u001b[?25lmodel unavailable" }],
+        details: {},
+        isError: true,
+      },
+      { expanded },
+      defaultTheme,
+      false,
+    );
+
+    expect(component.render(WIDTH).map((line) => line.trimEnd())).toEqual(["✗ Agent failed: model unavailable"]);
+  });
+
   it("keeps a first line wider than the terminal on one truncated row", () => {
     const longLine = "Vendor fetch fails on the first attempt, ".repeat(6).trim();
 

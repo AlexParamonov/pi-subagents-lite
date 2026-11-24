@@ -1,14 +1,14 @@
 /**
- * conversation-viewer.ts — Live conversation overlay for viewing agent sessions.
+ * conversation-viewer.ts — Live scrollable overlay over a transcript source.
  *
- * Displays a scrollable, live-updating view of an agent's conversation.
- * Subscribes to session events for real-time streaming updates.
+ * The source supplies the entries to show and reports when they change; a session supplies its own
+ * events for streaming, tool timing and context usage, a source without one reports a bare change.
  * Adapted for pi-subagents-lite type shapes.
  */
 
 import { getHideThinkingBlock } from "../pi-settings.ts";
 
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   type Component,
   Input,
@@ -21,10 +21,10 @@ import {
   visibleWidth,
   wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
-import type { AgentRecord } from "../types.ts";
-import { getSessionContextPercent } from "../agents/usage.ts";
+import { isActiveRecord, type AgentRecord } from "../types.ts";
+import { getSessionContextPercent, type SessionLike } from "../agents/usage.ts";
 import { extractText } from "../prompt/context.ts";
-import type { Theme } from "./types.ts";
+import type { Theme, ToolBg } from "./types.ts";
 import { makeMarkdownTheme } from "./markdown-theme.ts";
 import {
   buildInvocationTags,
@@ -32,6 +32,7 @@ import {
   fgPreservingNestedStyles,
   formatToolDuration,
   getDisplayName,
+  recordDisplayName,
   resolveAgentModelLabel,
   statusIcon,
 } from "./format.ts";
@@ -109,6 +110,41 @@ export interface ConversationViewerOptions {
   ungroupedTools?: readonly string[];
 }
 
+/** One entry that is not a conversation message: a row its source already painted, shown as it stands. */
+export interface TranscriptRow {
+  role: "row";
+  text: string;
+}
+
+/** What the viewer shows: a conversation message, or one entry a source contributes itself. */
+export type TranscriptEntry = AgentSession["messages"][number] | TranscriptRow | TranscriptNode;
+
+/** What a node's own row reports about the node: in flight, done, or failed. */
+export type TranscriptNodeState = "running" | "done" | "failed";
+
+/**
+ * One node of a source with no session behind it, shown as a tool call's row is shown: its own line
+ * on the state's background, then its body under it, folded by the same collapse a result is.
+ */
+export interface TranscriptNode {
+  role: "node";
+  /** The row's own text, naming the node and the state it reported. */
+  title: string;
+  state: TranscriptNodeState;
+  /** The node's lines, in order, already safe to show. */
+  body: string[];
+}
+
+/**
+ * Everything the viewer reads from what it shows. An `AgentSession` satisfies it; so does a source
+ * with no session behind it, which reports a change with no event - the entries it holds now are its
+ * whole content, and it has no model whose context window could be reported.
+ */
+export interface TranscriptSource extends Partial<SessionLike> {
+  messages: TranscriptEntry[];
+  subscribe(listener: (event?: AgentSessionEvent) => void): () => void;
+}
+
 /** A settled tool call's rows: lines [start, end) of a message or of the content. */
 interface ToolBlock {
   id: string;
@@ -116,8 +152,12 @@ interface ToolBlock {
   end: number;
 }
 
-/** Background a call row is painted on while it runs and once its result lands. */
-type ToolBg = "toolPendingBg" | "toolSuccessBg" | "toolErrorBg";
+/** The background a node's row gets: the same three a call row is painted on. */
+const NODE_STATE_BG: Record<TranscriptNodeState, ToolBg> = {
+  running: "toolPendingBg",
+  done: "toolSuccessBg",
+  failed: "toolErrorBg",
+};
 
 /** A tool call as the viewer paints it: the id links its result and clicks, name and args fill the row. */
 interface ToolCall {
@@ -235,9 +275,8 @@ export class ConversationViewer implements Component {
     width: 0,
     messagesRef: undefined,
   };
-  /** Full content lines from the last build — avoids re-iterating cached messages. */
-  private cachedContentLines: string[] | undefined;
-  private cachedNonStreamingCount = 0;
+  /** Cached transcript rows; streaming rows are built separately for the visible window. */
+  private cachedHistoryLines: readonly string[] | undefined;
 
   /** Two-press confirm guard for the stop key, so a stray key can't kill the agent. */
   private stopArmed = false;
@@ -268,7 +307,7 @@ export class ConversationViewer implements Component {
   private toolsExpanded = false;
   /** Per-call state set by clicking a call; wins over the global flag until that flag flips (as in pi). */
   private expandedByCall = new Map<string, boolean>();
-  /** Clickable (settled) tool blocks in `cachedContentLines` coordinates. */
+  /** Clickable (settled) tool blocks in `cachedHistoryLines` coordinates. */
   private toolBlocks: ToolBlock[] = [];
   /**
    * Content area of the last rendered frame: the viewer row the content starts
@@ -289,7 +328,7 @@ export class ConversationViewer implements Component {
 
   constructor(
     private tui: TUI,
-    private session: AgentSession,
+    private source: TranscriptSource,
     private record: AgentRecord,
     private theme: Theme,
     private done: (result: undefined) => void,
@@ -304,65 +343,78 @@ export class ConversationViewer implements Component {
     this.keys = createViewerKeys(options.keybindings);
     this.toolsExpanded = this.toolDisplay.isExpanded?.() ?? false;
     this.seedRunningToolCalls();
-    this.unsubscribe = session.subscribe((event) => {
+    this.unsubscribe = source.subscribe((event) => {
       try {
-        if (this.closed) return;
-        if (event?.type === "message_update") {
-          const me = event.assistantMessageEvent;
-          const prevThinking = this.streamingThinking;
-          const prevText = this.streamingText;
-          switch (me?.type) {
-            case "thinking_start":
-            case "thinking_end":
-              this.streamingThinking = "";
-              this.streamingThinkingMd?.setText("");
-              this.refreshStreamingMessage();
-              break;
-            case "thinking_delta":
-              this.streamingThinking += me.delta;
-              this.ensureThinkingMd().setText(this.streamingThinking);
-              break;
-            case "text_start":
-            case "text_end":
-              this.streamingText = "";
-              this.streamingTextMd?.setText("");
-              this.refreshStreamingMessage();
-              break;
-            case "text_delta":
-              this.streamingText += me.delta;
-              this.ensureTextMd().setText(this.streamingText);
-              break;
-          }
-          if (this.streamingThinking !== prevThinking || this.streamingText !== prevText) {
-            this.scheduleRender();
-          }
-        } else if (event?.type === "tool_execution_start") {
-          this.toolStartedAt.set(event.toolCallId, Date.now());
-          if (event.toolName === "codemode") this.toolPartialCalls.delete(event.toolCallId);
-          this.refreshToolCalls([event.toolCallId]);
-        } else if (event?.type === "tool_execution_update") {
-          if (event.toolName === "codemode") {
-            this.toolPartialCalls.set(event.toolCallId, codemodeCallsFrom(event.partialResult?.details));
-            this.refreshToolCalls([event.toolCallId]);
-          }
-        } else if (event?.type === "tool_execution_end") {
-          const startedAt = this.toolStartedAt.get(event.toolCallId);
-          this.toolStartedAt.delete(event.toolCallId);
-          // pi >= 1.4 reports the monotonic duration on the event; older typings lack the field.
-          const reportedMs = (event as { durationMs?: number }).durationMs;
-          const durationMs = reportedMs ?? (startedAt === undefined ? undefined : Date.now() - startedAt);
-          if (durationMs !== undefined) this.toolFinishedMs.set(event.toolCallId, durationMs);
-          this.refreshToolCalls([event.toolCallId]);
-        } else if (event?.type === "message_end") {
-          if (event.message.role === "toolResult") this.toolPartialCalls.delete(event.message.toolCallId);
-          // Session-level end-of-message (pi swaps the final message object
-          // into the last slot at "done") — same refresh as the boundaries.
-          this.refreshStreamingMessage();
-        }
+        this.handleSourceEvent(event);
       } catch {
         // Swallow — a throw here would crash the host menu; events can arrive after closure, before dispose.
       }
     });
+  }
+
+  /** Apply what the source reports to what is on screen. A session's event names the part of the
+   * transcript that moved; a source with no session reports only that its entries changed. */
+  private handleSourceEvent(event: AgentSessionEvent | undefined): void {
+    if (this.closed) return;
+    if (event === undefined) {
+      // A source with no session says only that its entries changed: what it holds now replaces
+      // what it held, so nothing cached may survive the next frame.
+      this.invalidate();
+      this.scheduleRender();
+      return;
+    }
+    if (event.type === "message_update") {
+      const me = event.assistantMessageEvent;
+      const prevThinking = this.streamingThinking;
+      const prevText = this.streamingText;
+      switch (me?.type) {
+        case "thinking_start":
+        case "thinking_end":
+          this.streamingThinking = "";
+          this.streamingThinkingMd?.setText("");
+          this.refreshStreamingMessage();
+          break;
+        case "thinking_delta":
+          this.streamingThinking += me.delta;
+          this.ensureThinkingMd().setText(this.streamingThinking);
+          break;
+        case "text_start":
+        case "text_end":
+          this.streamingText = "";
+          this.streamingTextMd?.setText("");
+          this.refreshStreamingMessage();
+          break;
+        case "text_delta":
+          this.streamingText += me.delta;
+          this.ensureTextMd().setText(this.streamingText);
+          break;
+      }
+      if (this.streamingThinking !== prevThinking || this.streamingText !== prevText) {
+        this.scheduleRender();
+      }
+    } else if (event.type === "tool_execution_start") {
+      this.toolStartedAt.set(event.toolCallId, Date.now());
+      if (event.toolName === "codemode") this.toolPartialCalls.delete(event.toolCallId);
+      this.refreshToolCalls([event.toolCallId]);
+    } else if (event.type === "tool_execution_update") {
+      if (event.toolName === "codemode") {
+        this.toolPartialCalls.set(event.toolCallId, codemodeCallsFrom(event.partialResult?.details));
+        this.refreshToolCalls([event.toolCallId]);
+      }
+    } else if (event.type === "tool_execution_end") {
+      const startedAt = this.toolStartedAt.get(event.toolCallId);
+      this.toolStartedAt.delete(event.toolCallId);
+      // pi >= 1.4 reports the monotonic duration on the event; older typings lack the field.
+      const reportedMs = (event as { durationMs?: number }).durationMs;
+      const durationMs = reportedMs ?? (startedAt === undefined ? undefined : Date.now() - startedAt);
+      if (durationMs !== undefined) this.toolFinishedMs.set(event.toolCallId, durationMs);
+      this.refreshToolCalls([event.toolCallId]);
+    } else if (event.type === "message_end") {
+      if (event.message.role === "toolResult") this.toolPartialCalls.delete(event.message.toolCallId);
+      // Session-level end-of-message (pi swaps the final message object
+      // into the last slot at "done") — same refresh as the boundaries.
+      this.refreshStreamingMessage();
+    }
   }
   private ensureThinkingMd(): Markdown {
     if (!this.streamingThinkingMd) {
@@ -390,14 +442,14 @@ export class ConversationViewer implements Component {
    */
   private refreshToolCalls(toolCallIds: Iterable<string>): void {
     const ids = new Set(toolCallIds);
-    const messages = this.session.messages ?? [];
+    const messages = this.source.messages;
     messages.forEach((msg: any, index: number) => {
       if (msg?.role !== "assistant" || !Array.isArray(msg.content)) return;
       if (msg.content.some((c: any) => c?.type === "toolCall" && ids.has(c.id))) {
         this.messageCache.delete(index);
       }
     });
-    this.cachedContentLines = undefined;
+    this.cachedHistoryLines = undefined;
     this.syncToolTimer();
     this.scheduleRender();
   }
@@ -422,7 +474,7 @@ export class ConversationViewer implements Component {
   private seedRunningToolCalls(): void {
     const getToolStartedAt = this.toolDisplay.getToolStartedAt;
     if (!getToolStartedAt) return;
-    const messages: any[] = this.session.messages ?? [];
+    const messages: any[] = this.source.messages;
     const settled = new Set<string>();
     for (const msg of messages) {
       if (msg?.role === "toolResult" && msg.toolCallId) settled.add(msg.toolCallId);
@@ -452,7 +504,7 @@ export class ConversationViewer implements Component {
     this.toolsExpanded = expanded;
     this.expandedByCall.clear();
     this.messageCache.clear();
-    this.cachedContentLines = undefined;
+    this.cachedHistoryLines = undefined;
   }
 
   /** "Took 4.2s" for a settled call, "Elapsed 4.2s" for a running one, undefined when unknown. */
@@ -505,12 +557,11 @@ export class ConversationViewer implements Component {
    * last `toolcall_end`, so args are complete before the tool even runs.
    */
   private refreshStreamingMessage(): void {
-    const messages = this.session.messages;
-    if (!messages || messages.length === 0) return;
+    const messages = this.source.messages;
+    if (messages.length === 0) return;
     const index = messages.length - 1;
-    // Force the next render through the slow path so the streaming suffix is
-    // re-spliced behind the refreshed entry.
-    this.cachedContentLines = undefined;
+    // The transcript portion must be rebuilt from the refreshed entry.
+    this.cachedHistoryLines = undefined;
     const msg = messages[index];
     if (this.lastInnerW > 0 && msg?.role === "assistant") {
       // No toolResults: the in-flight message's calls have no results yet
@@ -549,6 +600,21 @@ export class ConversationViewer implements Component {
     return cached;
   }
 
+  /**
+   * One node as a tool call's row is painted: its own line on the state's background, then its body
+   * on that background and folded the same way. A node has no tool call, so its row has no click
+   * target, no duration and no expansion of its own: the reader's tool-output flag folds them all.
+   */
+  private renderNodeRow(node: TranscriptNode, width: number): string[] {
+    const bg = NODE_STATE_BG[node.state];
+    // compactToolCalls deliberately does not fold a node's body: a run's view holds no call to summarise,
+    // so the only fold it offers is the tool-output one its own hint names.
+    return [
+      ...this.callRows(` ${node.title} `, bg, width),
+      ...this.bodyRows(this.bodyLines(node.body.join("\n"), width - 2, this.toolsExpanded), bg, width),
+    ];
+  }
+
   /** Render one message's lines, recording the tool blocks it paints; shared by the rebuild paths. */
   private renderMessage(
     msg: any,
@@ -559,6 +625,10 @@ export class ConversationViewer implements Component {
     switch (msg.role) {
       case "user":
         return this.renderUserMessage(msg, width);
+      case "row":
+        return wrapTextWithAnsi(msg.text, width);
+      case "node":
+        return this.renderNodeRow(msg, width);
       case "assistant":
         return this.renderAssistantMessage(msg, width, toolResults, blocks);
       case "toolResult":
@@ -620,7 +690,7 @@ export class ConversationViewer implements Component {
       return;
     }
 
-    if (data === "\x14") {
+    if (data === "\x14" && this.sessionBacked()) {
       this.thinkingVisible = !this.thinkingVisible;
       this.invalidate(); // Clear cache so messages re-render with new visibility
       this.tui.requestRender();
@@ -674,7 +744,7 @@ export class ConversationViewer implements Component {
 
     this.expandedByCall.set(block.id, !this.isCallExpanded(block.id));
     this.messageCache.clear();
-    this.cachedContentLines = undefined;
+    this.cachedHistoryLines = undefined;
     return { handled: true };
   }
 
@@ -708,7 +778,7 @@ export class ConversationViewer implements Component {
 
     // Header
     lines.push(hrTop);
-    const name = getDisplayName(this.record.display.type);
+    const name = recordDisplayName(this.record, getDisplayName(this.record.display.type));
 
     const icon = statusIcon(this.record.lifecycle.status, th, this.record.display.type || undefined);
     // Build stats line like the widget
@@ -720,7 +790,7 @@ export class ConversationViewer implements Component {
         maxTurns: this.record.stats.maxTurns,
         input: this.record.stats.lifetimeUsage.input,
         output: this.record.stats.lifetimeUsage.output,
-        contextPercent: getSessionContextPercent(this.session),
+        contextPercent: getSessionContextPercent(this.source),
         compactions: this.record.stats.compactionCount,
         cost: this.record.stats.lifetimeUsage.cost,
         durationMs,
@@ -752,8 +822,9 @@ export class ConversationViewer implements Component {
     lines.push(hrMid);
 
     // Content area
-    const contentLines = this.buildContentLines(innerW);
-    const totalContentLines = contentLines.length;
+    const history = this.buildHistoryLines(innerW);
+    const streaming = this.buildStreamingLines(innerW);
+    const totalContentLines = history.length + streaming.length;
     const viewportHeight = this.viewportHeight();
     const maxScroll = Math.max(0, totalContentLines - viewportHeight);
 
@@ -762,20 +833,20 @@ export class ConversationViewer implements Component {
     }
 
     const visibleStart = Math.min(this.scrollOffset, maxScroll);
-    const visible = contentLines.slice(visibleStart, visibleStart + viewportHeight);
     // Recorded from what is actually painted, so a click maps to the row under
     // the pointer even when auto-scroll or streaming moved the window.
     this.clickOrigin = { topRow: lines.length, firstLine: visibleStart, rows: viewportHeight };
 
-    for (let i = 0; i < viewportHeight; i++) {
-      lines.push(row(visible[i] ?? ""));
+    for (let i = visibleStart; i < visibleStart + viewportHeight; i++) {
+      const text = i < history.length ? history[i] : streaming[i - history.length];
+      lines.push(row(text ?? ""));
     }
 
     // Footer
     lines.push(hrMid);
     // US-2: the action verb distinguishes steering a running agent from
     // continuing a settled one.
-    const steerVerb = this.isActive() ? "steer" : "continue";
+    const steerVerb = isActiveRecord(this.record) ? "steer" : "continue";
     if (this.composer) {
       // Composer row: the Input renders its own `> ` prompt and cursor.
       lines.push(row(this.composer.render(innerW)[0] ?? ""));
@@ -791,9 +862,13 @@ export class ConversationViewer implements Component {
       if (this.isStoppable()) {
         actions.push(this.stopArmed ? th.fg("error", "s again to STOP") : th.fg("dim", "s stop"));
       }
-      actions.push(th.fg("dim", "C-t thinking"));
+      const sessionBacked = this.sessionBacked();
+      if (sessionBacked) actions.push(th.fg("dim", "C-t thinking"));
+      // The expand key's verb names what it unfolds here: a session's call results, a run's node text.
       const expandKey = this.keys.expandHint();
-      if (expandKey !== undefined) actions.push(th.fg("dim", `${keyLabel(expandKey)} tools`));
+      if (expandKey !== undefined) {
+        actions.push(th.fg("dim", `${keyLabel(expandKey)} ${sessionBacked ? "tools" : "text"}`));
+      }
       const footerRight = th.fg("dim", "↑↓ scroll · g/G top/bottom · PgUp/PgDn · Esc/q close");
 
       // Prepend scroll position readout only when there's spare width
@@ -813,17 +888,18 @@ export class ConversationViewer implements Component {
     return lines;
   }
 
-  private isActive(): boolean {
-    return this.record.lifecycle.status === "running" || this.record.lifecycle.status === "queued";
+  /** The record's session is the capability flag: steering, thinking blocks and tool calls exist only behind one. */
+  private sessionBacked(): boolean {
+    return !!this.record.execution.session;
   }
 
   private isStoppable(): boolean {
-    return !!this.onStop && this.isActive();
+    return !!this.onStop && isActiveRecord(this.record);
   }
 
   private canSteer(): boolean {
     // Offered whenever a session exists — a settled agent can be continued.
-    return !!this.onSteer && !!this.record.execution.session;
+    return !!this.onSteer && this.sessionBacked();
   }
 
   private openComposer(): void {
@@ -848,10 +924,9 @@ export class ConversationViewer implements Component {
 
   invalidate(): void {
     this.messageCache.clear();
-    this.cachedContentLines = undefined;
+    this.cachedHistoryLines = undefined;
     this.clickOrigin = undefined; // no frame on screen, so the rows its blocks were mapped to are gone
     this.cacheMeta = { count: 0, width: 0, messagesRef: undefined };
-    this.cachedNonStreamingCount = 0;
   }
 
   dispose(): void {
@@ -882,10 +957,9 @@ export class ConversationViewer implements Component {
   }
 
   private scrollMax(): number {
-    // Derive from a fresh build, not cachedContentLines.length: that cache holds
-    // the last slow-path result and goes stale while streaming grows the suffix.
-    // buildContentLines takes its fast path when the cache is warm, so this is cheap.
-    const totalLines = this.buildContentLines(this.lastInnerW).length;
+    const width = this.lastInnerW;
+    if (width <= 0) return 0;
+    const totalLines = this.buildHistoryLines(width).length + this.buildStreamingLines(width).length;
     return Math.max(0, totalLines - this.viewportHeight());
   }
   /**
@@ -922,7 +996,7 @@ export class ConversationViewer implements Component {
   /** Record the messages array reference so array replacement (e.g. compaction) is detected. */
   private updateCacheMeta(messages: any[], width: number): void {
     this.cacheMeta = { count: messages.length, width, messagesRef: messages };
-    this.cachedContentLines = undefined;
+    this.cachedHistoryLines = undefined;
   }
 
   private wrapInBg(bg: string, inner: string[], width: number): string[] {
@@ -1022,10 +1096,13 @@ export class ConversationViewer implements Component {
     }
     // Compact mode shows no result body for any call, an ungrouped one included.
     if (!this.compactToolCalls) {
-      for (const line of this.resultLines(tc.name, result, width - 2, expanded)) {
-        const padNeeded = Math.max(0, width - 2 - visibleWidth(line));
-        inner.push(th.bg(bg, ` ${th.fg("toolOutput", line)}${" ".repeat(padNeeded)} `));
-      }
+      inner.push(
+        ...this.bodyRows(
+          this.bodyLines(resultText(result?.content), width - 2, expanded, tc.name === "bash"),
+          bg,
+          width,
+        ),
+      );
     }
     if (timing && expanded) {
       for (const line of ["", th.fg("muted", timing)]) {
@@ -1200,28 +1277,27 @@ export class ConversationViewer implements Component {
   }
 
   /**
-   * A tool result as plain wrapped text (no per-tool renderers): the whole
-   * result when expanded, else COLLAPSED_RESULT_LINES plus a hint naming the
-   * toggle key. bash keeps the tail (its verdict is at the end), the rest
-   * keep the head.
+   * A block's body as plain wrapped text (no per-tool renderers): the whole body when expanded, else
+   * COLLAPSED_RESULT_LINES plus a hint naming the toggle key. bash keeps the tail (its verdict is at
+   * the end), the rest keep the head.
    */
-  private resultLines(
-    toolName: string,
-    result: ToolResultStatus | undefined,
-    width: number,
-    expanded: boolean,
-  ): string[] {
-    const text = resultText(result?.content);
-    if (!text) return [];
+  private bodyLines(text: string, width: number, expanded: boolean, keepTail = false): string[] {
+    // Trailing newlines in a body are no lines to show: wrapping them leaves blank rows after it.
     const all = wrapTextWithAnsi(text, width);
     while (all.length > 0 && all[all.length - 1].trim() === "") all.pop();
     if (expanded || all.length <= COLLAPSED_RESULT_LINES) return all;
-
     const hidden = all.length - COLLAPSED_RESULT_LINES;
-    if (toolName === "bash") {
-      return [this.expandHintLine(`${hidden} earlier lines`), ...all.slice(-COLLAPSED_RESULT_LINES)];
-    }
+    if (keepTail) return [this.expandHintLine(`${hidden} earlier lines`), ...all.slice(-COLLAPSED_RESULT_LINES)];
     return [...all.slice(0, COLLAPSED_RESULT_LINES), this.expandHintLine(`${hidden} more lines`)];
+  }
+
+  /** Body lines painted on their block's background, inset one cell like a call's result. */
+  private bodyRows(lines: string[], bg: ToolBg, width: number): string[] {
+    const th = this.theme;
+    return lines.map((line) => {
+      const padNeeded = Math.max(0, width - 2 - visibleWidth(line));
+      return th.bg(bg, ` ${th.fg("toolOutput", line)}${" ".repeat(padNeeded)} `);
+    });
   }
 
   /** "... (N more lines, ctrl+o to expand)" colored like pi's keyHint. */
@@ -1240,21 +1316,13 @@ export class ConversationViewer implements Component {
     return (id !== undefined ? this.expandedByCall.get(id) : undefined) ?? this.toolsExpanded;
   }
 
-  private buildContentLines(width: number): string[] {
-    if (width <= 0) return [];
-
-    const th = this.theme;
-    const messages = this.session.messages ?? [];
+  private buildHistoryLines(width: number): readonly string[] {
+    const messages = this.source.messages;
 
     if (messages.length === 0) {
-      this.cachedContentLines = undefined;
+      this.cachedHistoryLines = undefined;
       this.toolBlocks = []; // no calls on screen, so nothing to hit
-      const lines = [th.fg("dim", "(waiting for first message...)")];
-      const streamingLines = this.buildStreamingLines(width);
-      this.cachedNonStreamingCount = lines.length;
-      lines.push(...streamingLines);
-      this.cachedContentLines = lines;
-      return lines;
+      return [this.theme.fg("dim", "(waiting for first message...)")];
     }
 
     // Invalidate cache on array replacement or width change (both require full rebuild)
@@ -1268,18 +1336,9 @@ export class ConversationViewer implements Component {
       this.updateCacheMeta(messages, width);
     }
 
-    // Fast path: if we have cached content and only streaming text changed,
-    // splice new streaming lines into the cached result.
-    if (this.cachedContentLines) {
-      const streamingLines = this.buildStreamingLines(width);
-      const result = this.cachedContentLines.slice(0, this.cachedNonStreamingCount);
-      result.push(...streamingLines);
-      return result;
-    }
+    if (this.cachedHistoryLines) return this.cachedHistoryLines;
 
-    // Slow path: full rebuild. Only this path reads result status (for call-line
-    // coloring), so the call-id lookup is built here rather than paying a full
-    // transcript scan on the streaming fast path above.
+    // Only a rebuild needs the call-id lookup for result colors and text.
     const toolResults = new Map<string, ToolResultStatus>();
     for (const msg of messages) {
       if (msg.role === "toolResult" && msg.toolCallId) {
@@ -1304,12 +1363,7 @@ export class ConversationViewer implements Component {
     }
     this.toolBlocks = toolBlocks;
 
-    const streamingLines = this.buildStreamingLines(width);
-    this.cachedNonStreamingCount = lines.length;
-    lines.push(...streamingLines);
-
-    // Cache for fast-path streaming splice on next render
-    this.cachedContentLines = lines;
+    this.cachedHistoryLines = lines;
 
     return lines;
   }

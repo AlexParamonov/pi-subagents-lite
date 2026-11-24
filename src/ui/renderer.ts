@@ -8,15 +8,17 @@ import { Box, Container, Markdown, Spacer, Text, TruncatedText, type Component }
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import type { TextContent, ImageContent } from "@earendil-works/pi-ai";
 import type { SubagentMessageDetails } from "../agents/parent-message.ts";
-import type { Theme } from "./types.ts";
+import type { Theme, ToolBg } from "./types.ts";
 import {
   buildStatsParts,
   formatMs,
   getDisplayName,
   buildModelThinkingTag,
   resolveModelLabel,
+  statusColor,
   statusIcon,
 } from "./format.ts";
+import { plainText } from "./sanitize.ts";
 import { getManager } from "../shell.ts";
 
 // --- Stats rendering helpers ---
@@ -27,7 +29,7 @@ export function agentNameLabel(
   theme: Theme,
   modelDisplayStyle: "id" | "name" = "id",
 ): string {
-  const typeName = getDisplayName((d.type as string) || "");
+  const typeName = (d.displayName as string) || getDisplayName((d.type as string) || "");
   const tag = modelTag(d, theme, modelDisplayStyle);
   return tag ? `${theme.bold(typeName)} ${theme.fg("dim", tag)}` : theme.bold(typeName);
 }
@@ -104,79 +106,30 @@ export function renderAgentToolCall(
   theme: Theme,
   context?: { state?: Record<string, unknown>; toolCallId?: string },
 ): Text {
-  const typeName = getDisplayName((args.agent as string) || "");
-  const label = typeName || "Agent";
+  const type = (args.agent as string) || undefined;
+  const label = getDisplayName(type ?? "") || "Agent";
+  const state = context?.state;
+  const isBackground = args.run_in_background === true || state?.isBackground === true;
 
-  // Background agents: show live status from manager, fallback to queued state
-  // Check args.run_in_background (initial render) OR context.state.isBackground (re-render after result)
-  const isBackground = args.run_in_background === true || context?.state?.isBackground === true;
-  let icon: string;
-
-  if (isBackground) {
-    // Look up live status from manager using stored agentId
-    // Try context.state first, then toolCallId from manager records
-    let agentId = context?.state?.agentId as string | undefined;
-    if (!agentId) {
-      // Find agent by toolCallId from context
-      const toolCallId = context?.toolCallId as string | undefined;
-      if (toolCallId) {
-        const manager = getManager();
-        if (manager) {
-          const record = manager.listAgents().find((r) => r.display.toolCallId === toolCallId);
-          if (record) {
-            agentId = record.id;
-            if (context?.state) {
-              context.state.agentId = agentId;
-              context.state.isBackground = true;
-            }
-          }
-        }
-      }
+  // Once a result identifies the record, look it up by id. Before then, the call id can link it.
+  const agentId = state?.agentId as string | undefined;
+  let record = agentId ? getManager()?.getRecord(agentId) : undefined;
+  const toolCallId = context?.toolCallId;
+  if (!agentId && toolCallId) {
+    record = getManager()
+      ?.listAgents()
+      .find((r) => r.display.toolCallId === toolCallId);
+    if (record && state) {
+      state.agentId = record.id;
+      if (isBackground) state.isBackground = true;
     }
-    const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
-    const status = liveRecord?.lifecycle.status ?? "queued";
-    icon = statusIcon(status, theme, (args.agent as string) || undefined);
-    let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
-
-    const modelOverride = args._modelOverride as string | undefined;
-    if (modelOverride) {
-      text += ` (${modelOverride})`;
-    }
-
-    return new Text(text, 0, 0);
-  } else {
-    // Foreground agents: look up live status from manager using stored agentId
-    let agentId = context?.state?.agentId as string | undefined;
-    if (!agentId) {
-      // Find agent by toolCallId from context
-      const toolCallId = context?.toolCallId as string | undefined;
-      if (toolCallId) {
-        const manager = getManager();
-        if (manager) {
-          const record = manager.listAgents().find((r) => r.display.toolCallId === toolCallId);
-          if (record) {
-            agentId = record.id;
-            if (context?.state) {
-              context.state.agentId = agentId;
-            }
-          }
-        }
-      }
-    }
-    const liveRecord = agentId ? getManager()?.getRecord(agentId) : undefined;
-    const status = liveRecord?.lifecycle.status;
-    icon = statusIcon(status, theme, (args.agent as string) || undefined);
   }
 
-  // Build the call line text
-  let text = `${icon} ${theme.fg("accent", theme.bold(label))}`;
-
+  const status = record?.lifecycle.status ?? (isBackground ? "queued" : undefined);
+  const icon = statusIcon(status, theme, type);
   const modelOverride = args._modelOverride as string | undefined;
-  if (modelOverride) {
-    text += ` (${modelOverride})`;
-  }
-
-  return new Text(text, 0, 0);
+  const model = modelOverride ? ` (${modelOverride})` : "";
+  return new Text(`${icon} ${theme.fg("accent", theme.bold(label))}${model}`, 0, 0);
 }
 
 export function renderAgentToolResult(
@@ -209,6 +162,9 @@ export function renderAgentToolResult(
     }
     return rows;
   }
+
+  // Pi turns a thrown call into an error result without agent details.
+  if (result.isError) return new Text(`${theme.fg("error", "✗")} ${plainText(text)}`, 0, 0);
 
   // Background agents — description only (icon + status are in the call line)
   // The call renderer handles the icon and status text
@@ -292,6 +248,11 @@ function pathRows(d: Record<string, unknown> | undefined, theme: Theme): string 
   return rows.join("\n");
 }
 
+/** A Workflow card is already settled. Its fill distinguishes failure, not stopped from completed. */
+function workflowCardBackground(status: string | undefined): ToolBg {
+  return statusColor(status) === "error" ? "toolErrorBg" : "toolSuccessBg";
+}
+
 /** Render a subagent-result message injected after background agent completion. */
 export function renderSubagentResult(
   message: { content?: string; details?: Record<string, unknown> },
@@ -306,38 +267,46 @@ export function renderSubagentResult(
 
   const d = message.details;
   const text = (message.content as string)?.trim() || "";
+  const isWorkflow = d?.kind === "workflow";
+  const title = isWorkflow
+    ? theme.fg("toolTitle", theme.bold("Workflow Result"))
+    : theme.fg("customMessageLabel", "Subagent Result");
 
   const inner = new Container();
-  inner.addChild(new Text(theme.fg("customMessageLabel", "Subagent Result"), 0, 0));
+  inner.addChild(new Text(title, 0, 0));
   inner.addChild(new Spacer(1));
 
-  if (d && d.turnCount != null) {
-    const icon = statusIcon(d.status as string, theme, (d.type as string) || undefined);
+  // One card for every settlement message. The stats row is the only part a message may not carry:
+  // a remote run has no usage accounting, so its details ask for none and its card says nothing about
+  // turns, tokens or cost rather than inventing zeros.
+  const statsLine = d && d.turnCount != null ? buildStatsLine(d, theme, showCost) : "";
+  const status = (d?.status as string | undefined) ?? "completed";
+  const icon = statusIcon(status, theme, (d?.type as string) || undefined);
+  const namePart = d ? agentNameLabel(d, theme, modelDisplayStyle) : "";
+  const description = typeof d?.description === "string" ? d.description : "";
+  const head = [
+    `${icon}${namePart ? ` ${namePart}` : ""}${statsLine ? `·${statsLine}` : ""}`,
+    description === "" ? "" : `  ${theme.fg("text", description)}`,
+  ];
+  inner.addChild(new Text(head.filter((row) => row !== "").join("\n"), 0, 0));
 
-    const namePart = agentNameLabel(d, theme, modelDisplayStyle);
-    const statsLine = buildStatsLine(d, theme, showCost);
-    const description = typeof d.description === "string" ? d.description : "";
-    inner.addChild(new Text(`${icon} ${namePart}·${statsLine}\n  ${theme.fg("text", description)}`, 0, 0));
-
-    if (!expanded) {
-      const reply = replyRow(d, theme);
-      if (reply) inner.addChild(reply);
-    }
-
-    const pathLines = pathRows(d, theme);
-    if (pathLines) {
-      inner.addChild(new Text(pathLines, 0, 0));
-    }
-
-    if (expanded && text) {
-      inner.addChild(new Spacer(1));
-      inner.addChild(new Text(indentedBody(text), 0, 0));
-    }
-  } else {
-    inner.addChild(new Text(buildFallbackResultLine(d, theme, modelDisplayStyle), 0, 0));
+  if (!expanded) {
+    const reply = replyRow(d ?? {}, theme);
+    if (reply) inner.addChild(reply);
   }
 
-  const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
+  const pathLines = pathRows(d, theme);
+  if (pathLines) {
+    inner.addChild(new Text(pathLines, 0, 0));
+  }
+
+  if (expanded && text) {
+    inner.addChild(new Spacer(1));
+    inner.addChild(new Text(indentedBody(text), 0, 0));
+  }
+
+  const background = isWorkflow ? workflowCardBackground(status) : "customMessageBg";
+  const box = new Box(1, 1, (t) => theme.bg(background, t));
   box.addChild(inner);
 
   const outer = new Container();
@@ -345,21 +314,4 @@ export function renderSubagentResult(
   outer.addChild(box);
   outer.addChild(new Spacer(1));
   return outer;
-}
-
-function buildFallbackResultLine(
-  d: Record<string, unknown> | undefined,
-  theme: Theme,
-  modelDisplayStyle: "id" | "name" = "id",
-): string {
-  const icon = statusIcon("completed", theme, (d?.type as string) || undefined);
-  let line = icon;
-  if (d?.type) {
-    line += ` ${agentNameLabel(d, theme, modelDisplayStyle)}`;
-  }
-  const desc = typeof d?.description === "string" ? d.description : "";
-  if (desc) line += `\n  ${theme.fg("text", desc)}`;
-  const pathLines = pathRows(d, theme);
-  if (pathLines) line += `\n${pathLines}`;
-  return line;
 }

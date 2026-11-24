@@ -11,7 +11,7 @@ Foreground and background agents with detailed model configuration, concurrency,
 
 ## Install
 
-Requires Node.js >= 22.19.0 and pi >= 0.99.0.
+Requires Node.js >= 22.19.0 and pi >= 1.5.1.
 
 ```bash
 pi install npm:pi-subagents-lite
@@ -136,6 +136,8 @@ Every agent whose frontmatter omits `tools` then starts with codemode active, ex
 - `run_in_background` requests that the agent return without waiting for completion and notify the parent when done. If the child has `MessageAgent` active, it is backgrounded regardless of this parameter, including an explicit `false`.
 - `worktree_path` is a directory inside any git repository on disk. Relative paths resolve against the parent's working directory. See [Worktree paths and trust](#worktree-paths-and-trust).
 
+Completion notifications from subagents and Workflows start a new turn if the parent is idle, or give a busy parent a turn to read the result. Esc saves notifications already pending without restarting the interrupted turn.
+
 `model`, `thinking`, `max_turns`, and `max_tokens` are injected from config and frontmatter, never passed by the LLM. Set them once and forget.
 
 Subagents cannot spawn further subagents.
@@ -205,7 +207,7 @@ Every call row reads the way pi writes that tool: `bash` shows `$ <command>` and
 
 ### Project-level config
 
-A project can commit its own defaults as `.pi/subagents-lite.json` (same file name as the global one). This is an override layer, not a full config. It may contain only model and concurrency settings (`agent.default`, per-type model overrides, `concurrency`), and each key it sets overrides the global file's value. Every other setting (widget, watchdog, spawn defaults) always comes from the global file. The effective value of each key resolves as: session override > project file > global file > built-in default.
+A project can commit its own defaults as `.pi/subagents-lite.json` (same file name as the global one). This is an override layer, not a full config. It may contain model and concurrency settings (`agent.default`, per-type model overrides, `concurrency`), and each key it sets overrides the global file's value. Every other setting (widget, watchdog, spawn defaults) always comes from the global file. A key the project layer cannot make effective is ignored and named by one load-time warning (`Ignoring unknown keys in project config …`) that lists the keys and never prints their values. The warning a config file earns is printed once per Pi start, by the session-start read. The effective value of each key resolves as: session override > project file > global file > built-in default.
 
 ### System prompt mode
 
