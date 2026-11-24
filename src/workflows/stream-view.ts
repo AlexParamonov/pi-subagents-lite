@@ -111,7 +111,7 @@ class NodeLines {
    * this content once already, so the value is shown only when the node has shown none.
    */
   showResult(text: string): void {
-    if (text === "" || this.texts.length > 0) return;
+    if (text === "" || this.closed.length > 0 || this.turn.text !== "") return;
     this.fullTurn(text);
   }
 
@@ -121,22 +121,16 @@ class NodeLines {
     return true;
   }
 
-  /** The turn a full-turn frame closed is over: what arrives next is the next turn's contribution. */
   private contribute(update: (turn: TurnText) => void): boolean {
-    const before = this.texts;
-    if (this.turn.full !== null) this.closeTurn();
+    // Moving a full turn into the closed prefix doesn't change what's shown; only the open turn can change it.
+    if (this.turn.full !== null) {
+      if (this.turn.full !== "") this.closed.push(this.turn.full);
+      this.turn = new TurnText();
+    }
+    const before = this.turn.text;
     update(this.turn);
-    return !sameLines(before, this.texts);
+    return before !== this.turn.text;
   }
-
-  private closeTurn(): void {
-    if (this.turn.text !== "") this.closed.push(this.turn.text);
-    this.turn = new TurnText();
-  }
-}
-
-function sameLines(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && a.every((line, index) => line === b[index]);
 }
 
 export class StreamView {

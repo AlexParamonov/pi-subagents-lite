@@ -179,6 +179,23 @@ describe("detailRows", () => {
   });
 });
 
+it("leaves an open turn unchanged by empty or shadowed frames and keeps repeated text from a later turn", () => {
+  const view = new StreamView();
+  const fullTurn = (text: string) => named("node_progress", "analysis", { step: "assistant_turn", detail: { text } });
+  const shadow = named("node_progress", "analysis", {
+    step: "llm_delta",
+    detail: { kind: "text", fragment: "shadowed delta" },
+  });
+
+  const frames = [fullTurn("Done"), chunk("pending"), shadow, fullTurn(""), fullTurn("pending"), fullTurn("Done")];
+  expect(frames.map((frame) => view.apply(frame).changed)).toEqual([true, true, false, false, false, true]);
+  expect(view.snapshot()).toEqual([
+    { type: "text", node: "analysis", text: "Done" },
+    { type: "text", node: "analysis", text: "pending" },
+    { type: "text", node: "analysis", text: "Done" },
+  ]);
+});
+
 describe("a node's completion", () => {
   it("shows the text the node completed with as that node's own entry", () => {
     const view = new StreamView();
